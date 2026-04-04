@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alibaba Cloud AI Testing Platform</title>
+    <meta name="description" content="Test Alibaba Cloud (DashScope) AI models — Text, Image & Video Generation">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<!-- ─── Login Overlay ─────────────────────────────────────── -->
+<div id="loginOverlay" class="login-overlay">
+    <div class="login-card">
+        <div class="login-header">
+            <div class="login-logo-box">
+                <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 18a5 5 0 01-.5-9.97A7 7 0 0121 14h1a3 3 0 010 6H8z" fill="white" fill-opacity="0.9"/>
+                    <circle cx="8" cy="21" r="1.2" fill="white" fill-opacity="0.6"/>
+                    <circle cx="14" cy="21" r="1.2" fill="white" fill-opacity="0.6"/>
+                    <circle cx="20" cy="21" r="1.2" fill="white" fill-opacity="0.6"/>
+                </svg>
+            </div>
+            <div class="login-header-text">
+                <h1>AI Testing Platform</h1>
+                <p>Alibaba Cloud DashScope</p>
+            </div>
+        </div>
+        <div class="login-body">
+            <div class="login-desc">
+                使用您的 <strong>DashScope API Key</strong>（格式：<code>sk-...</code>）登入，所有 AI 呼叫將使用此 Key。
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="apiKeyInput">API Key</label>
+                <input type="password" id="apiKeyInput"
+                       placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+                       autocomplete="off" spellcheck="false">
+            </div>
+            <button id="loginBtn" class="btn btn-primary btn-full" onclick="handleLogin()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+                <span>登入</span>
+            </button>
+            <div id="loginError" class="login-error"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Main App ──────────────────────────────────────────── -->
+<div id="mainApp" class="hidden" style="display:flex;flex-direction:column;height:100vh;">
+
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-brand">
+            <div class="brand-logo">
+                <svg viewBox="0 0 28 28" fill="none">
+                    <path d="M8 17a4.5 4.5 0 01-.5-8.973A6.3 6.3 0 0119.5 13h.9a2.7 2.7 0 010 5.4H8z" fill="white"/>
+                </svg>
+            </div>
+            <span class="brand-name">Alibaba Cloud</span>
+            <span class="brand-badge">AI Lab</span>
+        </div>
+
+        <nav class="tab-nav">
+            <button class="tab-btn active" data-tab="text" onclick="switchTab('text')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                文字生成
+            </button>
+            <button class="tab-btn" data-tab="image" onclick="switchTab('image')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                圖片生成
+            </button>
+            <button class="tab-btn" data-tab="video" onclick="switchTab('video')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                影片生成
+            </button>
+        </nav>
+
+        <div class="header-right">
+            <div class="api-key-indicator">
+                <span class="dot"></span>
+                <span id="apiKeyLabel">API Key Connected</span>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="handleLogout()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                登出
+            </button>
+        </div>
+    </header>
+
+    <!-- ── Tab: Text ──────────────────────────────────────── -->
+    <section id="tab-text" class="tab-content active">
+        <aside class="panel-sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">模型設定</div>
+                <div class="form-group">
+                    <label class="form-label">模型</label>
+                    <select id="textModel" class="select-input"></select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">System Prompt</label>
+                    <textarea id="textSystemPrompt" class="textarea-input" rows="3">You are a helpful assistant.</textarea>
+                </div>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">參數</div>
+                <div class="form-group">
+                    <label class="form-label">Temperature <span class="param-val" id="tempVal">0.7</span></label>
+                    <input type="range" id="textTemperature" min="0" max="2" step="0.1" value="0.7"
+                           oninput="document.getElementById('tempVal').textContent=this.value">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Max Tokens <span class="param-val" id="maxTokVal">4096</span></label>
+                    <input type="range" id="textMaxTokens" min="256" max="16384" step="256" value="4096"
+                           oninput="document.getElementById('maxTokVal').textContent=this.value">
+                </div>
+                <div class="toggle-row">
+                    <label>思考模式</label>
+                    <label class="toggle"><input type="checkbox" id="textThinking"><span class="toggle-slider"></span></label>
+                </div>
+            </div>
+        </aside>
+
+        <div class="panel-main">
+            <div id="textOutput" class="chat-output">
+                <div class="empty-state">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                    <p>輸入提示詞，按 Ctrl+Enter 發送</p>
+                </div>
+            </div>
+            <div class="chat-input-bar">
+                <div class="chat-input-row">
+                    <textarea id="textPrompt" class="chat-textarea" placeholder="輸入您的提示詞..." rows="2"></textarea>
+                    <button id="textSendBtn" class="btn btn-primary" onclick="sendText()">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                        發送
+                    </button>
+                </div>
+                <div class="chat-actions-row">
+                    <span style="font-size:0.75rem;color:var(--text-muted)">Ctrl+Enter 快速發送</span>
+                    <button class="btn btn-ghost btn-sm" onclick="clearChat()">清除對話</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Tab: Image ─────────────────────────────────────── -->
+    <section id="tab-image" class="tab-content">
+        <aside class="panel-sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">基本設定</div>
+                <div class="form-group">
+                    <label class="form-label">任務類型</label>
+                    <select id="imageTaskType" class="select-input" onchange="onImgTaskChange()">
+                        <option value="t2i">文生圖 (T2I)</option>
+                        <option value="i2i">圖像編輯 (I2I)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">模型</label>
+                    <select id="imageModel" class="select-input" onchange="onImgModelChange()"></select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">尺寸</label>
+                    <select id="imageSize" class="select-input"></select>
+                </div>
+                <!-- 生成張數（僅 T2I 顯示，依模型 max_n 動態調整） -->
+                <div class="form-group" id="imgNGroup">
+                    <label class="form-label">生成張數 <span class="param-val" id="imgNVal">1</span></label>
+                    <input type="range" id="imgN" min="1" max="4" step="1" value="1"
+                           oninput="document.getElementById('imgNVal').textContent=this.value">
+                </div>
+                <div class="toggle-row">
+                    <label>Prompt Extend</label>
+                    <label class="toggle"><input type="checkbox" id="imgPromptExtend"><span class="toggle-slider"></span></label>
+                </div>
+            </div>
+            <div id="imgUploadSection" class="sidebar-section hidden">
+                <div class="sidebar-section-title">上傳圖片</div>
+                <div class="upload-zone" id="imgUploadZone">
+                    <input type="file" id="imgFileInput" accept="image/*" onchange="previewImg(event,'imgPreview','imgUploadZone')">
+                    <div class="upload-zone-icon">📎</div>
+                    <p>點擊或拖放上傳</p>
+                    <img id="imgPreview" class="upload-preview hidden" alt="preview">
+                </div>
+            </div>
+        </aside>
+
+        <div class="panel-main">
+            <div class="prompt-panel">
+                <div class="prompt-row">
+                    <div class="prompt-col">
+                        <div class="form-group" style="margin-bottom:8px">
+                            <label class="form-label">Prompt</label>
+                            <textarea id="imagePrompt" class="textarea-input" rows="2" placeholder="描述您想要生成的圖片..."></textarea>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0">
+                            <label class="form-label">Negative Prompt</label>
+                            <textarea id="imageNegPrompt" class="textarea-input" rows="2" placeholder="不想出現的元素（可選）"></textarea>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;justify-content:flex-end">
+                        <button id="imageSendBtn" class="btn btn-primary" onclick="sendImage()" style="height:40px">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                            生成
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div id="imageResults" class="results-area">
+                <div class="empty-state" style="width:100%">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                    <p>生成的圖片將顯示在此處</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Tab: Video ─────────────────────────────────────── -->
+    <section id="tab-video" class="tab-content">
+        <aside class="panel-sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">基本設定</div>
+                <div class="form-group">
+                    <label class="form-label">任務類型</label>
+                    <select id="videoTaskType" class="select-input" onchange="onVidTaskChange()">
+                        <option value="t2v">文生影片 (T2V)</option>
+                        <option value="i2v">圖生影片 (I2V)</option>
+                        <option value="r2v">參考生影片 (R2V)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">模型</label>
+                    <select id="videoModel" class="select-input" onchange="onVidModelChange()"></select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">解析度</label>
+                    <select id="videoResolution" class="select-input">
+                        <option value="720P">720P</option>
+                        <option value="1080P">1080P</option>
+                        <option value="480P">480P</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">時長（秒）<span class="param-val" id="durVal">5</span></label>
+                    <input type="range" id="videoDuration" min="3" max="10" step="1" value="5"
+                           oninput="document.getElementById('durVal').textContent=this.value">
+                </div>
+                <!-- 自動配音（僅 wan2.7-t2v 支援） -->
+                <div class="toggle-row" id="vidAudioRow" style="display:none">
+                    <label>自動配音</label>
+                    <label class="toggle"><input type="checkbox" id="vidAudio"><span class="toggle-slider"></span></label>
+                </div>
+            </div>
+            <div id="vidI2VUpload" class="sidebar-section hidden">
+                <div class="sidebar-section-title">首幀圖片</div>
+                <div class="upload-zone">
+                    <input type="file" id="vidImgInput" accept="image/*" onchange="previewImg(event,'vidImgPreview','vidI2VUpload')">
+                    <div class="upload-zone-icon">🖼</div>
+                    <p>上傳首幀圖片</p>
+                    <img id="vidImgPreview" class="upload-preview hidden" alt="preview">
+                </div>
+            </div>
+            <div id="vidR2VUpload" class="sidebar-section hidden">
+                <div class="sidebar-section-title">參考文件</div>
+                <div class="upload-zone">
+                    <input type="file" id="vidRefInput" accept="image/*,video/*" multiple onchange="handleRefUpload(event)">
+                    <div class="upload-zone-icon">📂</div>
+                    <p>上傳圖片或影片（可多選）</p>
+                </div>
+                <div id="refList" class="ref-list"></div>
+            </div>
+        </aside>
+
+        <div class="panel-main">
+            <div class="prompt-panel">
+                <div class="prompt-row">
+                    <div class="prompt-col">
+                        <div class="form-group" style="margin-bottom:8px">
+                            <label class="form-label">Prompt</label>
+                            <textarea id="videoPrompt" class="textarea-input" rows="2" placeholder="描述您想要生成的影片..."></textarea>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0">
+                            <label class="form-label">Negative Prompt</label>
+                            <textarea id="videoNegPrompt" class="textarea-input" rows="2" placeholder="不想出現的元素（可選）"></textarea>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;justify-content:flex-end">
+                        <button id="videoSendBtn" class="btn btn-primary" onclick="sendVideo()" style="height:40px">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                            生成
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div id="videoResults" class="video-results-area">
+                <div class="empty-state">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                    <p>提交任務後，生成進度會顯示在此處</p>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- Toast & Loading -->
+<div id="toastContainer" class="toast-container"></div>
+<div id="loadingOverlay" class="loading-overlay hidden">
+    <div class="loading-box">
+        <div class="spin-ring"></div>
+        <p id="loadingText">處理中...</p>
+        <p id="loadingTimer" style="font-size:0.75rem;color:var(--text-muted);margin-top:4px"></p>
+    </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.env
+.venv
+
+# Generated outputs (large files)
+outputs/images/
+outputs/videos/
+static/uploads/
+
+# OS
+.DS_Store
+Thumbs.db
