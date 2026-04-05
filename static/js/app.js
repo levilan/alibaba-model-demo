@@ -7,6 +7,7 @@
 let apiKey = sessionStorage.getItem('dashscope_api_key') || '';
 let models = { text: [], image: [], video: [] };
 let refFiles = [];
+let editRefFiles = [];  // for video editing reference images
 let loadingTimerInterval = null;
 
 // ── Init ──────────────────────────────────────────────────────
@@ -119,6 +120,7 @@ function onImgTaskChange() {
     populateSelect('imageModel', models.image, m => m.type === t);
     document.getElementById('imgUploadSection').classList.toggle('hidden', t !== 'i2i');
     document.getElementById('imgNGroup').style.display = (t === 't2i') ? '' : 'none';
+    document.getElementById('imgRefStrengthGroup').style.display = (t === 'i2i') ? '' : 'none';
     onImgModelChange();
 }
 
@@ -154,13 +156,28 @@ function onImgModelChange() {
 function onVidTaskChange() {
     const t = document.getElementById('videoTaskType').value;
     populateSelect('videoModel', models.video, m => m.type === t);
+
     document.getElementById('vidI2VUpload').classList.toggle('hidden', t !== 'i2v');
     document.getElementById('vidR2VUpload').classList.toggle('hidden', t !== 'r2v');
+    document.getElementById('vidEditUpload').classList.toggle('hidden', t !== 'vedit');
+
+    // vedit-specific controls
+    document.getElementById('vidRatioGroup').style.display = (t === 'vedit') ? '' : 'none';
+    document.getElementById('vidAudioSettingGroup').style.display = (t === 'vedit') ? '' : 'none';
+
+    // i2v-specific controls
+    document.getElementById('vidI2VModeGroup').style.display = (t === 'i2v') ? '' : 'none';
+
+    // vedit duration hint
+    document.getElementById('durHintZero').style.display = (t === 'vedit') ? '' : 'none';
+
+    if (t === 'i2v') onI2VModeChange();
     onVidModelChange();
 }
 
 function onVidModelChange() {
-    const modelId = document.getElementById('videoModel').value;
+    const taskType = document.getElementById('videoTaskType').value;
+    const modelId  = document.getElementById('videoModel').value;
     const modelInfo = models.video.find(m => m.id === modelId) || {};
 
     // 顯示/隱藏自動配音
@@ -169,14 +186,68 @@ function onVidModelChange() {
     if (!modelInfo.audio) document.getElementById('vidAudio').checked = false;
 
     // 調整時長範圍
-    const dur = document.getElementById('videoDuration');
-    const minD = modelInfo.min_dur || 3;
-    const maxD = modelInfo.max_dur || 10;
-    dur.min = minD;
-    dur.max = maxD;
+    const dur    = document.getElementById('videoDuration');
+    const minD   = modelInfo.min_dur ?? 3;
+    const maxD   = modelInfo.max_dur || 10;
+    dur.min  = minD;
+    dur.max  = maxD;
+    dur.step = (taskType === 'vedit') ? 1 : 1;  // vedit allows 0
     if (parseInt(dur.value) < minD) { dur.value = minD; document.getElementById('durVal').textContent = minD; }
     if (parseInt(dur.value) > maxD) { dur.value = maxD; document.getElementById('durVal').textContent = maxD; }
+
+    // resolution: vedit only supports 720P/1080P
+    const resEl = document.getElementById('videoResolution');
+    if (taskType === 'vedit') {
+        Array.from(resEl.options).forEach(o => {
+            o.hidden = (o.value === '480P');
+        });
+        if (resEl.value === '480P') resEl.value = '720P';
+    } else {
+        Array.from(resEl.options).forEach(o => { o.hidden = false; });
+    }
 }
+
+// I2V 模式切換（顯示對應上傳區）
+function onI2VModeChange() {
+    const mode = document.getElementById('videoI2VMode').value;
+    document.getElementById('vidFirstFrameZone').style.display =
+        (mode === 'first_clip' || mode === 'first_clip_last_frame') ? 'none' : '';
+    document.getElementById('vidLastFrameZone').style.display  =
+        (mode === 'first_last_frame' || mode === 'first_clip_last_frame') ? '' : 'none';
+    document.getElementById('vidAudioZone').style.display   =
+        (mode === 'first_frame_audio') ? '' : 'none';
+    document.getElementById('vidClipZone').style.display    =
+        (mode === 'first_clip' || mode === 'first_clip_last_frame') ? '' : 'none';
+}
+
+// 音訊 / 片段上傳名稱顯示
+function onAudioUpload(e) {
+    const f = e.target.files[0];
+    if (f) document.getElementById('vidAudioFileName').textContent = f.name;
+}
+function onClipUpload(e) {
+    const f = e.target.files[0];
+    if (f) document.getElementById('vidClipFileName').textContent = f.name;
+}
+
+// 影片編輯上傳
+function onEditVideoUpload(e) {
+    const f = e.target.files[0];
+    if (f) document.getElementById('vidEditVideoName').textContent = f.name;
+}
+function onEditRefUpload(e) {
+    const newFiles = Array.from(e.target.files);
+    editRefFiles = [...editRefFiles, ...newFiles].slice(0, 3);
+    renderEditRefList();
+}
+function renderEditRefList() {
+    document.getElementById('vidEditRefList').innerHTML = editRefFiles.map((f, i) => `
+        <div class="ref-item">
+            <span>${f.name}</span>
+            <button onclick="removeEditRef(${i})">✕</button>
+        </div>`).join('');
+}
+function removeEditRef(i) { editRefFiles.splice(i, 1); renderEditRefList(); }
 
 // ── Tab ───────────────────────────────────────────────────────
 function switchTab(tab) {
@@ -191,12 +262,21 @@ async function sendText() {
     const prompt = document.getElementById('textPrompt').value.trim();
     if (!prompt) { toast('請輸入提示詞', 'error'); return; }
 
-    const model         = document.getElementById('textModel').value;
-    const systemPrompt  = document.getElementById('textSystemPrompt').value;
-    const temperature   = parseFloat(document.getElementById('textTemperature').value);
-    const maxTokens     = parseInt(document.getElementById('textMaxTokens').value);
-    const enableThinking= document.getElementById('textThinking').checked;
-    const modelInfo     = models.text.find(m => m.id === model);
+    const model             = document.getElementById('textModel').value;
+    const systemPrompt      = document.getElementById('textSystemPrompt').value;
+    const temperature       = parseFloat(document.getElementById('textTemperature').value);
+    const topP              = parseFloat(document.getElementById('textTopP').value);
+    const topK              = parseInt(document.getElementById('textTopK').value);
+    const maxTokens         = parseInt(document.getElementById('textMaxTokens').value);
+    const presencePenalty   = parseFloat(document.getElementById('textPresencePenalty').value);
+    const frequencyPenalty  = parseFloat(document.getElementById('textFrequencyPenalty').value);
+    const seedRaw           = document.getElementById('textSeed').value.trim();
+    const seed              = seedRaw !== '' ? parseInt(seedRaw) : null;
+    const stopRaw           = document.getElementById('textStop').value.trim();
+    const stop              = stopRaw ? stopRaw.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 4) : [];
+    const enableThinking    = document.getElementById('textThinking').checked;
+    const useStream         = document.getElementById('textStream').checked;
+    const modelInfo         = models.text.find(m => m.id === model);
 
     const output = document.getElementById('textOutput');
     output.querySelector('.empty-state')?.remove();
@@ -213,48 +293,72 @@ async function sendText() {
     document.getElementById('textPrompt').value = '';
 
     try {
+        const body = {
+            model, prompt, system_prompt: systemPrompt,
+            temperature, top_p: topP, max_tokens: maxTokens,
+            presence_penalty: presencePenalty, frequency_penalty: frequencyPenalty,
+            stream: useStream,
+            enable_thinking: enableThinking && modelInfo?.thinking,
+        };
+        if (topK > 0) body.top_k = topK;
+        if (seed !== null) body.seed = seed;
+        if (stop.length > 0) body.stop = stop;
+
         const res = await fetch('/api/text/generate', {
             method: 'POST',
             headers: authHeader(),
-            body: JSON.stringify({
-                model, prompt, system_prompt: systemPrompt,
-                temperature, max_tokens: maxTokens,
-                enable_thinking: enableThinking && modelInfo?.thinking,
-            }),
+            body: JSON.stringify(body),
         });
 
-        const reader  = res.body.getReader();
-        const decoder = new TextDecoder();
-        let full = '', buf = '';
-
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buf += decoder.decode(value, { stream: true });
-            const lines = buf.split('\n');
-            buf = lines.pop();
-
-            for (const line of lines) {
-                if (!line.startsWith('data: ')) continue;
-                try {
-                    const d = JSON.parse(line.slice(6));
-                    if (d.content) {
-                        full += d.content;
-                        aDiv.textContent = full;
-                        output.scrollTop = output.scrollHeight;
-                    } else if (d.error) {
-                        aDiv.textContent = `⚠ 錯誤：${d.error}`;
-                        aDiv.classList.remove('streaming-cursor');
-                    } else if (d.done) {
-                        aDiv.classList.remove('streaming-cursor');
-                        const meta = el('div', { className: 'msg-meta' });
-                        meta.innerHTML = `<span>${model}</span><span>${new Date().toLocaleTimeString()}</span>`;
-                        aDiv.appendChild(meta);
-                    }
-                } catch (_) { /* skip */ }
-            }
-        }
         aDiv.classList.remove('streaming-cursor');
+
+        if (!useStream) {
+            // 非串流：直接讀取 JSON
+            const data = await res.json();
+            if (data.error) {
+                aDiv.textContent = `⚠ 錯誤：${data.error}`;
+            } else {
+                aDiv.textContent = data.content || '';
+                const meta = el('div', { className: 'msg-meta' });
+                meta.innerHTML = `<span>${model}</span><span>${new Date().toLocaleTimeString()}</span>`;
+                aDiv.appendChild(meta);
+            }
+        } else {
+            // 串流 SSE
+            const reader  = res.body.getReader();
+            const decoder = new TextDecoder();
+            let full = '', buf = '';
+            aDiv.classList.add('streaming-cursor');
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buf += decoder.decode(value, { stream: true });
+                const lines = buf.split('\n');
+                buf = lines.pop();
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const d = JSON.parse(line.slice(6));
+                        if (d.content) {
+                            full += d.content;
+                            aDiv.textContent = full;
+                            output.scrollTop = output.scrollHeight;
+                        } else if (d.error) {
+                            aDiv.textContent = `⚠ 錯誤：${d.error}`;
+                            aDiv.classList.remove('streaming-cursor');
+                        } else if (d.done) {
+                            aDiv.classList.remove('streaming-cursor');
+                            const meta = el('div', { className: 'msg-meta' });
+                            meta.innerHTML = `<span>${model}</span><span>${new Date().toLocaleTimeString()}</span>`;
+                            aDiv.appendChild(meta);
+                        }
+                    } catch (_) { /* skip */ }
+                }
+            }
+            aDiv.classList.remove('streaming-cursor');
+        }
     } catch (e) {
         aDiv.textContent = `⚠ 錯誤：${e.message}`;
         aDiv.classList.remove('streaming-cursor');
@@ -277,8 +381,12 @@ async function sendImage() {
     const prompt   = document.getElementById('imagePrompt').value.trim();
     const negPrompt= document.getElementById('imageNegPrompt').value.trim();
     const size     = document.getElementById('imageSize').value;
-    const extend   = document.getElementById('imgPromptExtend').checked;
-    const n        = parseInt(document.getElementById('imgN').value) || 1;
+    const extend      = document.getElementById('imgPromptExtend').checked;
+    const watermark   = document.getElementById('imgWatermark').checked;
+    const n           = parseInt(document.getElementById('imgN').value) || 1;
+    const imgSeedRaw  = document.getElementById('imgSeed').value.trim();
+    const imgSeed     = imgSeedRaw !== '' ? parseInt(imgSeedRaw) : null;
+    const refStrength = parseFloat(document.getElementById('imgRefStrength').value);
 
     if (!prompt) { toast('請輸入 Prompt', 'error'); return; }
 
@@ -290,13 +398,17 @@ async function sendImage() {
     try {
         let res;
         if (taskType === 't2i') {
-            res = await apiPost('/api/image/generate', { model, prompt, negative_prompt: negPrompt, size, n, prompt_extend: extend });
+            const body = { model, prompt, negative_prompt: negPrompt, size, n, prompt_extend: extend, watermark };
+            if (imgSeed !== null) body.seed = imgSeed;
+            res = await apiPost('/api/image/generate', body);
         } else {
             const fileInput = document.getElementById('imgFileInput');
             if (!fileInput.files.length) { toast('請先上傳圖片', 'error'); hideLoading(); btn.disabled = false; btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg> 生成'; return; }
             const fd = new FormData();
             fd.append('model', model); fd.append('prompt', prompt);
             fd.append('negative_prompt', negPrompt); fd.append('size', size);
+            fd.append('watermark', watermark); fd.append('ref_strength', refStrength);
+            if (imgSeed !== null) fd.append('seed', imgSeed);
             fd.append('image', fileInput.files[0]);
             res = await apiPostForm('/api/image/edit', fd);
         }
@@ -337,9 +449,13 @@ async function sendVideo() {
     const negPrompt = document.getElementById('videoNegPrompt').value.trim();
     const resolution= document.getElementById('videoResolution').value;
     const duration  = parseInt(document.getElementById('videoDuration').value);
-    const audio     = document.getElementById('vidAudio').checked;
+    const audio         = document.getElementById('vidAudio').checked;
+    const vidExtend     = document.getElementById('vidPromptExtend').checked;
+    const vidWatermark  = document.getElementById('vidWatermark').checked;
+    const vidSeedRaw    = document.getElementById('vidSeed').value.trim();
+    const vidSeed       = vidSeedRaw !== '' ? parseInt(vidSeedRaw) : null;
 
-    if (!prompt) { toast('請輸入 Prompt', 'error'); return; }
+    if (!prompt && taskType !== 'vedit') { toast('請輸入 Prompt', 'error'); return; }
 
     const btn = document.getElementById('videoSendBtn');
     btn.disabled = true;
@@ -348,20 +464,67 @@ async function sendVideo() {
     try {
         let res;
         if (taskType === 't2v') {
-            res = await apiPost('/api/video/t2v', { model, prompt, negative_prompt: negPrompt, resolution, duration, audio });
+            const body = { model, prompt, negative_prompt: negPrompt, resolution, duration, audio,
+                           prompt_extend: vidExtend, watermark: vidWatermark };
+            if (vidSeed !== null) body.seed = vidSeed;
+            res = await apiPost('/api/video/t2v', body);
+
         } else if (taskType === 'i2v') {
-            const fi = document.getElementById('vidImgInput');
-            if (!fi.files.length) { toast('請上傳首幀圖片', 'error'); btn.disabled = false; btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> 生成'; return; }
+            const i2vMode = document.getElementById('videoI2VMode').value;
             const fd = new FormData();
             fd.append('model', model); fd.append('prompt', prompt);
-            fd.append('negative_prompt', negPrompt); fd.append('resolution', resolution); fd.append('duration', duration);
-            fd.append('image', fi.files[0]);
+            fd.append('negative_prompt', negPrompt); fd.append('resolution', resolution);
+            fd.append('duration', duration); fd.append('i2v_mode', i2vMode);
+            fd.append('prompt_extend', vidExtend); fd.append('watermark', vidWatermark);
+            if (vidSeed !== null) fd.append('seed', vidSeed);
+
+            if (i2vMode === 'first_clip' || i2vMode === 'first_clip_last_frame') {
+                const clipFile = document.getElementById('vidClipInput').files[0];
+                if (!clipFile) { toast('請上傳首段影片片段', 'error'); btn.disabled = false; btn.innerHTML = _vidBtnHTML(); return; }
+                fd.append('first_clip', clipFile);
+                if (i2vMode === 'first_clip_last_frame') {
+                    const lastFile = document.getElementById('vidLastFrameInput').files[0];
+                    if (lastFile) fd.append('last_frame', lastFile);
+                }
+            } else {
+                const firstFile = document.getElementById('vidFirstFrameInput').files[0];
+                if (!firstFile) { toast('請上傳首幀圖片', 'error'); btn.disabled = false; btn.innerHTML = _vidBtnHTML(); return; }
+                fd.append('first_frame', firstFile);
+                if (i2vMode === 'first_last_frame') {
+                    const lastFile = document.getElementById('vidLastFrameInput').files[0];
+                    if (lastFile) fd.append('last_frame', lastFile);
+                }
+                if (i2vMode === 'first_frame_audio') {
+                    const audioFile = document.getElementById('vidAudioFileInput').files[0];
+                    if (audioFile) fd.append('driving_audio', audioFile);
+                }
+            }
             res = await apiPostForm('/api/video/i2v', fd);
+
+        } else if (taskType === 'vedit') {
+            const editVideoFile = document.getElementById('vidEditVideoInput').files[0];
+            if (!editVideoFile) { toast('請上傳來源影片', 'error'); btn.disabled = false; btn.innerHTML = _vidBtnHTML(); return; }
+            const ratio        = document.getElementById('videoRatio').value;
+            const audioSetting = document.getElementById('videoAudioSetting').value;
+            const fd = new FormData();
+            fd.append('model', model); fd.append('prompt', prompt);
+            fd.append('negative_prompt', negPrompt); fd.append('resolution', resolution);
+            fd.append('duration', duration); fd.append('audio_setting', audioSetting);
+            fd.append('prompt_extend', vidExtend); fd.append('watermark', vidWatermark);
+            if (ratio) fd.append('ratio', ratio);
+            if (vidSeed !== null) fd.append('seed', vidSeed);
+            fd.append('video', editVideoFile);
+            editRefFiles.forEach((f, i) => fd.append(`reference_image_${i + 1}`, f));
+            res = await apiPostForm('/api/video/vedit', fd);
+
         } else {
-            if (!refFiles.length) { toast('請上傳參考文件', 'error'); btn.disabled = false; btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> 生成'; return; }
+            // r2v
+            if (!refFiles.length) { toast('請上傳參考文件', 'error'); btn.disabled = false; btn.innerHTML = _vidBtnHTML(); return; }
             const fd = new FormData();
             fd.append('model', model); fd.append('prompt', prompt);
             fd.append('resolution', resolution); fd.append('duration', duration);
+            fd.append('prompt_extend', vidExtend); fd.append('watermark', vidWatermark);
+            if (vidSeed !== null) fd.append('seed', vidSeed);
             refFiles.forEach(f => fd.append('reference_files', f));
             res = await apiPostForm('/api/video/r2v', fd);
         }
@@ -380,7 +543,11 @@ async function sendVideo() {
         toast(`錯誤：${e.message}`, 'error');
     }
     btn.disabled = false;
-    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> 生成';
+    btn.innerHTML = _vidBtnHTML();
+}
+
+function _vidBtnHTML() {
+    return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> 生成';
 }
 
 function addVideoTask(taskId, model, prompt, status) {

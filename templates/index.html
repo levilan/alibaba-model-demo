@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23FF6A00'/%3E%3Cpath d='M7 20a6 6 0 01-.6-11.964A8.4 8.4 0 0123.8 15.6h1.08a3.6 3.6 0 010 7.2H7z' fill='white' fill-opacity='0.95'/%3E%3C/svg%3E">
 </head>
 <body>
 
@@ -112,13 +113,53 @@
                            oninput="document.getElementById('tempVal').textContent=this.value">
                 </div>
                 <div class="form-group">
+                    <label class="form-label">Top P <span class="param-val" id="topPVal">0.8</span></label>
+                    <input type="range" id="textTopP" min="0" max="1" step="0.05" value="0.8"
+                           oninput="document.getElementById('topPVal').textContent=this.value">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Top K <span class="param-val" id="topKVal">0</span>
+                        <span class="param-hint">（0 = 停用）</span>
+                    </label>
+                    <input type="range" id="textTopK" min="0" max="100" step="1" value="0"
+                           oninput="document.getElementById('topKVal').textContent=this.value">
+                </div>
+                <div class="form-group">
                     <label class="form-label">Max Tokens <span class="param-val" id="maxTokVal">4096</span></label>
                     <input type="range" id="textMaxTokens" min="256" max="16384" step="256" value="4096"
                            oninput="document.getElementById('maxTokVal').textContent=this.value">
                 </div>
+                <div class="form-group">
+                    <label class="form-label">Presence Penalty <span class="param-val" id="presPenVal">0</span></label>
+                    <input type="range" id="textPresencePenalty" min="-2" max="2" step="0.1" value="0"
+                           oninput="document.getElementById('presPenVal').textContent=this.value">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Frequency Penalty <span class="param-val" id="freqPenVal">0</span></label>
+                    <input type="range" id="textFrequencyPenalty" min="-2" max="2" step="0.1" value="0"
+                           oninput="document.getElementById('freqPenVal').textContent=this.value">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Seed
+                        <span class="param-hint">（留空 = 隨機）</span>
+                    </label>
+                    <input type="number" id="textSeed" class="number-input" min="0" max="2147483647"
+                           placeholder="留空隨機">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Stop 序列
+                        <span class="param-hint">（換行分隔，最多 4 個）</span>
+                    </label>
+                    <textarea id="textStop" class="textarea-input" rows="2"
+                              placeholder="例：\n結束\n---"></textarea>
+                </div>
                 <div class="toggle-row">
                     <label>思考模式</label>
                     <label class="toggle"><input type="checkbox" id="textThinking"><span class="toggle-slider"></span></label>
+                </div>
+                <div class="toggle-row">
+                    <label>串流輸出 (Stream)</label>
+                    <label class="toggle"><input type="checkbox" id="textStream" checked><span class="toggle-slider"></span></label>
                 </div>
             </div>
         </aside>
@@ -176,6 +217,27 @@
                     <label>Prompt Extend</label>
                     <label class="toggle"><input type="checkbox" id="imgPromptExtend"><span class="toggle-slider"></span></label>
                 </div>
+                <div class="toggle-row">
+                    <label>Watermark</label>
+                    <label class="toggle"><input type="checkbox" id="imgWatermark"><span class="toggle-slider"></span></label>
+                </div>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">進階參數</div>
+                <div class="form-group">
+                    <label class="form-label">Seed
+                        <span class="param-hint">（留空 = 隨機）</span>
+                    </label>
+                    <input type="number" id="imgSeed" class="number-input" min="0" max="2147483647"
+                           placeholder="留空隨機">
+                </div>
+                <div class="form-group" id="imgRefStrengthGroup" style="display:none">
+                    <label class="form-label">Ref Strength <span class="param-val" id="refStrVal">0.5</span>
+                        <span class="param-hint">（I2I 參考強度）</span>
+                    </label>
+                    <input type="range" id="imgRefStrength" min="0" max="1" step="0.05" value="0.5"
+                           oninput="document.getElementById('refStrVal').textContent=this.value">
+                </div>
             </div>
             <div id="imgUploadSection" class="sidebar-section hidden">
                 <div class="sidebar-section-title">上傳圖片</div>
@@ -229,6 +291,7 @@
                         <option value="t2v">文生影片 (T2V)</option>
                         <option value="i2v">圖生影片 (I2V)</option>
                         <option value="r2v">參考生影片 (R2V)</option>
+                        <option value="vedit">視頻編輯 (VideoEdit)</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -243,8 +306,43 @@
                         <option value="480P">480P</option>
                     </select>
                 </div>
+                <!-- 畫面比例（vedit 專用） -->
+                <div class="form-group" id="vidRatioGroup" style="display:none">
+                    <label class="form-label">畫面比例
+                        <span class="param-hint">（留空 = 跟隨來源）</span>
+                    </label>
+                    <select id="videoRatio" class="select-input">
+                        <option value="">跟隨來源</option>
+                        <option value="16:9">16:9 橫向</option>
+                        <option value="9:16">9:16 直向</option>
+                        <option value="1:1">1:1 方形</option>
+                        <option value="4:3">4:3</option>
+                        <option value="3:4">3:4</option>
+                    </select>
+                </div>
+                <!-- 音訊設定（vedit 專用） -->
+                <div class="form-group" id="vidAudioSettingGroup" style="display:none">
+                    <label class="form-label">音訊設定</label>
+                    <select id="videoAudioSetting" class="select-input">
+                        <option value="auto">auto（模型智能決定）</option>
+                        <option value="origin">origin（保留原始音訊）</option>
+                    </select>
+                </div>
+                <!-- I2V 輸入模式（i2v 專用） -->
+                <div class="form-group" id="vidI2VModeGroup" style="display:none">
+                    <label class="form-label">I2V 輸入模式</label>
+                    <select id="videoI2VMode" class="select-input" onchange="onI2VModeChange()">
+                        <option value="first_frame">首幀生成</option>
+                        <option value="first_last_frame">首尾幀生成</option>
+                        <option value="first_frame_audio">首幀 + 配音</option>
+                        <option value="first_clip">影片延伸</option>
+                        <option value="first_clip_last_frame">影片延伸 + 尾幀</option>
+                    </select>
+                </div>
                 <div class="form-group">
-                    <label class="form-label">時長（秒）<span class="param-val" id="durVal">5</span></label>
+                    <label class="form-label">時長（秒）<span class="param-val" id="durVal">5</span>
+                        <span class="param-hint" id="durHintZero" style="display:none">（0 = 保留來源）</span>
+                    </label>
                     <input type="range" id="videoDuration" min="3" max="10" step="1" value="5"
                            oninput="document.getElementById('durVal').textContent=this.value">
                 </div>
@@ -253,15 +351,89 @@
                     <label>自動配音</label>
                     <label class="toggle"><input type="checkbox" id="vidAudio"><span class="toggle-slider"></span></label>
                 </div>
-            </div>
-            <div id="vidI2VUpload" class="sidebar-section hidden">
-                <div class="sidebar-section-title">首幀圖片</div>
-                <div class="upload-zone">
-                    <input type="file" id="vidImgInput" accept="image/*" onchange="previewImg(event,'vidImgPreview','vidI2VUpload')">
-                    <div class="upload-zone-icon">🖼</div>
-                    <p>上傳首幀圖片</p>
-                    <img id="vidImgPreview" class="upload-preview hidden" alt="preview">
+                <div class="toggle-row">
+                    <label>Prompt Extend</label>
+                    <label class="toggle"><input type="checkbox" id="vidPromptExtend"><span class="toggle-slider"></span></label>
                 </div>
+                <div class="toggle-row">
+                    <label>Watermark</label>
+                    <label class="toggle"><input type="checkbox" id="vidWatermark"><span class="toggle-slider"></span></label>
+                </div>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">進階參數</div>
+                <div class="form-group">
+                    <label class="form-label">Seed
+                        <span class="param-hint">（留空 = 隨機）</span>
+                    </label>
+                    <input type="number" id="vidSeed" class="number-input" min="0" max="2147483647"
+                           placeholder="留空隨機">
+                </div>
+            </div>
+            <!-- I2V 上傳區（依模式動態顯示） -->
+            <div id="vidI2VUpload" class="sidebar-section hidden">
+                <!-- 首幀（first_frame / first_frame_audio / first_last_frame） -->
+                <div id="vidFirstFrameZone">
+                    <div class="sidebar-section-title">首幀圖片</div>
+                    <div class="upload-zone" id="vidFirstFrameUpZone">
+                        <input type="file" id="vidFirstFrameInput" accept="image/*"
+                               onchange="previewImg(event,'vidFirstFramePreview','vidFirstFrameUpZone')">
+                        <div class="upload-zone-icon">🖼</div>
+                        <p>上傳首幀圖片</p>
+                        <img id="vidFirstFramePreview" class="upload-preview hidden" alt="preview">
+                    </div>
+                </div>
+                <!-- 尾幀（first_last_frame / first_clip_last_frame） -->
+                <div id="vidLastFrameZone" style="display:none">
+                    <div class="sidebar-section-title" style="margin-top:10px">尾幀圖片</div>
+                    <div class="upload-zone" id="vidLastFrameUpZone">
+                        <input type="file" id="vidLastFrameInput" accept="image/*"
+                               onchange="previewImg(event,'vidLastFramePreview','vidLastFrameUpZone')">
+                        <div class="upload-zone-icon">🖼</div>
+                        <p>上傳尾幀圖片</p>
+                        <img id="vidLastFramePreview" class="upload-preview hidden" alt="preview">
+                    </div>
+                </div>
+                <!-- 配音（first_frame_audio） -->
+                <div id="vidAudioZone" style="display:none">
+                    <div class="sidebar-section-title" style="margin-top:10px">配音音訊</div>
+                    <div class="upload-zone" id="vidAudioUpZone">
+                        <input type="file" id="vidAudioFileInput" accept="audio/wav,audio/mp3,audio/mpeg"
+                               onchange="onAudioUpload(event)">
+                        <div class="upload-zone-icon">🎵</div>
+                        <p id="vidAudioFileName">上傳 WAV / MP3（2–30 秒）</p>
+                    </div>
+                </div>
+                <!-- 影片片段（first_clip / first_clip_last_frame） -->
+                <div id="vidClipZone" style="display:none">
+                    <div class="sidebar-section-title" style="margin-top:10px">首段影片片段</div>
+                    <div class="upload-zone" id="vidClipUpZone">
+                        <input type="file" id="vidClipInput" accept="video/mp4,video/mov,video/quicktime"
+                               onchange="onClipUpload(event)">
+                        <div class="upload-zone-icon">🎬</div>
+                        <p id="vidClipFileName">上傳 MP4 / MOV（2–10 秒）</p>
+                    </div>
+                </div>
+            </div>
+            <!-- 影片編輯上傳區 -->
+            <div id="vidEditUpload" class="sidebar-section hidden">
+                <div class="sidebar-section-title">來源影片 <span style="color:var(--red)">*</span></div>
+                <div class="upload-zone" id="vidEditVideoZone">
+                    <input type="file" id="vidEditVideoInput" accept="video/mp4,video/mov,video/quicktime"
+                           onchange="onEditVideoUpload(event)">
+                    <div class="upload-zone-icon">🎬</div>
+                    <p id="vidEditVideoName">上傳 MP4 / MOV（2–10 秒，最大 100 MB）</p>
+                </div>
+                <div class="sidebar-section-title" style="margin-top:10px">參考圖片
+                    <span class="param-hint">（最多 3 張，可選）</span>
+                </div>
+                <div class="upload-zone" id="vidEditRefZone">
+                    <input type="file" id="vidEditRefInput" accept="image/*" multiple
+                           onchange="onEditRefUpload(event)">
+                    <div class="upload-zone-icon">🖼</div>
+                    <p>上傳參考圖片（可多選）</p>
+                </div>
+                <div id="vidEditRefList" class="ref-list"></div>
             </div>
             <div id="vidR2VUpload" class="sidebar-section hidden">
                 <div class="sidebar-section-title">參考文件</div>

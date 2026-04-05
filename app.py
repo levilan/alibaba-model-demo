@@ -92,12 +92,14 @@ MODELS = {
         },
     ],
     "video": [
-        {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片", "desc": "多鏡頭、自動配音",  "type": "t2v", "audio": True,  "min_dur": 3, "max_dur": 10},
-        {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片", "desc": "前代文生影片",      "type": "t2v", "audio": False, "min_dur": 3, "max_dur": 10},
-        {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片", "desc": "首幀生影片",        "type": "i2v", "audio": False, "min_dur": 3, "max_dur": 10},
-        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片", "desc": "前代圖生影片",      "type": "i2v", "audio": False, "min_dur": 3, "max_dur": 10},
-        {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片","desc": "角色形象參考",     "type": "r2v", "audio": False, "min_dur": 3, "max_dur": 10},
-        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片","desc": "前代參考生影片",   "type": "r2v", "audio": False, "min_dur": 3, "max_dur": 10},
+        {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭、自動配音", "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 10},
+        {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片",     "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 10},
+        {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀/首尾幀/配音/影片延伸", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片",     "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 10},
+        {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片", "desc": "角色形象參考",     "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 10},
+        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片",   "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 10},
+        {"id": "wan2.7-videoedit", "name": "萬相 2.7 視頻編輯", "group": "萬相視頻編輯",
+         "desc": "文字/參考圖驅動編輯", "type": "vedit", "audio": False, "min_dur": 0, "max_dur": 10},
     ]
 }
 
@@ -171,12 +173,19 @@ def get_models(api_key):
 @require_auth
 def text_generate(api_key):
     data = request.get_json()
-    model          = data.get("model", "qwen3.5-flash")
-    prompt         = data.get("prompt", "")
-    system_prompt  = data.get("system_prompt", "You are a helpful assistant.")
-    temperature    = data.get("temperature", 0.7)
-    max_tokens     = data.get("max_tokens", 4096)
-    enable_thinking= data.get("enable_thinking", False)
+    model              = data.get("model", "qwen3.5-flash")
+    prompt             = data.get("prompt", "")
+    system_prompt      = data.get("system_prompt", "You are a helpful assistant.")
+    temperature        = data.get("temperature", 0.7)
+    top_p              = data.get("top_p", 0.8)
+    top_k              = data.get("top_k", None)       # None = not sent
+    max_tokens         = data.get("max_tokens", 4096)
+    presence_penalty   = data.get("presence_penalty", 0)
+    frequency_penalty  = data.get("frequency_penalty", 0)
+    seed               = data.get("seed", None)         # None = random
+    stop               = data.get("stop", []) or []
+    use_stream         = data.get("stream", True)
+    enable_thinking    = data.get("enable_thinking", False)
 
     if not prompt:
         return jsonify({"error": "Prompt is required"}), 400
@@ -186,20 +195,43 @@ def text_generate(api_key):
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
-    extra_body = {"enable_thinking": True} if enable_thinking else {}
+    extra_body = {}
+    if enable_thinking:
+        extra_body["enable_thinking"] = True
+
+    create_kwargs = dict(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens,
+        presence_penalty=presence_penalty,
+        frequency_penalty=frequency_penalty,
+        stream=use_stream,
+        extra_headers=CUSTOM_HEADERS,
+        extra_body=extra_body or None,
+    )
+    if top_k is not None and int(top_k) > 0:
+        create_kwargs["extra_body"] = {**(extra_body or {}), "top_k": int(top_k)}
+    if seed is not None:
+        create_kwargs["seed"] = int(seed)
+    if stop:
+        create_kwargs["stop"] = stop[:4]
+
+    if not use_stream:
+        # 非串流：直接回傳 JSON
+        try:
+            user_client = OpenAI(api_key=api_key, base_url=BASE_URL_COMPATIBLE)
+            resp = user_client.chat.completions.create(**create_kwargs)
+            content = resp.choices[0].message.content if resp.choices else ""
+            return jsonify({"content": content, "done": True})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
     def generate():
         try:
             user_client = OpenAI(api_key=api_key, base_url=BASE_URL_COMPATIBLE)
-            stream = user_client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=True,
-                extra_headers=CUSTOM_HEADERS,
-                extra_body=extra_body or None,
-            )
+            stream = user_client.chat.completions.create(**create_kwargs)
             for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield f"data: {json.dumps({'content': chunk.choices[0].delta.content})}\n\n"
@@ -225,23 +257,27 @@ def image_generate(api_key):
     size           = data.get("size", "1024*1024")
     n              = int(data.get("n", 1))
     prompt_extend  = data.get("prompt_extend", False)
+    watermark      = data.get("watermark", False)
+    seed           = data.get("seed", None)
 
     if not prompt:
         return jsonify({"error": "Prompt is required"}), 400
 
     try:
-        # 修正：不傳 base_http_api_url 給 call()，全域已於啟動時設定
-        rsp = ImageGeneration.call(
+        call_kwargs = dict(
             model=model,
             api_key=api_key,
             messages=[Message(role="user", content=[{"text": prompt}])],
             negative_prompt=negative_prompt or None,
             prompt_extend=prompt_extend,
-            watermark=False,
+            watermark=watermark,
             n=n,
             size=size,
             headers=CUSTOM_HEADERS,
         )
+        if seed is not None:
+            call_kwargs["seed"] = int(seed)
+        rsp = ImageGeneration.call(**call_kwargs)
         return _handle_image_response(rsp, model)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -255,6 +291,15 @@ def image_edit(api_key):
     prompt         = request.form.get("prompt", "")
     negative_prompt= request.form.get("negative_prompt", "")
     size           = request.form.get("size", "1024*1024")
+    watermark_str  = request.form.get("watermark", "false")
+    watermark      = watermark_str.lower() in ("true", "1", "yes")
+    ref_strength_str = request.form.get("ref_strength", "0.5")
+    try:
+        ref_strength = float(ref_strength_str)
+    except ValueError:
+        ref_strength = 0.5
+    seed_str = request.form.get("seed", "")
+    seed = int(seed_str) if seed_str.strip() else None
 
     if not prompt:
         return jsonify({"error": "Prompt is required"}), 400
@@ -268,17 +313,21 @@ def image_edit(api_key):
     image_url = f"file://{fp.resolve()}"
 
     try:
-        # 修正：不傳 base_http_api_url 給 call()，全域已於啟動時設定
-        rsp = ImageGeneration.call(
+        call_kwargs = dict(
             model=model,
             api_key=api_key,
             messages=[Message(role="user", content=[{"text": prompt}, {"image": image_url}])],
             negative_prompt=negative_prompt or None,
-            watermark=False,
+            watermark=watermark,
             n=1,
             size=size,
             headers=CUSTOM_HEADERS,
         )
+        if seed is not None:
+            call_kwargs["seed"] = seed
+        # ref_strength 僅部分模型支援，傳入不會影響不支援的模型
+        call_kwargs["ref_strength"] = ref_strength
+        rsp = ImageGeneration.call(**call_kwargs)
         return _handle_image_response(rsp, model)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -295,6 +344,9 @@ def video_t2v(api_key):
     resolution     = data.get("resolution", "720P")
     duration       = data.get("duration", 5)
     enable_audio   = data.get("audio", False)
+    prompt_extend  = data.get("prompt_extend", False)
+    watermark      = data.get("watermark", False)
+    seed           = data.get("seed", None)
 
     if not prompt:
         return jsonify({"error": "Prompt is required"}), 400
@@ -305,8 +357,8 @@ def video_t2v(api_key):
         prompt=prompt,
         size=size_map.get(resolution, "1280*720"),
         duration=duration,
-        prompt_extend=False,
-        watermark=False,
+        prompt_extend=prompt_extend,
+        watermark=watermark,
         api_key=api_key,
         headers=CUSTOM_HEADERS,
     )
@@ -314,6 +366,8 @@ def video_t2v(api_key):
         kwargs["negative_prompt"] = negative_prompt
     if enable_audio:
         kwargs["audio"] = True
+    if seed is not None:
+        kwargs["seed"] = int(seed)
 
     try:
         # 修正：使用 async_call() 立即返回 task_id，call() 會內部等待完成導致卡住
@@ -327,35 +381,124 @@ def video_t2v(api_key):
 @app.route("/api/video/i2v", methods=["POST"])
 @require_auth
 def video_i2v(api_key):
-    model          = request.form.get("model", "wan2.6-i2v")
+    model          = request.form.get("model", "wan2.7-i2v")
     prompt         = request.form.get("prompt", "")
     negative_prompt= request.form.get("negative_prompt", "")
     resolution     = request.form.get("resolution", "720P")
     duration       = int(request.form.get("duration", 5))
+    i2v_mode       = request.form.get("i2v_mode", "first_frame")
+    prompt_extend_str = request.form.get("prompt_extend", "false")
+    prompt_extend  = prompt_extend_str.lower() in ("true", "1", "yes")
+    watermark_str  = request.form.get("watermark", "false")
+    watermark      = watermark_str.lower() in ("true", "1", "yes")
+    seed_str       = request.form.get("seed", "")
+    seed           = int(seed_str) if seed_str.strip() else None
 
-    image_file = request.files.get("image")
-    if not image_file:
-        return jsonify({"error": "Image file is required"}), 400
+    def _save_file(file_obj, default_ext=".png"):
+        ext = Path(file_obj.filename).suffix or default_ext
+        fp = UPLOAD_DIR / f"{uuid.uuid4().hex}{ext}"
+        file_obj.save(fp)
+        return f"file://{fp.resolve()}"
 
-    ext = Path(image_file.filename).suffix or ".png"
-    fp = UPLOAD_DIR / f"{uuid.uuid4().hex}{ext}"
-    image_file.save(fp)
+    # Build media array based on mode
+    media = []
+    first_frame_file = request.files.get("first_frame") or request.files.get("image")
+    last_frame_file  = request.files.get("last_frame")
+    audio_file       = request.files.get("driving_audio")
+    clip_file        = request.files.get("first_clip")
+
+    if i2v_mode == "first_clip":
+        if not clip_file:
+            return jsonify({"error": "first_clip 模式需要上傳影片片段"}), 400
+        media.append({"url": _save_file(clip_file, ".mp4"), "type": "first_clip"})
+        if last_frame_file:
+            media.append({"url": _save_file(last_frame_file, ".png"), "type": "last_frame"})
+    else:
+        if not first_frame_file:
+            return jsonify({"error": "I2V 需要上傳首幀圖片"}), 400
+        media.append({"url": _save_file(first_frame_file, ".png"), "type": "first_frame"})
+        if last_frame_file:
+            media.append({"url": _save_file(last_frame_file, ".png"), "type": "last_frame"})
+        if audio_file:
+            media.append({"url": _save_file(audio_file, ".mp3"), "type": "driving_audio"})
 
     try:
         kwargs = dict(
             model=model,
-            img_url=f"file://{fp.resolve()}",
+            media=media,
             prompt=prompt,
             size={"480P": "854*480", "720P": "1280*720", "1080P": "1920*1080"}.get(resolution, "1280*720"),
             duration=duration,
-            prompt_extend=False,
-            watermark=False,
+            prompt_extend=prompt_extend,
+            watermark=watermark,
             api_key=api_key,
             headers=CUSTOM_HEADERS,
         )
         if negative_prompt:
             kwargs["negative_prompt"] = negative_prompt
-        # 修正：使用 async_call() 立即返回 task_id
+        if seed is not None:
+            kwargs["seed"] = seed
+        rsp = VideoSynthesis.async_call(**kwargs)
+        return _handle_video_async_response(rsp, model)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── API: Video Edit (wan2.7-videoedit) ──────────────────────────
+@app.route("/api/video/vedit", methods=["POST"])
+@require_auth
+def video_vedit(api_key):
+    model          = request.form.get("model", "wan2.7-videoedit")
+    prompt         = request.form.get("prompt", "")
+    negative_prompt= request.form.get("negative_prompt", "")
+    resolution     = request.form.get("resolution", "1080P")
+    ratio          = request.form.get("ratio", "")           # 留空 = 跟隨輸入影片
+    duration_str   = request.form.get("duration", "0")
+    duration       = int(duration_str) if duration_str.strip() else 0
+    audio_setting  = request.form.get("audio_setting", "auto")
+    prompt_extend_str = request.form.get("prompt_extend", "true")
+    prompt_extend  = prompt_extend_str.lower() in ("true", "1", "yes")
+    watermark_str  = request.form.get("watermark", "false")
+    watermark      = watermark_str.lower() in ("true", "1", "yes")
+    seed_str       = request.form.get("seed", "")
+    seed           = int(seed_str) if seed_str.strip() else None
+
+    video_file = request.files.get("video")
+    if not video_file:
+        return jsonify({"error": "影片檔案為必填"}), 400
+
+    ext = Path(video_file.filename).suffix or ".mp4"
+    vp = UPLOAD_DIR / f"{uuid.uuid4().hex}{ext}"
+    video_file.save(vp)
+
+    media = [{"url": f"file://{vp.resolve()}", "type": "video"}]
+    for i in range(1, 4):
+        ref = request.files.get(f"reference_image_{i}")
+        if ref:
+            rext = Path(ref.filename).suffix or ".png"
+            rp = UPLOAD_DIR / f"{uuid.uuid4().hex}{rext}"
+            ref.save(rp)
+            media.append({"url": f"file://{rp.resolve()}", "type": "reference_image"})
+
+    try:
+        kwargs = dict(
+            model=model,
+            media=media,
+            prompt=prompt,
+            size={"720P": "1280*720", "1080P": "1920*1080"}.get(resolution, "1920*1080"),
+            duration=duration,
+            audio_setting=audio_setting,
+            prompt_extend=prompt_extend,
+            watermark=watermark,
+            api_key=api_key,
+            headers=CUSTOM_HEADERS,
+        )
+        if negative_prompt:
+            kwargs["negative_prompt"] = negative_prompt
+        if ratio:
+            kwargs["ratio"] = ratio
+        if seed is not None:
+            kwargs["seed"] = seed
         rsp = VideoSynthesis.async_call(**kwargs)
         return _handle_video_async_response(rsp, model)
     except Exception as e:
@@ -370,6 +513,12 @@ def video_r2v(api_key):
     prompt    = request.form.get("prompt", "")
     resolution= request.form.get("resolution", "720P")
     duration  = int(request.form.get("duration", 5))
+    prompt_extend_str = request.form.get("prompt_extend", "false")
+    prompt_extend = prompt_extend_str.lower() in ("true", "1", "yes")
+    watermark_str = request.form.get("watermark", "false")
+    watermark = watermark_str.lower() in ("true", "1", "yes")
+    seed_str  = request.form.get("seed", "")
+    seed      = int(seed_str) if seed_str.strip() else None
 
     files = request.files.getlist("reference_files")
     if not files:
@@ -388,18 +537,21 @@ def video_r2v(api_key):
         media.append({"url": f"file://{fp.resolve()}", "type": media_type})
 
     try:
-        # 修正：reference_urls → media（wan2.x-r2v API 需要 input.media，非 input.reference_urls）
-        rsp = VideoSynthesis.async_call(
+        r2v_kwargs = dict(
             model=model,
             prompt=prompt,
             media=media,
             size={"480P": "854*480", "720P": "1280*720", "1080P": "1920*1080"}.get(resolution, "1280*720"),
             duration=duration,
-            prompt_extend=False,
-            watermark=False,
+            prompt_extend=prompt_extend,
+            watermark=watermark,
             api_key=api_key,
             headers=CUSTOM_HEADERS,
         )
+        if seed is not None:
+            r2v_kwargs["seed"] = seed
+        # 修正：reference_urls → media（wan2.x-r2v API 需要 input.media，非 input.reference_urls）
+        rsp = VideoSynthesis.async_call(**r2v_kwargs)
         return _handle_video_async_response(rsp, model)
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -222,6 +222,20 @@ img { display: block; max-width: 100%; }
     font-family: var(--font-mono); font-size: 0.75rem;
     color: var(--ali-orange); font-weight: 600;
 }
+.param-hint {
+    font-size: 0.7rem; color: var(--text-muted); font-weight: 400; margin-left: 4px;
+}
+input[type="number"].number-input {
+    width: 100%; padding: 7px 10px;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-body);
+    background: var(--bg-white); outline: none; transition: var(--t);
+}
+input[type="number"].number-input:focus {
+    border-color: var(--ali-orange);
+    box-shadow: 0 0 0 2px rgba(255,106,0,0.12);
+}
+input[type="number"].number-input::placeholder { color: var(--text-muted); }
 
 input[type="text"], input[type="password"],
 select.select-input, textarea.textarea-input {
