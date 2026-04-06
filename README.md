@@ -26,28 +26,34 @@
 
 ### 前置需求
 
-- Python 3.10+
+- [Docker](https://www.docker.com/get-started) & Docker Compose
 - [DashScope API Key](https://dashscope.aliyun.com/)（格式：`sk-...`）
 
-### 安裝
+### 安裝與啟動
 
 ```bash
 git clone https://github.com/levilan/alibaba-model-demo.git
 cd alibaba-model-demo
 
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-pip install -r requirements.txt
-```
-
-### 啟動
-
-```bash
-python app.py
+docker compose up -d --build
 ```
 
 開啟瀏覽器前往 `http://localhost:5050`，輸入 DashScope API Key 後即可使用。
+
+### 常用指令
+
+```bash
+# 查看 log
+docker compose logs -f
+
+# 停止
+docker compose down
+
+# 重新建構（代碼更新後）
+docker compose up -d --build
+```
+
+> 生成的圖片與影片會掛載至本機 `outputs/` 目錄，容器重啟後資料不會遺失。
 
 ## 專案結構
 
@@ -55,6 +61,8 @@ python app.py
 .
 ├── app.py              # Flask 後端（API 路由、DashScope SDK 呼叫）
 ├── requirements.txt    # Python 依賴
+├── Dockerfile          # Docker 映像定義
+├── docker-compose.yml  # 服務編排（含 volume 掛載）
 ├── templates/
 │   └── index.html      # 前端 HTML（單頁應用）
 └── static/

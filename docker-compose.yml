@@ -1,0 +1,11 @@
+services:
+  ai-model-tester:
+    build: .
+    ports:
+      - "5050:5050"
+    volumes:
+      - ./outputs:/app/outputs
+      - ./static/uploads:/app/static/uploads
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

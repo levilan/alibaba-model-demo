@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+.env
+.env.*
+
+outputs/images/
+outputs/videos/
+static/uploads/
+
+.DS_Store
+Thumbs.db
+.gitignore
+README.md
