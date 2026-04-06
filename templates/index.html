@@ -97,68 +97,68 @@
             <div class="sidebar-section">
                 <div class="sidebar-section-title">模型設定</div>
                 <div class="form-group">
-                    <label class="form-label">模型</label>
+                    <label class="form-label" data-tip="選擇 AI 語言模型。Max 系列推理能力最強，Plus 性價比均衡，Flash 速度最快成本最低，DeepSeek 為第三方深度推理模型">模型</label>
                     <select id="textModel" class="select-input"></select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">System Prompt</label>
+                    <label class="form-label" data-tip="系統指令，設定 AI 的角色、背景知識和回答風格。例如：「你是一位專業的程式工程師，請以繁體中文回答」">System Prompt</label>
                     <textarea id="textSystemPrompt" class="textarea-input" rows="3">You are a helpful assistant.</textarea>
                 </div>
             </div>
             <div class="sidebar-section">
                 <div class="sidebar-section-title">參數</div>
                 <div class="form-group">
-                    <label class="form-label">Temperature <span class="param-val" id="tempVal">0.7</span></label>
+                    <label class="form-label" data-tip="控制輸出的隨機性與創造力。值越高（最大 2.0）輸出越多樣有創意，值越低（趨近 0）越保守精準。建議值：0.6～1.0">Temperature <span class="param-val" id="tempVal">0.7</span></label>
                     <input type="range" id="textTemperature" min="0" max="2" step="0.1" value="0.7"
                            oninput="document.getElementById('tempVal').textContent=this.value">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Top P <span class="param-val" id="topPVal">0.8</span></label>
+                    <label class="form-label" data-tip="Nucleus Sampling：只從累積概率達到 P 的候選詞中取樣。0.8 代表只考慮前 80% 概率的詞，值越低輸出越集中。建議與 Temperature 二選一調整">Top P <span class="param-val" id="topPVal">0.8</span></label>
                     <input type="range" id="textTopP" min="0" max="1" step="0.05" value="0.8"
                            oninput="document.getElementById('topPVal').textContent=this.value">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Top K <span class="param-val" id="topKVal">0</span>
+                    <label class="form-label" data-tip="每一步只從概率最高的 K 個候選詞中取樣。0 表示停用此限制。值越小輸出越精準集中，值越大多樣性越高">Top K <span class="param-val" id="topKVal">0</span>
                         <span class="param-hint">（0 = 停用）</span>
                     </label>
                     <input type="range" id="textTopK" min="0" max="100" step="1" value="0"
                            oninput="document.getElementById('topKVal').textContent=this.value">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Max Tokens <span class="param-val" id="maxTokVal">4096</span></label>
+                    <label class="form-label" data-tip="限制回應的最大長度（token 數）。1 token ≈ 0.75 個英文字或 0.5 個中文字。較小的值節省成本，較大的值允許更長的回答">Max Tokens <span class="param-val" id="maxTokVal">4096</span></label>
                     <input type="range" id="textMaxTokens" min="256" max="16384" step="256" value="4096"
                            oninput="document.getElementById('maxTokVal').textContent=this.value">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Presence Penalty <span class="param-val" id="presPenVal">0</span></label>
+                    <label class="form-label" data-tip="對已出現過的主題施加懲罰，促進話題多樣性。正值 → 鼓勵討論新話題；負值 → 允許反覆討論同一主題。範圍 -2 ～ 2">Presence Penalty <span class="param-val" id="presPenVal">0</span></label>
                     <input type="range" id="textPresencePenalty" min="-2" max="2" step="0.1" value="0"
                            oninput="document.getElementById('presPenVal').textContent=this.value">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Frequency Penalty <span class="param-val" id="freqPenVal">0</span></label>
+                    <label class="form-label" data-tip="依詞語出現頻率施加懲罰，減少詞語重複。正值 → 詞彙更豐富不重複；負值 → 允許頻繁重複用詞。範圍 -2 ～ 2">Frequency Penalty <span class="param-val" id="freqPenVal">0</span></label>
                     <input type="range" id="textFrequencyPenalty" min="-2" max="2" step="0.1" value="0"
                            oninput="document.getElementById('freqPenVal').textContent=this.value">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Seed
+                    <label class="form-label" data-tip="設定隨機種子以重現相同輸出結果。相同 Seed + 相同參數 = 高度相似的回答，方便對比不同提示詞的效果">Seed
                         <span class="param-hint">（留空 = 隨機）</span>
                     </label>
                     <input type="number" id="textSeed" class="number-input" min="0" max="2147483647"
                            placeholder="留空隨機">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Stop 序列
+                    <label class="form-label" data-tip="遇到這些字串時停止繼續生成。每行輸入一個序列，最多 4 個。適合控制輸出格式，例如防止模型繼續輸出範例之外的內容">Stop 序列
                         <span class="param-hint">（換行分隔，最多 4 個）</span>
                     </label>
                     <textarea id="textStop" class="textarea-input" rows="2"
                               placeholder="例：\n結束\n---"></textarea>
                 </div>
                 <div class="toggle-row">
-                    <label>思考模式</label>
+                    <label data-tip="啟用後模型會先進行內部推理（Chain-of-Thought），再給出回答，大幅提升複雜問題的準確性，但會消耗更多 tokens 且速度較慢">思考模式</label>
                     <label class="toggle"><input type="checkbox" id="textThinking"><span class="toggle-slider"></span></label>
                 </div>
                 <div class="toggle-row">
-                    <label>串流輸出 (Stream)</label>
+                    <label data-tip="啟用後文字逐步顯示（如打字效果），可即時看到生成過程；停用則等待完整回應後一次顯示">串流輸出 (Stream)</label>
                     <label class="toggle"><input type="checkbox" id="textStream" checked><span class="toggle-slider"></span></label>
                 </div>
             </div>
@@ -193,46 +193,46 @@
             <div class="sidebar-section">
                 <div class="sidebar-section-title">基本設定</div>
                 <div class="form-group">
-                    <label class="form-label">任務類型</label>
+                    <label class="form-label" data-tip="T2I（文生圖）：純文字描述生成全新圖片；I2I（圖像編輯）：上傳參考圖片，根據文字指令進行編輯、風格轉換或融合">任務類型</label>
                     <select id="imageTaskType" class="select-input" onchange="onImgTaskChange()">
                         <option value="t2i">文生圖 (T2I)</option>
                         <option value="i2i">圖像編輯 (I2I)</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">模型</label>
+                    <label class="form-label" data-tip="選擇圖片生成模型。千問系列擅長文字渲染，萬相系列支援更多尺寸，Z-Image 輕量快速。I2I 模式請選擇圖像編輯系列模型">模型</label>
                     <select id="imageModel" class="select-input" onchange="onImgModelChange()"></select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">尺寸</label>
+                    <label class="form-label" data-tip="生成圖片的寬高像素（寬*高）。1024*1024 正方形適合頭像，1280*720 適合橫幅，720*1280 適合手機壁紙">尺寸</label>
                     <select id="imageSize" class="select-input"></select>
                 </div>
                 <!-- 生成張數（僅 T2I 顯示，依模型 max_n 動態調整） -->
                 <div class="form-group" id="imgNGroup">
-                    <label class="form-label">生成張數 <span class="param-val" id="imgNVal">1</span></label>
+                    <label class="form-label" data-tip="一次請求同時生成多少張圖片（1～4 張）。多張生成方便比較不同結果，選出最滿意的版本">生成張數 <span class="param-val" id="imgNVal">1</span></label>
                     <input type="range" id="imgN" min="1" max="4" step="1" value="1"
                            oninput="document.getElementById('imgNVal').textContent=this.value">
                 </div>
                 <div class="toggle-row">
-                    <label>Prompt Extend</label>
+                    <label data-tip="啟用後模型自動擴充提示詞，補充更多場景、光線、風格等細節描述，通常能顯著提升圖片品質和豐富度">Prompt Extend</label>
                     <label class="toggle"><input type="checkbox" id="imgPromptExtend"><span class="toggle-slider"></span></label>
                 </div>
                 <div class="toggle-row">
-                    <label>Watermark</label>
+                    <label data-tip="在生成的圖片上嵌入 AI 生成浮水印（不影響視覺品質），主要用於版權標識與 AI 內容識別">Watermark</label>
                     <label class="toggle"><input type="checkbox" id="imgWatermark"><span class="toggle-slider"></span></label>
                 </div>
             </div>
             <div class="sidebar-section">
                 <div class="sidebar-section-title">進階參數</div>
                 <div class="form-group">
-                    <label class="form-label">Seed
+                    <label class="form-label" data-tip="設定隨機種子以重現相近圖片結果。相同 Prompt + 相同 Seed 可生成高度相似的圖片，方便對比參數差異">Seed
                         <span class="param-hint">（留空 = 隨機）</span>
                     </label>
                     <input type="number" id="imgSeed" class="number-input" min="0" max="2147483647"
                            placeholder="留空隨機">
                 </div>
                 <div class="form-group" id="imgRefStrengthGroup" style="display:none">
-                    <label class="form-label">Ref Strength <span class="param-val" id="refStrVal">0.5</span>
+                    <label class="form-label" data-tip="I2I 模式下，原始圖片對生成結果的影響程度。值越高（趨近 1）越貼近原圖，值越低（趨近 0）創作自由度越大，偏向文字描述">Ref Strength <span class="param-val" id="refStrVal">0.5</span>
                         <span class="param-hint">（I2I 參考強度）</span>
                     </label>
                     <input type="range" id="imgRefStrength" min="0" max="1" step="0.05" value="0.5"
@@ -286,7 +286,7 @@
             <div class="sidebar-section">
                 <div class="sidebar-section-title">基本設定</div>
                 <div class="form-group">
-                    <label class="form-label">任務類型</label>
+                    <label class="form-label" data-tip="T2V：純文字生成影片；I2V：圖片轉動態影片；R2V：上傳角色參考圖生成含該角色的影片；VideoEdit：上傳影片並以文字指令進行編輯">任務類型</label>
                     <select id="videoTaskType" class="select-input" onchange="onVidTaskChange()">
                         <option value="t2v">文生影片 (T2V)</option>
                         <option value="i2v">圖生影片 (I2V)</option>
@@ -295,11 +295,11 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">模型</label>
+                    <label class="form-label" data-tip="選擇影片生成模型。2.7 系列為最新版本，品質更佳且支援更多功能；2.6 系列為前代穩定版本">模型</label>
                     <select id="videoModel" class="select-input" onchange="onVidModelChange()"></select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">解析度</label>
+                    <label class="form-label" data-tip="生成影片的畫面分辨率。480P 速度最快，720P 品質與速度平衡（建議），1080P 畫質最佳但生成時間較長">解析度</label>
                     <select id="videoResolution" class="select-input">
                         <option value="720P">720P</option>
                         <option value="1080P">1080P</option>
@@ -308,7 +308,7 @@
                 </div>
                 <!-- 畫面比例（vedit 專用） -->
                 <div class="form-group" id="vidRatioGroup" style="display:none">
-                    <label class="form-label">畫面比例
+                    <label class="form-label" data-tip="輸出影片的長寬比例（視頻編輯模式專用）。留空則自動跟隨上傳來源影片的比例，也可指定裁切成特定比例">畫面比例
                         <span class="param-hint">（留空 = 跟隨來源）</span>
                     </label>
                     <select id="videoRatio" class="select-input">
@@ -322,7 +322,7 @@
                 </div>
                 <!-- 音訊設定（vedit 專用） -->
                 <div class="form-group" id="vidAudioSettingGroup" style="display:none">
-                    <label class="form-label">音訊設定</label>
+                    <label class="form-label" data-tip="auto：模型智能判斷是否保留或重新生成音效；origin：強制保留來源影片的原始音訊，不做任何音訊修改（視頻編輯模式專用）">音訊設定</label>
                     <select id="videoAudioSetting" class="select-input">
                         <option value="auto">auto（模型智能決定）</option>
                         <option value="origin">origin（保留原始音訊）</option>
@@ -330,7 +330,7 @@
                 </div>
                 <!-- I2V 輸入模式（i2v 專用） -->
                 <div class="form-group" id="vidI2VModeGroup" style="display:none">
-                    <label class="form-label">I2V 輸入模式</label>
+                    <label class="form-label" data-tip="首幀：以圖片作為影片開頭；首尾幀：控制影片的開頭與結尾；首幀+配音：搭配音訊檔驅動口型；影片延伸：在已有片段後繼續生成">I2V 輸入模式</label>
                     <select id="videoI2VMode" class="select-input" onchange="onI2VModeChange()">
                         <option value="first_frame">首幀生成</option>
                         <option value="first_last_frame">首尾幀生成</option>
@@ -340,7 +340,7 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">時長（秒）<span class="param-val" id="durVal">5</span>
+                    <label class="form-label" data-tip="生成影片的長度（秒）。範圍因模型而異，通常 3～10 秒。視頻編輯模式中設為 0 可保留來源影片的原始長度">時長（秒）<span class="param-val" id="durVal">5</span>
                         <span class="param-hint" id="durHintZero" style="display:none">（0 = 保留來源）</span>
                     </label>
                     <input type="range" id="videoDuration" min="3" max="10" step="1" value="5"
@@ -348,22 +348,22 @@
                 </div>
                 <!-- 自動配音（僅 wan2.7-t2v 支援） -->
                 <div class="toggle-row" id="vidAudioRow" style="display:none">
-                    <label>自動配音</label>
+                    <label data-tip="為生成的影片自動添加背景音效與環境音（萬相 2.7 T2V 專屬功能）。根據影片內容智能匹配音效">自動配音</label>
                     <label class="toggle"><input type="checkbox" id="vidAudio"><span class="toggle-slider"></span></label>
                 </div>
                 <div class="toggle-row">
-                    <label>Prompt Extend</label>
+                    <label data-tip="啟用後模型自動擴充提示詞，補充動作細節、場景描述、鏡頭語言等，通常能提升影片連貫性與畫面品質">Prompt Extend</label>
                     <label class="toggle"><input type="checkbox" id="vidPromptExtend"><span class="toggle-slider"></span></label>
                 </div>
                 <div class="toggle-row">
-                    <label>Watermark</label>
+                    <label data-tip="在生成的影片上嵌入 AI 生成浮水印（不影響視覺品質），主要用於版權標識與 AI 內容識別">Watermark</label>
                     <label class="toggle"><input type="checkbox" id="vidWatermark"><span class="toggle-slider"></span></label>
                 </div>
             </div>
             <div class="sidebar-section">
                 <div class="sidebar-section-title">進階參數</div>
                 <div class="form-group">
-                    <label class="form-label">Seed
+                    <label class="form-label" data-tip="設定隨機種子以重現相近影片結果。相同 Prompt + 相同 Seed 可生成高度相似的影片，方便對比不同參數設定的效果">Seed
                         <span class="param-hint">（留空 = 隨機）</span>
                     </label>
                     <input type="number" id="vidSeed" class="number-input" min="0" max="2147483647"

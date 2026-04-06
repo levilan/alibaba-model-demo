@@ -698,6 +698,55 @@ function hideLoading() {
     }
 }
 
+// ── Tooltip ───────────────────────────────────────────────────
+(function initTooltips() {
+    let tip = null;
+
+    function createTip(text) {
+        tip = document.createElement('div');
+        tip.className = 'global-tooltip';
+        tip.textContent = text;
+        document.body.appendChild(tip);
+    }
+
+    function positionTip(target) {
+        if (!tip) return;
+        const r = target.getBoundingClientRect();
+        const tw = tip.offsetWidth;
+        const th = tip.offsetHeight;
+        let left = r.left + r.width / 2 - tw / 2;
+        let top  = r.top - th - 8;
+        if (left < 8) left = 8;
+        if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
+        if (top < 8) top = r.bottom + 8;
+        tip.style.left = left + 'px';
+        tip.style.top  = top  + 'px';
+    }
+
+    function removeTip() {
+        if (tip) { tip.remove(); tip = null; }
+    }
+
+    document.addEventListener('mouseover', e => {
+        const el = e.target.closest('[data-tip]');
+        if (!el) return;
+        removeTip();
+        createTip(el.dataset.tip);
+        positionTip(el);
+    });
+
+    document.addEventListener('mousemove', e => {
+        if (!tip) return;
+        const el = e.target.closest('[data-tip]');
+        if (el) positionTip(el);
+        else removeTip();
+    });
+
+    document.addEventListener('mouseout', e => {
+        if (!e.target.closest('[data-tip]')) removeTip();
+    });
+})();
+
 // ── Utils ─────────────────────────────────────────────────────
 function el(tag, props = {}) {
     return Object.assign(document.createElement(tag), props);

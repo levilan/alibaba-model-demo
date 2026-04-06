@@ -489,6 +489,24 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .loading-box p { font-size: 0.85rem; color: var(--text-sub); }
 
+/* ─── Tooltip ────────────────────────────────────────────────── */
+[data-tip] { cursor: help; }
+.global-tooltip {
+    position: fixed;
+    z-index: 9999;
+    background: #1a1a2e;
+    color: #e8eaf0;
+    font-family: var(--font);
+    font-size: 0.72rem;
+    line-height: 1.55;
+    padding: 7px 11px;
+    border-radius: var(--radius);
+    max-width: 240px;
+    pointer-events: none;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    white-space: normal;
+}
+
 /* ─── Animations ─────────────────────────────────────────────── */
 @keyframes fadeUp   { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes slideRight { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
