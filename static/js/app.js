@@ -608,10 +608,17 @@ async function pollVideo(taskId, startTime) {
                 }
                 toast('影片生成完成！', 'success');
             } else if (st === 'FAILED') {
+                const errMsg = data.error_message || 'Unknown';
+                const isSchedulerErr = errMsg.toLowerCase().includes('scheduler');
                 if (stEl) { stEl.textContent = 'FAILED'; stEl.className = 'vtc-status failed'; }
-                if (pbEl) pbEl.style.width = '100%'; pbEl && (pbEl.style.background = 'var(--red)');
-                if (rvEl) rvEl.innerHTML = `<p style="font-size:0.82rem;color:var(--red)">錯誤：${data.error_message || 'Unknown'}</p>`;
-                toast('影片生成失敗', 'error');
+                if (pbEl) { pbEl.style.width = '100%'; pbEl.style.background = 'var(--red)'; }
+                if (rvEl) {
+                    const hint = isSchedulerErr
+                        ? '<br><span style="color:var(--fg-muted)">DashScope 排程器暫時繁忙，請稍後重新提交任務。</span>'
+                        : '';
+                    rvEl.innerHTML = `<p style="font-size:0.82rem;color:var(--red)">錯誤：${errMsg}${hint}</p>`;
+                }
+                toast(isSchedulerErr ? 'DashScope 排程器繁忙，請重新提交' : '影片生成失敗', 'error');
             } else {
                 if (stEl) { stEl.textContent = st || 'PENDING'; stEl.className = `vtc-status ${(st || 'pending').toLowerCase()}`; }
                 // 進度條：前 30s 累積到 20%，之後緩慢增長到最多 90%

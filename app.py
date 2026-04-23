@@ -3,6 +3,7 @@ Alibaba Cloud AI Model Testing Platform
 Flask Backend - API Key per-user authentication
 """
 import os, sys, json, time, uuid, functools, mimetypes
+from PIL import Image as PILImage
 from datetime import datetime
 from pathlib import Path
 
@@ -394,10 +395,23 @@ def video_i2v(api_key):
     seed_str       = request.form.get("seed", "")
     seed           = int(seed_str) if seed_str.strip() else None
 
-    def _save_file(file_obj, default_ext=".png"):
+    def _save_file(file_obj, default_ext=".png", is_image=False):
         ext = Path(file_obj.filename).suffix or default_ext
         fp = UPLOAD_DIR / f"{uuid.uuid4().hex}{ext}"
-        file_obj.save(fp)
+        if is_image:
+            img = PILImage.open(file_obj.stream)
+            w, h = img.size
+            # wan2.7-i2v 要求圖片最小 240x240，不足則等比例放大
+            if w < 240 or h < 240:
+                scale = max(240 / w, 240 / h)
+                new_w, new_h = int(w * scale), int(h * scale)
+                img = img.resize((new_w, new_h), PILImage.LANCZOS)
+            # JPEG 不支援 Alpha channel，強制轉 RGB
+            if ext.lower() in (".jpg", ".jpeg") and img.mode in ("RGBA", "P", "LA"):
+                img = img.convert("RGB")
+            img.save(fp)
+        else:
+            file_obj.save(fp)
         return f"file://{fp.resolve()}"
 
     # Build media array based on mode
@@ -412,13 +426,13 @@ def video_i2v(api_key):
             return jsonify({"error": "first_clip 模式需要上傳影片片段"}), 400
         media.append({"url": _save_file(clip_file, ".mp4"), "type": "first_clip"})
         if last_frame_file:
-            media.append({"url": _save_file(last_frame_file, ".png"), "type": "last_frame"})
+            media.append({"url": _save_file(last_frame_file, ".png", is_image=True), "type": "last_frame"})
     else:
         if not first_frame_file:
             return jsonify({"error": "I2V 需要上傳首幀圖片"}), 400
-        media.append({"url": _save_file(first_frame_file, ".png"), "type": "first_frame"})
+        media.append({"url": _save_file(first_frame_file, ".png", is_image=True), "type": "first_frame"})
         if last_frame_file:
-            media.append({"url": _save_file(last_frame_file, ".png"), "type": "last_frame"})
+            media.append({"url": _save_file(last_frame_file, ".png", is_image=True), "type": "last_frame"})
         if audio_file:
             media.append({"url": _save_file(audio_file, ".mp3"), "type": "driving_audio"})
 
