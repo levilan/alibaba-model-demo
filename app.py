@@ -14,6 +14,10 @@ import dashscope
 from dashscope.aigc.image_generation import ImageGeneration
 from dashscope.api_entities.dashscope_response import Message
 from dashscope import VideoSynthesis
+from dashscope.audio.tts import SpeechSynthesizer as TTSv1
+from dashscope.audio.asr import Recognition
+
+_INTL_WS_URL = "wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference"
 import requests as http_requests
 
 # ─── App Setup ────────────────────────────────────────────────
@@ -43,14 +47,31 @@ for d in (UPLOAD_DIR, OUTPUT_IMG_DIR, OUTPUT_VID_DIR):
 # sizes: 支援的尺寸清單；max_n: 最大生成張數；audio: 支援配音；min/max_dur: 影片時長範圍
 MODELS = {
     "text": [
-        {"id": "qwen3-max",    "name": "Qwen3 Max",       "group": "旗艦",   "desc": "最強推理，262K context", "thinking": True},
-        {"id": "qwen3.6-plus", "name": "Qwen3.6 Plus",    "group": "均衡",   "desc": "1M context，性價比最佳", "thinking": True},
-        {"id": "qwen3.5-plus", "name": "Qwen3.5 Plus",    "group": "均衡",   "desc": "前代均衡模型",           "thinking": True},
-        {"id": "qwen3.5-flash","name": "Qwen3.5 Flash",   "group": "極速",   "desc": "速度快、成本低",         "thinking": True},
-        {"id": "qwen-flash",   "name": "Qwen Flash",      "group": "極速",   "desc": "前代極速模型",           "thinking": True},
-        {"id": "deepseek-v3.2","name": "DeepSeek V3.2",   "group": "第三方", "desc": "深度推理（國際版可用）",  "thinking": False},
+        # ── 旗艦 ──────────────────────────────────────────────────
+        {"id": "qwen3.6-max-preview","name": "Qwen3.6 Max",     "group": "旗艦",   "desc": "新一代旗艦，強推理",     "thinking": True},
+        {"id": "qwen3-max",          "name": "Qwen3 Max",        "group": "旗艦",   "desc": "最強推理，262K context", "thinking": True},
+        # ── 均衡 ──────────────────────────────────────────────────
+        {"id": "qwen3.6-plus",       "name": "Qwen3.6 Plus",     "group": "均衡",   "desc": "1M context，性價比最佳", "thinking": True},
+        {"id": "qwen3.5-plus",       "name": "Qwen3.5 Plus",     "group": "均衡",   "desc": "前代均衡模型",           "thinking": True},
+        {"id": "qwen-plus",          "name": "Qwen Plus",        "group": "均衡",   "desc": "穩定均衡，廣泛任務",     "thinking": False},
+        # ── 極速 ──────────────────────────────────────────────────
+        {"id": "qwen3.6-flash",      "name": "Qwen3.6 Flash",    "group": "極速",   "desc": "新一代極速模型",         "thinking": True},
+        {"id": "qwen3.5-flash",      "name": "Qwen3.5 Flash",    "group": "極速",   "desc": "速度快、成本低",         "thinking": True},
+        {"id": "qwen-flash",         "name": "Qwen Flash",       "group": "極速",   "desc": "前代極速模型",           "thinking": False},
+        # ── 代碼 ──────────────────────────────────────────────────
+        {"id": "qwen3-coder-plus",   "name": "Qwen3 Coder Plus", "group": "代碼",   "desc": "代碼生成旗艦",           "thinking": True},
+        {"id": "qwen3-coder-flash",  "name": "Qwen3 Coder Flash","group": "代碼",   "desc": "代碼生成極速",           "thinking": True},
+        # ── 翻譯 ──────────────────────────────────────────────────
+        {"id": "qwen-mt-plus",       "name": "Qwen MT Plus",     "group": "翻譯",   "desc": "機器翻譯，高品質",       "thinking": False},
+        {"id": "qwen-mt-flash",      "name": "Qwen MT Flash",    "group": "翻譯",   "desc": "機器翻譯，極速",         "thinking": False},
+        {"id": "qwen-mt-lite",       "name": "Qwen MT Lite",     "group": "翻譯",   "desc": "機器翻譯，輕量",         "thinking": False},
+        # ── 角色 ──────────────────────────────────────────────────
+        {"id": "qwen-flash-character","name": "Qwen Flash Character","group": "角色", "desc": "角色扮演專用",          "thinking": False},
+        # ── 第三方 ────────────────────────────────────────────────
+        {"id": "deepseek-v3.2",      "name": "DeepSeek V3.2",    "group": "第三方", "desc": "深度推理（國際版）",     "thinking": False},
     ],
     "image": [
+        # ── 千問文生圖 ────────────────────────────────────────────
         {
             "id": "qwen-image-2.0-pro", "name": "千問圖像 2.0 Pro", "group": "千問文生圖",
             "desc": "文字渲染突出", "type": "t2i", "max_n": 4,
@@ -62,15 +83,28 @@ MODELS = {
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
         {
+            "id": "qwen-image-max", "name": "千問圖像 Max", "group": "千問文生圖",
+            "desc": "旗艦畫質，細節豐富", "type": "t2i", "max_n": 4,
+            "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
+        },
+        {
+            "id": "qwen-image-plus", "name": "千問圖像 Plus", "group": "千問文生圖",
+            "desc": "均衡品質與速度", "type": "t2i", "max_n": 4,
+            "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
+        },
+        # ── 萬相文生圖 ────────────────────────────────────────────
+        {
             "id": "wan2.6-t2i", "name": "萬相 2.6 T2I", "group": "萬相文生圖",
             "desc": "自由選尺寸", "type": "t2i", "max_n": 4,
             "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960","960*1696","1696*960"],
         },
+        # ── Z-Image ───────────────────────────────────────────────
         {
             "id": "z-image-turbo", "name": "Z-Image Turbo", "group": "Z-Image",
             "desc": "輕量級快速生成", "type": "t2i", "max_n": 4,
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
+        # ── 萬相圖像編輯 ──────────────────────────────────────────
         {
             "id": "wan2.7-image-pro", "name": "萬相 2.7 Image Pro", "group": "萬相圖像編輯",
             "desc": "多圖融合、風格遷移", "type": "i2i", "max_n": 1,
@@ -86,23 +120,59 @@ MODELS = {
             "desc": "前代編輯模型", "type": "i2i", "max_n": 1,
             "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960"],
         },
+        # ── 千問圖像編輯 ──────────────────────────────────────────
         {
             "id": "qwen-image-edit-max", "name": "千問圖像編輯 Max", "group": "千問圖像編輯",
             "desc": "複雜圖文編輯", "type": "i2i", "max_n": 1,
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
+        {
+            "id": "qwen-image-edit-plus", "name": "千問圖像編輯 Plus", "group": "千問圖像編輯",
+            "desc": "輕量圖文編輯", "type": "i2i", "max_n": 1,
+            "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
+        },
     ],
     "video": [
-        {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭、自動配音", "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 10},
+        # ── 文生影片 ──────────────────────────────────────────────
+        {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭、自動配音", "type": "t2v",   "audio": True,  "min_dur": 3, "max_dur": 10},
         {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片",     "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 10},
+        # ── 圖生影片 ──────────────────────────────────────────────
         {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀/首尾幀/配音/影片延伸", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片",     "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 10},
-        {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片", "desc": "角色形象參考",     "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 10},
-        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片",   "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 10},
+        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片",       "type": "i2v", "audio": False, "min_dur": 3, "max_dur": 10},
+        {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版", "type": "i2v", "audio": False, "min_dur": 3, "max_dur": 10},
+        # ── 參考生影片 ────────────────────────────────────────────
+        {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片", "desc": "角色形象參考",       "type": "r2v", "audio": False, "min_dur": 3, "max_dur": 10},
+        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片",     "type": "r2v", "audio": False, "min_dur": 3, "max_dur": 10},
+        {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版", "type": "r2v", "audio": False, "min_dur": 3, "max_dur": 10},
+        # ── 視頻編輯 ──────────────────────────────────────────────
         {"id": "wan2.7-videoedit", "name": "萬相 2.7 視頻編輯", "group": "萬相視頻編輯",
          "desc": "文字/參考圖驅動編輯", "type": "vedit", "audio": False, "min_dur": 0, "max_dur": 10},
-    ]
+    ],
+    "voice": {
+        "asr": [
+            {"id": "qwen3-asr-flash", "name": "Qwen3 ASR Flash",  "group": "Qwen3",   "desc": "新一代極速識別，多語言"},
+            {"id": "paraformer-v2",   "name": "Fun-ASR 語音識別", "group": "Fun-ASR", "desc": "高精度普通話識別"},
+            {"id": "sensevoice-v1",   "name": "Fun-ASR 多語言",   "group": "Fun-ASR", "desc": "中/英/日/韓/粵多語言"},
+        ],
+        "tts": [
+            {"id": "qwen-tts", "name": "Qwen TTS", "group": "Qwen", "desc": "HTTP 同步合成，穩定可靠"},
+        ],
+    },
 }
+
+# TTS 預設音色清單（qwen3-tts-flash / qwen-tts 共用）
+TTS_VOICES = [
+    {"id": "Cherry",   "name": "芊悅",   "gender": "女", "style": "親切"},
+    {"id": "Ethan",    "name": "逸軒",   "gender": "男", "style": "穩重"},
+    {"id": "Serena",   "name": "晨煦",   "gender": "女", "style": "清爽"},
+    {"id": "Wayne",    "name": "韋恩",   "gender": "男", "style": "磁性"},
+    {"id": "Summer",   "name": "甜茶",   "gender": "女", "style": "活潑"},
+    {"id": "Belle",    "name": "不吃魚", "gender": "女", "style": "元氣"},
+    {"id": "Cove",     "name": "詹妮弗", "gender": "女", "style": "知性"},
+    {"id": "Aria",     "name": "卡捷琳娜","gender": "女", "style": "優雅"},
+    {"id": "Kai",      "name": "嘉熙",   "gender": "男", "style": "輕快"},
+    {"id": "Luna",     "name": "月桐",   "gender": "女", "style": "溫柔"},
+]
 
 
 # ─── Auth: API Key per user ────────────────────────────────────────
@@ -166,7 +236,7 @@ def login():
 @app.route("/api/models")
 @require_auth
 def get_models(api_key):
-    return jsonify(MODELS)
+    return jsonify({**MODELS, "tts_voices": TTS_VOICES})
 
 
 # ─── API: Text Generation (SSE Streaming) ─────────────────────────
@@ -682,6 +752,95 @@ def _download_video(url):
     return None
 
 
+# ─── API: Voice ASR ───────────────────────────────────────────────
+OUTPUT_AUDIO_DIR = Path(__file__).parent / "outputs" / "audio"
+OUTPUT_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
+_ASR_FMT = {".wav": "wav", ".mp3": "mp3", ".m4a": "m4a",
+            ".flac": "flac", ".ogg": "ogg", ".opus": "opus"}
+
+@app.route("/api/voice/asr", methods=["POST"])
+@require_auth
+def voice_asr(api_key):
+    model = request.form.get("model", "paraformer-v2")
+    audio_file = request.files.get("audio")
+    if not audio_file:
+        return jsonify({"error": "請上傳音訊檔案"}), 400
+
+    ext = Path(audio_file.filename).suffix.lower() or ".wav"
+    tmp_path = UPLOAD_DIR / f"{uuid.uuid4().hex}{ext}"
+    audio_file.save(tmp_path)
+
+    try:
+        audio_fmt = _ASR_FMT.get(ext, "wav")
+        dashscope.api_key = api_key
+        recognizer = Recognition(
+            model=model,
+            callback=None,
+            format=audio_fmt,
+            sample_rate=16000,
+        )
+        rsp = recognizer.call(f"file://{tmp_path.resolve()}")
+        if rsp and rsp.status_code == 200:
+            sentences = getattr(rsp, "get_sentence", None)
+            if sentences:
+                text = " ".join(s.get("text", "") for s in rsp.get_sentence())
+            else:
+                out = rsp.output if hasattr(rsp, "output") else {}
+                text = (out.get("text", "") if isinstance(out, dict)
+                        else getattr(out, "text", str(rsp)))
+            return jsonify({"success": True, "text": text, "model": model})
+        return jsonify({"error": f"ASR 失敗: {getattr(rsp, 'message', str(rsp))}"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+# ─── API: Voice TTS ───────────────────────────────────────────────
+@app.route("/api/voice/tts", methods=["POST"])
+@require_auth
+def voice_tts(api_key):
+    data  = request.get_json()
+    model = data.get("model", "qwen-tts")
+    voice = data.get("voice", "Cherry")
+    text  = data.get("text", "").strip()
+    fmt   = data.get("format", "mp3")
+
+    if not text:
+        return jsonify({"error": "請輸入合成文字"}), 400
+    if len(text) > 4000:
+        return jsonify({"error": "文字長度不可超過 4000 字"}), 400
+
+    try:
+        dashscope.api_key = api_key
+        rsp = TTSv1.call(
+            model=model,
+            text=text,
+            voice=voice,
+            format=fmt,
+            sample_rate=22050,
+        )
+        audio_data = rsp.get_audio_data()
+        if audio_data:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"tts_{ts}_{uuid.uuid4().hex[:6]}.{fmt}"
+            fp = OUTPUT_AUDIO_DIR / filename
+            fp.write_bytes(audio_data)
+            return jsonify({"success": True, "audio_url": f"/outputs/audio/{filename}",
+                            "model": model, "voice": voice})
+        response = rsp.get_response()
+        msg = getattr(response, "message", None) or getattr(response, "text", None) or str(response)
+        return jsonify({"error": f"TTS 失敗: {msg}"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/outputs/audio/<filename>")
+def serve_audio(filename):
+    return send_from_directory(OUTPUT_AUDIO_DIR, filename)
+
+
 # ─── Main ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print("=" * 60)
@@ -689,4 +848,5 @@ if __name__ == "__main__":
     print("   Auth: DashScope API Key (sk-...)")
     print("   Endpoint: http://localhost:5050")
     print("=" * 60)
-    app.run(host="0.0.0.0", port=5050, debug=True)
+    port = int(os.environ.get("PORT", 5050))
+    app.run(host="0.0.0.0", port=port, debug=False)

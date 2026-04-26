@@ -5,10 +5,11 @@
 
 // ── State ─────────────────────────────────────────────────────
 let apiKey = sessionStorage.getItem('dashscope_api_key') || '';
-let models = { text: [], image: [], video: [] };
+let models = { text: [], image: [], video: [], voice: { asr: [], tts: [] }, tts_voices: [] };
 let refFiles = [];
 let editRefFiles = [];  // for video editing reference images
 let loadingTimerInterval = null;
+let asrFile = null;
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -96,6 +97,21 @@ function populateSelectors() {
     populateSelect('textModel', models.text);
     onImgTaskChange();
     onVidTaskChange();
+    populateSelect('asrModel', models.voice?.asr || []);
+    populateSelect('ttsModel', models.voice?.tts || []);
+    populateTtsVoices();
+}
+
+function populateTtsVoices() {
+    const sel = document.getElementById('ttsVoice');
+    if (!sel) return;
+    sel.innerHTML = '';
+    (models.tts_voices || []).forEach(v => {
+        sel.appendChild(Object.assign(document.createElement('option'), {
+            value: v.id,
+            textContent: `${v.name}（${v.gender}）— ${v.style}`,
+        }));
+    });
 }
 
 function populateSelect(id, list, filterFn = null) {
@@ -255,6 +271,117 @@ function switchTab(tab) {
     document.querySelectorAll('.tab-content').forEach(s => s.classList.remove('active'));
     document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
     document.getElementById(`tab-${tab}`).classList.add('active');
+}
+
+// ── Voice ─────────────────────────────────────────────────────
+function onVoiceTaskChange() {
+    const t = document.getElementById('voiceTaskType').value;
+    document.getElementById('voiceAsrPanel').style.display = t === 'asr' ? '' : 'none';
+    document.getElementById('voiceTtsPanel').style.display = t === 'tts' ? '' : 'none';
+    document.getElementById('voiceAsrMain').style.display  = t === 'asr' ? '' : 'none';
+    document.getElementById('voiceTtsMain').style.display  = t === 'tts' ? '' : 'none';
+}
+
+function onAsrFileChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    asrFile = file;
+    document.getElementById('asrFileName').textContent = `${file.name}  (${(file.size / 1024).toFixed(1)} KB)`;
+}
+
+function onAsrDrop(e) {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    asrFile = file;
+    document.getElementById('asrFileName').textContent = `${file.name}  (${(file.size / 1024).toFixed(1)} KB)`;
+}
+
+async function sendASR() {
+    if (!asrFile) { toast('請先上傳音訊檔案', 'error'); return; }
+    const model = document.getElementById('asrModel').value;
+    const btn   = document.getElementById('asrSendBtn');
+
+    btn.disabled = true;
+    btn.textContent = '識別中...';
+    document.getElementById('asrResult').classList.add('hidden');
+
+    const fd = new FormData();
+    fd.append('audio', asrFile);
+    fd.append('model', model);
+
+    try {
+        const res = await fetch('/api/voice/asr', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${apiKey}` },
+            body: fd,
+        });
+        const data = await res.json();
+        if (data.success) {
+            document.getElementById('asrResultText').textContent = data.text || '（無識別內容）';
+            document.getElementById('asrResultMeta').textContent = `模型：${data.model}`;
+            document.getElementById('asrResult').classList.remove('hidden');
+            toast('識別完成', 'success');
+        } else {
+            toast(data.error || '識別失敗', 'error');
+        }
+    } catch (e) {
+        toast('網路錯誤：' + e.message, 'error');
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> 開始識別';
+}
+
+function copyAsrResult() {
+    const text = document.getElementById('asrResultText').textContent;
+    navigator.clipboard.writeText(text).then(() => toast('已複製到剪貼板', 'success'));
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const ta = document.getElementById('ttsPrompt');
+    if (ta) ta.addEventListener('input', () => {
+        document.getElementById('ttsCharCount').textContent = ta.value.length;
+    });
+});
+
+async function sendTTS() {
+    const text  = document.getElementById('ttsPrompt').value.trim();
+    if (!text) { toast('請輸入合成文字', 'error'); return; }
+    const model  = document.getElementById('ttsModel').value;
+    const voice  = document.getElementById('ttsVoice').value;
+    const format = document.getElementById('ttsFormat').value;
+    const btn    = document.getElementById('ttsSendBtn');
+
+    btn.disabled = true;
+    btn.textContent = '合成中...';
+    document.getElementById('ttsResult').classList.add('hidden');
+
+    try {
+        const res = await fetch('/api/voice/tts', {
+            method: 'POST',
+            headers: authHeader(),
+            body: JSON.stringify({ model, voice, text, format }),
+        });
+        const data = await res.json();
+        if (data.success) {
+            const player = document.getElementById('ttsAudioPlayer');
+            player.src   = data.audio_url;
+            player.load();
+            const dl = document.getElementById('ttsDownloadLink');
+            dl.href = data.audio_url;
+            dl.download = data.audio_url.split('/').pop();
+            document.getElementById('ttsResultMeta').textContent =
+                `模型：${data.model}  ·  音色：${data.voice}  ·  格式：${format.toUpperCase()}`;
+            document.getElementById('ttsResult').classList.remove('hidden');
+            toast('語音合成完成', 'success');
+        } else {
+            toast(data.error || '合成失敗', 'error');
+        }
+    } catch (e) {
+        toast('網路錯誤：' + e.message, 'error');
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/></svg> 合成語音';
 }
 
 // ── Text Generation ───────────────────────────────────────────

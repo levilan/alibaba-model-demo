@@ -77,6 +77,10 @@
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
                 影片生成
             </button>
+            <button class="tab-btn" data-tab="voice" onclick="switchTab('voice')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+                語音模型
+            </button>
         </nav>
 
         <div class="header-right">
@@ -471,6 +475,118 @@
                 <div class="empty-state">
                     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
                     <p>提交任務後，生成進度會顯示在此處</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Tab: Voice ─────────────────────────────────────── -->
+    <section id="tab-voice" class="tab-content">
+        <aside class="panel-sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">模式</div>
+                <div class="form-group">
+                    <label class="form-label">語音功能</label>
+                    <select id="voiceTaskType" class="select-input" onchange="onVoiceTaskChange()">
+                        <option value="asr">語音識別（ASR）— 語音轉文字</option>
+                        <option value="tts">語音合成（TTS）— 文字轉語音</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- ASR 設定 -->
+            <div id="voiceAsrPanel" class="sidebar-section">
+                <div class="sidebar-section-title">識別設定</div>
+                <div class="form-group">
+                    <label class="form-label" data-tip="Qwen3-ASR-Flash 支援多語言且速度最快；Fun-ASR 系列對普通話精度最高；SenseVoice 適合多語言混合場景">模型</label>
+                    <select id="asrModel" class="select-input"></select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">支援格式</label>
+                    <div style="font-size:12px;color:var(--text-muted);line-height:1.6">
+                        WAV · MP3 · M4A · FLAC · OGG<br>
+                        最大 20 MB · 時長不限
+                    </div>
+                </div>
+            </div>
+
+            <!-- TTS 設定 -->
+            <div id="voiceTtsPanel" class="sidebar-section" style="display:none">
+                <div class="sidebar-section-title">合成設定</div>
+                <div class="form-group">
+                    <label class="form-label" data-tip="Qwen3 TTS Flash 自然流暢；Instruct 版支援用文字控制語速、情緒（如：&lt;speak rate='slow'&gt;）；Qwen TTS 為前代穩定版">模型</label>
+                    <select id="ttsModel" class="select-input"></select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-tip="選擇語音音色，不同音色有不同性別、風格與語調">音色</label>
+                    <select id="ttsVoice" class="select-input"></select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">輸出格式</label>
+                    <select id="ttsFormat" class="select-input">
+                        <option value="mp3">MP3（推薦）</option>
+                        <option value="wav">WAV</option>
+                        <option value="pcm">PCM（原始）</option>
+                    </select>
+                </div>
+            </div>
+        </aside>
+
+        <div class="panel-main">
+            <!-- ASR 主區域 -->
+            <div id="voiceAsrMain">
+                <div class="main-input-area">
+                    <div class="upload-zone" id="asrUploadZone"
+                         ondragover="event.preventDefault()"
+                         ondrop="onAsrDrop(event)">
+                        <input type="file" id="asrFileInput"
+                               accept="audio/wav,audio/mp3,audio/mpeg,audio/m4a,audio/flac,audio/ogg,audio/*"
+                               onchange="onAsrFileChange(event)" style="display:none">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--accent);margin-bottom:8px"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/></svg>
+                        <p id="asrFileName" style="margin:0;color:var(--text-muted);font-size:14px">點擊或拖曳上傳音訊檔案</p>
+                        <p style="margin:4px 0 0;color:var(--text-muted);font-size:12px">WAV / MP3 / M4A / FLAC，最大 20MB</p>
+                        <button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="document.getElementById('asrFileInput').click()">選擇檔案</button>
+                    </div>
+                </div>
+                <div class="action-bar">
+                    <button id="asrSendBtn" class="btn btn-primary" onclick="sendASR()">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        開始識別
+                    </button>
+                </div>
+                <div id="asrResult" class="voice-result hidden">
+                    <div class="voice-result-header">
+                        <span>識別結果</span>
+                        <button class="btn btn-ghost btn-sm" onclick="copyAsrResult()">複製</button>
+                    </div>
+                    <div id="asrResultText" class="voice-result-text"></div>
+                    <div id="asrResultMeta" class="voice-result-meta"></div>
+                </div>
+            </div>
+
+            <!-- TTS 主區域 -->
+            <div id="voiceTtsMain" style="display:none">
+                <div class="main-input-area">
+                    <textarea id="ttsPrompt" class="textarea-input main-textarea"
+                              placeholder="輸入要合成的文字（最多 4000 字）&#10;&#10;範例：歡迎使用阿里雲語音合成服務，今天的天氣非常好。"
+                              rows="8" maxlength="4000"></textarea>
+                    <div style="text-align:right;font-size:12px;color:var(--text-muted);margin-top:4px">
+                        <span id="ttsCharCount">0</span> / 4000
+                    </div>
+                </div>
+                <div class="action-bar">
+                    <button id="ttsSendBtn" class="btn btn-primary" onclick="sendTTS()">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/></svg>
+                        合成語音
+                    </button>
+                </div>
+                <div id="ttsResult" class="voice-result hidden">
+                    <div class="voice-result-header">
+                        <span>合成結果</span>
+                        <a id="ttsDownloadLink" class="btn btn-ghost btn-sm" download>下載</a>
+                    </div>
+                    <audio id="ttsAudioPlayer" controls style="width:100%;margin-top:8px;border-radius:8px"></audio>
+                    <div id="ttsResultMeta" class="voice-result-meta"></div>
                 </div>
             </div>
         </div>
