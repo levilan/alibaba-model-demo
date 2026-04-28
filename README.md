@@ -161,14 +161,6 @@ docker run -d \
 | `GET` | `/outputs/videos/<filename>` | 取得生成影片 |
 | `GET` | `/outputs/audio/<filename>` | 取得合成音訊 |
 
-## CI / CD
-
-每次推送至 `main` 分支或建立 `v*` tag，GitHub Actions 自動：
-
-1. 建構 Docker 映像（multi-platform：amd64 / arm64）
-2. 推送至 GitHub Container Registry（`ghcr.io/levilan/alibaba-model-demo`）
-3. 標籤規則：`:latest`（main）、`:sha-xxxxxxx`、`:1.2.3`（tag）
-
 ## 技術架構
 
 - **後端**：Python / Flask，DashScope SDK，OpenAI SDK（相容模式）
