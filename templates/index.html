@@ -244,13 +244,15 @@
                 </div>
             </div>
             <div id="imgUploadSection" class="sidebar-section hidden">
-                <div class="sidebar-section-title">上傳圖片</div>
-                <div class="upload-zone" id="imgUploadZone">
-                    <input type="file" id="imgFileInput" accept="image/*" onchange="previewImg(event,'imgPreview','imgUploadZone')">
-                    <div class="upload-zone-icon">📎</div>
-                    <p>點擊或拖放上傳</p>
-                    <img id="imgPreview" class="upload-preview hidden" alt="preview">
+                <div class="sidebar-section-title">
+                    參考圖片
+                    <span class="param-hint" id="imgRefCount">0 / 9 張</span>
                 </div>
+                <input type="file" id="imgFileInput" accept="image/*" multiple style="display:none"
+                       onchange="onImgFilesAdd(this.files)">
+                <div id="imgThumbGrid" class="img-thumb-grid"></div>
+                <button type="button" class="upload-add-btn" id="imgAddBtn"
+                        onclick="document.getElementById('imgFileInput').click()">＋ 添加圖片</button>
             </div>
         </aside>
 
@@ -344,10 +346,11 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" data-tip="生成影片的長度（秒）。範圍因模型而異，通常 3～10 秒。視頻編輯模式中設為 0 可保留來源影片的原始長度">時長（秒）<span class="param-val" id="durVal">5</span>
+                    <label class="form-label" data-tip="生成影片的長度（秒）。範圍因模型而異，視頻編輯模式中設為 0 可保留來源影片的原始長度">時長（秒）<span class="param-val" id="durVal">5</span>
+                        <span class="param-hint" id="durRange">（2 ~ 15 秒）</span>
                         <span class="param-hint" id="durHintZero" style="display:none">（0 = 保留來源）</span>
                     </label>
-                    <input type="range" id="videoDuration" min="3" max="10" step="1" value="5"
+                    <input type="range" id="videoDuration" min="2" max="15" step="1" value="5"
                            oninput="document.getElementById('durVal').textContent=this.value">
                 </div>
                 <!-- 自動配音（僅 wan2.7-t2v 支援） -->

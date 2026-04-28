@@ -134,19 +134,24 @@ MODELS = {
     ],
     "video": [
         # ── 文生影片 ──────────────────────────────────────────────
-        {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭、自動配音", "type": "t2v",   "audio": True,  "min_dur": 3, "max_dur": 10},
-        {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片",     "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 10},
+        {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭、自動配音", "type": "t2v",   "audio": True,  "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片",     "type": "t2v",   "audio": False, "min_dur": 2, "max_dur": 15},
         # ── 圖生影片 ──────────────────────────────────────────────
         {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀/首尾幀/配音/影片延伸", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片",       "type": "i2v", "audio": False, "min_dur": 3, "max_dur": 10},
-        {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版", "type": "i2v", "audio": False, "min_dur": 3, "max_dur": 10},
+        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片",       "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
         # ── 參考生影片 ────────────────────────────────────────────
-        {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片", "desc": "角色形象參考",       "type": "r2v", "audio": False, "min_dur": 3, "max_dur": 10},
-        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片",     "type": "r2v", "audio": False, "min_dur": 3, "max_dur": 10},
-        {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版", "type": "r2v", "audio": False, "min_dur": 3, "max_dur": 10},
+        {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片", "desc": "角色形象參考",       "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片",     "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        # ── HappyHorse ────────────────────────────────────────────
+        {"id": "happyhorse-1.0-t2v",        "name": "HappyHorse T2V",        "group": "HappyHorse", "desc": "高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},
+        {"id": "happyhorse-1.0-i2v",        "name": "HappyHorse I2V",        "group": "HappyHorse", "desc": "高還原度圖生影片（首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15},
+        {"id": "happyhorse-1.0-r2v",        "name": "HappyHorse R2V",        "group": "HappyHorse", "desc": "多圖參考生影片（最多 9 張）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15},
+        {"id": "happyhorse-1.0-video-edit", "name": "HappyHorse Video Edit", "group": "HappyHorse", "desc": "視頻編輯（最多 5 張參考圖）", "type": "vedit", "audio": False, "min_dur": 3, "max_dur": 15},
         # ── 視頻編輯 ──────────────────────────────────────────────
         {"id": "wan2.7-videoedit", "name": "萬相 2.7 視頻編輯", "group": "萬相視頻編輯",
-         "desc": "文字/參考圖驅動編輯", "type": "vedit", "audio": False, "min_dur": 0, "max_dur": 10},
+         "desc": "文字/參考圖驅動編輯", "type": "vedit", "audio": False, "min_dur": 2, "max_dur": 15},
     ],
     "voice": {
         "asr": [
@@ -374,20 +379,27 @@ def image_edit(api_key):
 
     if not prompt:
         return jsonify({"error": "Prompt is required"}), 400
-    image_file = request.files.get("image")
-    if not image_file:
-        return jsonify({"error": "Image file is required"}), 400
 
-    ext = Path(image_file.filename).suffix or ".png"
-    fp = UPLOAD_DIR / f"{uuid.uuid4().hex}{ext}"
-    image_file.save(fp)
-    image_url = f"file://{fp.resolve()}"
+    image_urls = []
+    for i in range(1, 10):
+        f = request.files.get(f"image_{i}")
+        if not f:
+            break
+        ext = Path(f.filename).suffix or ".png"
+        fp = UPLOAD_DIR / f"{uuid.uuid4().hex}{ext}"
+        f.save(fp)
+        image_urls.append(f"file://{fp.resolve()}")
+
+    if not image_urls:
+        return jsonify({"error": "至少需要一張參考圖片"}), 400
+
+    content = [{"text": prompt}] + [{"image": u} for u in image_urls]
 
     try:
         call_kwargs = dict(
             model=model,
             api_key=api_key,
-            messages=[Message(role="user", content=[{"text": prompt}, {"image": image_url}])],
+            messages=[Message(role="user", content=content)],
             negative_prompt=negative_prompt or None,
             watermark=watermark,
             n=1,
@@ -404,6 +416,22 @@ def image_edit(api_key):
         return jsonify({"error": str(e)}), 500
 
 
+_HAPPYHORSE_MODELS = {"happyhorse-1.0-t2v", "happyhorse-1.0-i2v",
+                      "happyhorse-1.0-r2v", "happyhorse-1.0-video-edit"}
+
+_SIZE_MAP = {"480P": "854*480", "720P": "1280*720", "1080P": "1920*1080"}
+
+
+def _apply_resolution(kwargs: dict, model: str, resolution: str, ratio: str = "") -> None:
+    """HappyHorse uses resolution+ratio; Wan models use size."""
+    if model in _HAPPYHORSE_MODELS:
+        kwargs["resolution"] = resolution
+        if ratio:
+            kwargs["ratio"] = ratio
+    else:
+        kwargs["size"] = _SIZE_MAP.get(resolution, "1280*720")
+
+
 # ─── API: Video T2V ───────────────────────────────────────────────
 @app.route("/api/video/t2v", methods=["POST"])
 @require_auth
@@ -413,6 +441,7 @@ def video_t2v(api_key):
     prompt         = data.get("prompt", "")
     negative_prompt= data.get("negative_prompt", "")
     resolution     = data.get("resolution", "720P")
+    ratio          = data.get("ratio", "16:9")
     duration       = data.get("duration", 5)
     enable_audio   = data.get("audio", False)
     prompt_extend  = data.get("prompt_extend", False)
@@ -422,17 +451,16 @@ def video_t2v(api_key):
     if not prompt:
         return jsonify({"error": "Prompt is required"}), 400
 
-    size_map = {"480P": "854*480", "720P": "1280*720", "1080P": "1920*1080"}
     kwargs = dict(
         model=model,
         prompt=prompt,
-        size=size_map.get(resolution, "1280*720"),
         duration=duration,
         prompt_extend=prompt_extend,
         watermark=watermark,
         api_key=api_key,
         headers=CUSTOM_HEADERS,
     )
+    _apply_resolution(kwargs, model, resolution, ratio)
     if negative_prompt:
         kwargs["negative_prompt"] = negative_prompt
     if enable_audio:
@@ -441,7 +469,6 @@ def video_t2v(api_key):
         kwargs["seed"] = int(seed)
 
     try:
-        # 修正：使用 async_call() 立即返回 task_id，call() 會內部等待完成導致卡住
         rsp = VideoSynthesis.async_call(**kwargs)
         return _handle_video_async_response(rsp, model)
     except Exception as e:
@@ -456,6 +483,7 @@ def video_i2v(api_key):
     prompt         = request.form.get("prompt", "")
     negative_prompt= request.form.get("negative_prompt", "")
     resolution     = request.form.get("resolution", "720P")
+    ratio          = request.form.get("ratio", "16:9")
     duration       = int(request.form.get("duration", 5))
     i2v_mode       = request.form.get("i2v_mode", "first_frame")
     prompt_extend_str = request.form.get("prompt_extend", "false")
@@ -511,13 +539,13 @@ def video_i2v(api_key):
             model=model,
             media=media,
             prompt=prompt,
-            size={"480P": "854*480", "720P": "1280*720", "1080P": "1920*1080"}.get(resolution, "1280*720"),
             duration=duration,
             prompt_extend=prompt_extend,
             watermark=watermark,
             api_key=api_key,
             headers=CUSTOM_HEADERS,
         )
+        _apply_resolution(kwargs, model, resolution, ratio)
         if negative_prompt:
             kwargs["negative_prompt"] = negative_prompt
         if seed is not None:
@@ -555,8 +583,10 @@ def video_vedit(api_key):
     vp = UPLOAD_DIR / f"{uuid.uuid4().hex}{ext}"
     video_file.save(vp)
 
+    # HappyHorse Video Edit 支援最多 5 張參考圖，Wan 最多 3 張
+    max_refs = 5 if model in _HAPPYHORSE_MODELS else 3
     media = [{"url": f"file://{vp.resolve()}", "type": "video"}]
-    for i in range(1, 4):
+    for i in range(1, max_refs + 1):
         ref = request.files.get(f"reference_image_{i}")
         if ref:
             rext = Path(ref.filename).suffix or ".png"
@@ -569,7 +599,6 @@ def video_vedit(api_key):
             model=model,
             media=media,
             prompt=prompt,
-            size={"720P": "1280*720", "1080P": "1920*1080"}.get(resolution, "1920*1080"),
             duration=duration,
             audio_setting=audio_setting,
             prompt_extend=prompt_extend,
@@ -577,10 +606,9 @@ def video_vedit(api_key):
             api_key=api_key,
             headers=CUSTOM_HEADERS,
         )
+        _apply_resolution(kwargs, model, resolution, ratio)
         if negative_prompt:
             kwargs["negative_prompt"] = negative_prompt
-        if ratio:
-            kwargs["ratio"] = ratio
         if seed is not None:
             kwargs["seed"] = seed
         rsp = VideoSynthesis.async_call(**kwargs)
@@ -596,6 +624,7 @@ def video_r2v(api_key):
     model     = request.form.get("model", "wan2.6-r2v")
     prompt    = request.form.get("prompt", "")
     resolution= request.form.get("resolution", "720P")
+    ratio     = request.form.get("ratio", "16:9")
     duration  = int(request.form.get("duration", 5))
     prompt_extend_str = request.form.get("prompt_extend", "false")
     prompt_extend = prompt_extend_str.lower() in ("true", "1", "yes")
@@ -625,13 +654,13 @@ def video_r2v(api_key):
             model=model,
             prompt=prompt,
             media=media,
-            size={"480P": "854*480", "720P": "1280*720", "1080P": "1920*1080"}.get(resolution, "1280*720"),
             duration=duration,
             prompt_extend=prompt_extend,
             watermark=watermark,
             api_key=api_key,
             headers=CUSTOM_HEADERS,
         )
+        _apply_resolution(r2v_kwargs, model, resolution, ratio)
         if seed is not None:
             r2v_kwargs["seed"] = seed
         # 修正：reference_urls → media（wan2.x-r2v API 需要 input.media，非 input.reference_urls）

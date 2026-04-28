@@ -8,6 +8,7 @@ let apiKey = sessionStorage.getItem('dashscope_api_key') || '';
 let models = { text: [], image: [], video: [], voice: { asr: [], tts: [] }, tts_voices: [] };
 let refFiles = [];
 let editRefFiles = [];  // for video editing reference images
+let imgRefFiles = [];   // for image edit reference images (up to 9)
 let loadingTimerInterval = null;
 let asrFile = null;
 
@@ -137,6 +138,7 @@ function onImgTaskChange() {
     document.getElementById('imgUploadSection').classList.toggle('hidden', t !== 'i2i');
     document.getElementById('imgNGroup').style.display = (t === 't2i') ? '' : 'none';
     document.getElementById('imgRefStrengthGroup').style.display = (t === 'i2i') ? '' : 'none';
+    if (t !== 'i2i') { imgRefFiles = []; renderImgThumbs(); }
     onImgModelChange();
 }
 
@@ -184,8 +186,11 @@ function onVidTaskChange() {
     // i2v-specific controls
     document.getElementById('vidI2VModeGroup').style.display = (t === 'i2v') ? '' : 'none';
 
-    // vedit duration hint
-    document.getElementById('durHintZero').style.display = (t === 'vedit') ? '' : 'none';
+    // vedit duration hint（僅 Wan 的 min_dur=0 才顯示）
+    const _veditModel = document.getElementById('videoModel').value;
+    const _veditInfo  = models.video.find(m => m.id === _veditModel) || {};
+    document.getElementById('durHintZero').style.display =
+        (t === 'vedit' && (_veditInfo.min_dur === 0 || _veditInfo.min_dur === undefined)) ? '' : 'none';
 
     if (t === 'i2v') onI2VModeChange();
     onVidModelChange();
@@ -207,9 +212,14 @@ function onVidModelChange() {
     const maxD   = modelInfo.max_dur || 10;
     dur.min  = minD;
     dur.max  = maxD;
-    dur.step = (taskType === 'vedit') ? 1 : 1;  // vedit allows 0
-    if (parseInt(dur.value) < minD) { dur.value = minD; document.getElementById('durVal').textContent = minD; }
-    if (parseInt(dur.value) > maxD) { dur.value = maxD; document.getElementById('durVal').textContent = maxD; }
+    dur.step = 1;
+    let curVal = parseInt(dur.value);
+    if (curVal < minD) { curVal = minD; }
+    if (curVal > maxD) { curVal = maxD; }
+    dur.value = curVal;
+    document.getElementById('durVal').textContent = curVal;
+    const rangeEl = document.getElementById('durRange');
+    if (rangeEl) rangeEl.textContent = `（${minD} ~ ${maxD} 秒）`;
 
     // resolution: vedit only supports 720P/1080P
     const resEl = document.getElementById('videoResolution');
@@ -529,14 +539,13 @@ async function sendImage() {
             if (imgSeed !== null) body.seed = imgSeed;
             res = await apiPost('/api/image/generate', body);
         } else {
-            const fileInput = document.getElementById('imgFileInput');
-            if (!fileInput.files.length) { toast('請先上傳圖片', 'error'); hideLoading(); btn.disabled = false; btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg> 生成'; return; }
+            if (!imgRefFiles.length) { toast('請先上傳至少一張參考圖片', 'error'); hideLoading(); btn.disabled = false; btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg> 生成'; return; }
             const fd = new FormData();
             fd.append('model', model); fd.append('prompt', prompt);
             fd.append('negative_prompt', negPrompt); fd.append('size', size);
             fd.append('watermark', watermark); fd.append('ref_strength', refStrength);
             if (imgSeed !== null) fd.append('seed', imgSeed);
-            fd.append('image', fileInput.files[0]);
+            imgRefFiles.forEach((f, i) => fd.append(`image_${i + 1}`, f));
             res = await apiPostForm('/api/image/edit', fd);
         }
 
@@ -761,6 +770,34 @@ async function pollVideo(taskId, startTime) {
 }
 
 // ── Upload helpers ────────────────────────────────────────────
+// ── Image Edit 多圖管理 ────────────────────────────────────────
+function onImgFilesAdd(files) {
+    const remaining = 9 - imgRefFiles.length;
+    const toAdd = Array.from(files).slice(0, remaining);
+    imgRefFiles = [...imgRefFiles, ...toAdd];
+    renderImgThumbs();
+    document.getElementById('imgFileInput').value = '';
+}
+
+function removeImgFile(idx) {
+    imgRefFiles.splice(idx, 1);
+    renderImgThumbs();
+}
+
+function renderImgThumbs() {
+    const grid = document.getElementById('imgThumbGrid');
+    const countEl = document.getElementById('imgRefCount');
+    const addBtn = document.getElementById('imgAddBtn');
+    if (!grid) return;
+    grid.innerHTML = imgRefFiles.map((f, i) => `
+        <div class="img-thumb">
+            <img src="${URL.createObjectURL(f)}" alt="${f.name}">
+            <button class="img-thumb-remove" onclick="removeImgFile(${i})">✕</button>
+        </div>`).join('');
+    if (countEl) countEl.textContent = `${imgRefFiles.length} / 9 張`;
+    if (addBtn) addBtn.style.display = imgRefFiles.length >= 9 ? 'none' : '';
+}
+
 function previewImg(e, previewId, zoneId) {
     const file = e.target.files[0];
     if (!file) return;
