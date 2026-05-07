@@ -1,7 +1,9 @@
-flask>=3.0
-flask-cors>=4.0
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.6
 openai>=1.0
 dashscope>=1.20
 python-dotenv>=1.0
 requests>=2.31
 Pillow>=10.0
+
