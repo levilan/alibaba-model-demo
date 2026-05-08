@@ -1,6 +1,6 @@
 # Alibaba Cloud AI Model Testing Platform
 
-一個基於 Flask + DashScope SDK 的 Web 測試平台，用於測試阿里雲（Alibaba Cloud）的 AI 模型，支援文字生成、圖片生成、影片生成與語音模型。
+一個基於 FastAPI + DashScope SDK 的 Web 測試平台，用於測試阿里雲（Alibaba Cloud）的 AI 模型，支援文字生成、圖片生成、影片生成與語音模型。
 
 ## 功能概覽
 
@@ -74,7 +74,7 @@ docker run -d \
 
 ```
 .
-├── app.py                    # Flask 後端（API 路由、DashScope SDK 呼叫）
+├── app.py                    # FastAPI 後端（API 路由、DashScope SDK 呼叫）
 ├── requirements.txt          # Python 依賴
 ├── Dockerfile                # Docker 映像定義
 ├── docker-compose.yml        # 服務編排（含 volume 掛載）
@@ -163,7 +163,7 @@ docker run -d \
 
 ## 技術架構
 
-- **後端**：Python / Flask，DashScope SDK，OpenAI SDK（相容模式）
+- **後端**：Python / FastAPI，DashScope SDK，OpenAI SDK（相容模式）
 - **前端**：原生 HTML / CSS / JavaScript，無額外框架依賴
 - **AI 呼叫**：
   - 文字：OpenAI 相容模式 (`dashscope-intl.aliyuncs.com/compatible-mode/v1`)
