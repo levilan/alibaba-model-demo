@@ -34,10 +34,16 @@
             <div class="login-desc">
                 使用您的 <strong>DashScope API Key</strong>（格式：<code>sk-...</code>）登入，所有 AI 呼叫將使用此 Key。
             </div>
-            <div class="form-group">
+                        <div class="form-group">
                 <label class="form-label" for="apiKeyInput">API Key</label>
                 <input type="password" id="apiKeyInput"
                        placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+                       autocomplete="off" spellcheck="false">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="muleApiKeyInput">MuleAI API Key (選用)</label>
+                <input type="password" id="muleApiKeyInput"
+                       placeholder="請輸入 MuleAI API Key"
                        autocomplete="off" spellcheck="false">
             </div>
             <button id="loginBtn" class="btn btn-primary btn-full" onclick="handleLogin()">
@@ -77,9 +83,13 @@
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
                 影片生成
             </button>
-            <button class="tab-btn" data-tab="voice" onclick="switchTab('voice')">
+                        <button class="tab-btn" data-tab="voice" onclick="switchTab('voice')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
                 語音模型
+            </button>
+            <button class="tab-btn" data-tab="muleai" onclick="switchTab('muleai')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                MuleAI
             </button>
         </nav>
 
@@ -594,6 +604,89 @@
             </div>
         </div>
     </section>
+
+    
+
+    <!-- ── Tab: MuleAI ────────────────────────────────────── -->
+    <section id="tab-muleai" class="tab-content">
+        <aside class="panel-sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">基本設定 (MuleAI I2V)</div>
+                <div class="form-group">
+                    <label class="form-label">模型</label>
+                    <select id="muleaiModel" class="select-input"></select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">解析度</label>
+                    <select id="muleaiVidResolution" class="select-input">
+                        <option value="1080p">1080p</option>
+                        <option value="720p">720p</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">時長 (秒) <span class="param-val" id="muleaiVidDurVal">5</span></label>
+                    <input type="range" id="muleaiVidDuration" min="2" max="15" step="1" value="5"
+                           oninput="document.getElementById('muleaiVidDurVal').textContent=this.value">
+                </div>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">首幀圖片 (必填)</div>
+                <div class="upload-zone" id="muleaiFirstFrameUpZone">
+                    <input type="file" id="muleaiFirstFrameInput" accept="image/jpeg, image/png, image/webp"
+                           onchange="previewImg(event,'muleaiFirstFramePreview','muleaiFirstFrameUpZone')">
+                    <div class="upload-zone-icon">🖼</div>
+                    <p>上傳參考圖片<br><span style="font-size:11px;color:var(--text-muted)">支援 JPG, PNG, WEBP</span></p>
+                    <img id="muleaiFirstFramePreview" class="upload-preview hidden" alt="preview">
+                </div>
+            </div>
+            
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">進階參數</div>
+                <div class="toggle-row">
+                    <label>Prompt Extend</label>
+                    <label class="toggle"><input type="checkbox" id="muleaiVidPromptExtend" checked><span class="toggle-slider"></span></label>
+                </div>
+                <div class="form-group" style="margin-top:10px;">
+                    <label class="form-label">Seed <span class="param-hint">（留空 = 隨機）</span></label>
+                    <input type="number" id="muleaiVidSeed" class="number-input" min="0" max="2147483647" placeholder="留空隨機">
+                </div>
+            </div>
+        </aside>
+
+        <div class="panel-main">
+            <div class="prompt-panel">
+                <div class="prompt-row">
+                    <div class="prompt-col">
+                        <div class="form-group" style="margin-bottom:8px">
+                            <label class="form-label">Prompt</label>
+                            <textarea id="muleaiVidPrompt" class="textarea-input" rows="2" placeholder="描述影片動作與細節..." onkeydown="if((event.ctrlKey || event.metaKey) && event.key==='Enter'){event.preventDefault();sendMuleAIVideo();}"></textarea>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0">
+                            <label class="form-label">Negative Prompt</label>
+                            <textarea id="muleaiVidNegPrompt" class="textarea-input" rows="2" placeholder="不想出現的元素（可選）"></textarea>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;justify-content:flex-end">
+                        <button id="muleaiVidSendBtn" class="btn btn-primary" onclick="sendMuleAIVideo()" style="height:40px">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                            生成影片
+                        </button>
+                    </div>
+                </div>
+                <div class="chat-actions-row" style="padding-top:8px;">
+                    <span style="font-size:0.75rem;color:var(--text-muted)">Ctrl+Enter 快速發送</span>
+                </div>
+            </div>
+            <div id="muleaiVideoResults" class="results-area" style="flex:1">
+                <div class="empty-state" style="width:100%">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
+                    <p>提交任務後，生成的影片將顯示在此處</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
 </div>
 
 <!-- Toast & Loading -->
@@ -606,6 +699,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js"></script>
+<script src="/static/js/app.js?v=6"></script>
 </body>
 </html>

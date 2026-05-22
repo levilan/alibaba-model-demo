@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 import dashscope
 from dashscope.aigc.image_generation import ImageGeneration
 from dashscope.api_entities.dashscope_response import Message
@@ -60,6 +60,7 @@ app.mount("/outputs", StaticFiles(directory=Path(__file__).parent / "outputs"), 
 MODELS = {
     "text": [
         # ── 旗艦 ──────────────────────────────────────────────────
+        {"id": "qwen3.7-max",        "name": "Qwen3.7 Max",      "group": "旗艦",   "desc": "最新旗艦，最強推理",     "thinking": True},
         {"id": "qwen3.6-max-preview","name": "Qwen3.6 Max",     "group": "旗艦",   "desc": "新一代旗艦，強推理",     "thinking": True},
         {"id": "qwen3-max",          "name": "Qwen3 Max",        "group": "旗艦",   "desc": "最強推理，262K context", "thinking": True},
         # ── 均衡 ──────────────────────────────────────────────────
@@ -171,10 +172,13 @@ MODELS = {
             {"id": "paraformer-v2",   "name": "Fun-ASR 語音識別", "group": "Fun-ASR", "desc": "高精度普通話識別"},
             {"id": "sensevoice-v1",   "name": "Fun-ASR 多語言",   "group": "Fun-ASR", "desc": "中/英/日/韓/粵多語言"},
         ],
-        "tts": [
+                "tts": [
             {"id": "qwen-tts", "name": "Qwen TTS", "group": "Qwen", "desc": "HTTP 同步合成，穩定可靠"},
         ],
     },
+    "muleai": [
+        {"id": "wan2.7-i2v-spicy", "name": "Wan 2.7 I2V Spicy", "group": "MuleAI", "desc": "Spicy 模型 (支援文字/圖片)"},
+    ],
 }
 
 # TTS 預設音色清單（qwen3-tts-flash / qwen-tts 共用）
@@ -203,6 +207,9 @@ def get_api_key(request: Request) -> str:
     if not (api_key and api_key.startswith("sk-") and len(api_key) > 20):
         raise HTTPException(status_code=401, detail="Unauthorized - invalid API key")
     return api_key
+
+def get_muleai_api_key(request: Request) -> Optional[str]:
+    return request.headers.get("X-MuleAI-API-Key", "").strip() or None
 
 # ─── Pages ────────────────────────────────────────────────────────
 @app.get("/")
@@ -302,9 +309,9 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
 
     async def generate() -> AsyncGenerator[str, None]:
         try:
-            user_client = OpenAI(api_key=api_key, base_url=BASE_URL_COMPATIBLE)
-            stream = user_client.chat.completions.create(**create_kwargs)
-            for chunk in stream:
+            user_client = AsyncOpenAI(api_key=api_key, base_url=BASE_URL_COMPATIBLE)
+            stream = await user_client.chat.completions.create(**create_kwargs)
+            async for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield f"data: {json.dumps({'content': chunk.choices[0].delta.content})}\n\n"
             yield f"data: {json.dumps({'done': True})}\n\n"
@@ -316,6 +323,94 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+
+
+
+# ─── API: MuleAI Video Generation (I2V) ───────────────────────────────────────
+@app.post("/api/muleai/video")
+async def muleai_video_generate(
+    request: Request,
+    model: str = Form("wan2.7-i2v-spicy"),
+    prompt: str = Form(""),
+    negative_prompt: Optional[str] = Form(None),
+    resolution: str = Form("1080p"),
+    duration: int = Form(5),
+    prompt_extend: bool = Form(True),
+    seed: Optional[int] = Form(None),
+    image: UploadFile = File(...),
+    muleai_key: Optional[str] = Depends(get_muleai_api_key)
+):
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+    if not muleai_key:
+        raise HTTPException(status_code=401, detail="MuleAI API Key is missing.")
+
+    # We need to read the image file and either convert it to base64 or upload it somewhere.
+    # The MuleRouter documentation says "URL or Base64-encoded string".
+    image_bytes = await image.read()
+    import base64
+    b64_img = base64.b64encode(image_bytes).decode('utf-8')
+    mime_type = image.content_type or 'image/jpeg'
+    data_uri = f"data:{mime_type};base64,{b64_img}"
+
+    MULEAI_VIDEO_URL = f"https://api.mulerouter.ai/vendors/carrothub/v1/{model}/generation"
+    headers = {
+        "Authorization": f"Bearer {muleai_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "prompt": prompt,
+        "image": data_uri,
+        "resolution": resolution,
+        "duration": duration,
+        "prompt_extend": prompt_extend
+    }
+    if negative_prompt:
+        payload["negative_prompt"] = negative_prompt
+    if seed is not None:
+        payload["seed"] = seed
+
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(MULEAI_VIDEO_URL, headers=headers, json=payload)
+            
+            if resp.status_code == 202 or resp.status_code == 200:
+                data = resp.json()
+                task_id = data.get("task_info", {}).get("id") or data.get("id")
+                return {"success": True, "task_id": task_id, "status": "pending"}
+            else:
+                return JSONResponse(status_code=resp.status_code, content={"success": False, "error": resp.text})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/muleai/video/status/{task_id}")
+async def muleai_video_status(task_id: str, muleai_key: Optional[str] = Depends(get_muleai_api_key)):
+    if not muleai_key:
+        raise HTTPException(status_code=401, detail="MuleAI API Key is missing.")
+
+    MULEAI_STATUS_URL = f"https://api.mulerouter.ai/vendors/carrothub/v1/wan2.7-i2v-spicy/generation/{task_id}"
+    headers = {
+        "Authorization": f"Bearer {muleai_key}"
+    }
+
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(MULEAI_STATUS_URL, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                status = data.get("task_info", {}).get("status", "pending")
+                videos = data.get("videos", [])
+                err = data.get("task_info", {}).get("error")
+                return {"success": True, "status": status, "videos": videos, "error_message": err}
+            else:
+                return JSONResponse(status_code=resp.status_code, content={"success": False, "error": resp.text})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # ─── API: Image Generate (T2I) ────────────────────────────────────
 class ImageGenerateRequest(BaseModel):
@@ -695,7 +790,8 @@ async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
         if status == "SUCCEEDED":
             video_url = getattr(rsp.output, "video_url", "")
             if video_url:
-                result["local_path"] = _download_video(video_url)
+                # Do not download locally anymore, just pass the remote URL
+                result["local_path"] = video_url
                 result["video_url"] = video_url
         elif status == "FAILED":
             result["error_message"] = getattr(rsp.output, "message", "Unknown")

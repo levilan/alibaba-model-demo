@@ -5,10 +5,12 @@
 
 // ── State ─────────────────────────────────────────────────────
 let apiKey = sessionStorage.getItem('dashscope_api_key') || '';
-let models = { text: [], image: [], video: [], voice: { asr: [], tts: [] }, tts_voices: [] };
+let muleApiKey = sessionStorage.getItem('muleai_api_key') || '';
+let models = { text: [], image: [], video: [], voice: { asr: [], tts: [] }, tts_voices: [], muleai: [] };
 let refFiles = [];
 let editRefFiles = [];  // for video editing reference images
 let imgRefFiles = [];   // for image edit reference images (up to 9)
+let muleaiImgRefFiles = [];
 let loadingTimerInterval = null;
 let asrFile = null;
 
@@ -19,9 +21,18 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('apiKeyInput').addEventListener('keydown', e => {
         if (e.key === 'Enter') handleLogin();
     });
-    document.getElementById('textPrompt').addEventListener('keydown', e => {
+    document.getElementById('muleApiKeyInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') handleLogin();
+    });
+        document.getElementById('textPrompt').addEventListener('keydown', e => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') sendText();
     });
+    const muleaiPrompt = document.getElementById('muleaiPrompt');
+    if (muleaiPrompt) {
+        muleaiPrompt.addEventListener('keydown', e => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') sendMuleAIText();
+        });
+    }
 });
 
 async function attemptAutoLogin() {
@@ -40,6 +51,7 @@ async function attemptAutoLogin() {
 // ── Auth ──────────────────────────────────────────────────────
 async function handleLogin() {
     const key = document.getElementById('apiKeyInput').value.trim();
+    const mKey = document.getElementById('muleApiKeyInput').value.trim();
     const errEl = document.getElementById('loginError');
     errEl.textContent = '';
 
@@ -60,6 +72,13 @@ async function handleLogin() {
         if (data.success) {
             apiKey = key;
             sessionStorage.setItem('dashscope_api_key', key);
+            if (mKey) {
+                muleApiKey = mKey;
+                sessionStorage.setItem('muleai_api_key', mKey);
+            } else {
+                muleApiKey = '';
+                sessionStorage.removeItem('muleai_api_key');
+            }
             const mRes = await fetch('/api/models', { headers: authHeader() });
             models = await mRes.json();
             showApp();
@@ -73,29 +92,36 @@ async function handleLogin() {
     btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg><span>登入</span>';
 }
 
-function showApp() {
+function showApp() { console.log('SHOW APP EXECUTING'); 
     document.getElementById('loginOverlay').style.display = 'none';
     const app = document.getElementById('mainApp');
     app.classList.remove('hidden');
     app.style.display = 'flex';
     const masked = apiKey.slice(0, 6) + '****' + apiKey.slice(-4);
     document.getElementById('apiKeyLabel').textContent = masked;
-    populateSelectors();
+    try { populateSelectors(); console.log('Populate OK'); } catch(e) { console.log('POPULATE ERROR:', e.message); toast('UI 載入發生錯誤，請聯絡開發者', 'error'); }
 }
 
 function handleLogout() {
     apiKey = '';
+    muleApiKey = '';
     sessionStorage.removeItem('dashscope_api_key');
+    sessionStorage.removeItem('muleai_api_key');
     location.reload();
 }
 
 function authHeader() {
-    return { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+    return { 
+        'Authorization': 'Bearer ' + apiKey, 
+        'Content-Type': 'application/json',
+        'X-MuleAI-API-Key': muleApiKey || ''
+    };
 }
 
 // ── Selectors ─────────────────────────────────────────────────
 function populateSelectors() {
     populateSelect('textModel', models.text);
+    populateSelect('muleaiModel', models.muleai || []);
     onImgTaskChange();
     onVidTaskChange();
     populateSelect('asrModel', models.voice?.asr || []);
@@ -419,9 +445,14 @@ async function sendText() {
     output.querySelector('.empty-state')?.remove();
 
     const uDiv = el('div', { className: 'chat-message user', textContent: prompt });
+    const uMeta = el('div', { className: 'msg-meta', style: 'color: rgba(255,255,255,0.7); justify-content: flex-end;' });
+    uMeta.innerHTML = '<span>' + new Date().toLocaleTimeString() + '</span>';
+    uDiv.appendChild(uMeta);
     output.appendChild(uDiv);
 
     const aDiv = el('div', { className: 'chat-message assistant streaming-cursor' });
+    const contentDiv = el('span');
+    aDiv.appendChild(contentDiv);
     output.appendChild(aDiv);
     output.scrollTop = output.scrollHeight;
 
@@ -441,6 +472,7 @@ async function sendText() {
         if (seed !== null) body.seed = seed;
         if (stop.length > 0) body.stop = stop;
 
+        const startTime = Date.now();
         const res = await fetch('/api/text/generate', {
             method: 'POST',
             headers: authHeader(),
@@ -450,18 +482,17 @@ async function sendText() {
         aDiv.classList.remove('streaming-cursor');
 
         if (!useStream) {
-            // 非串流：直接讀取 JSON
             const data = await res.json();
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
             if (data.error) {
-                aDiv.textContent = `⚠ 錯誤：${data.error}`;
+                contentDiv.textContent = '⚠ 錯誤：' + data.error;
             } else {
-                aDiv.textContent = data.content || '';
+                contentDiv.textContent = data.content || '';
                 const meta = el('div', { className: 'msg-meta' });
-                meta.innerHTML = `<span>${model}</span><span>${new Date().toLocaleTimeString()}</span>`;
+                meta.innerHTML = '<span>' + model + ' (耗時 ' + elapsed + 's)</span><span>' + new Date().toLocaleTimeString() + '</span>';
                 aDiv.appendChild(meta);
             }
         } else {
-            // 串流 SSE
             const reader  = res.body.getReader();
             const decoder = new TextDecoder();
             let full = '', buf = '';
@@ -480,24 +511,23 @@ async function sendText() {
                         const d = JSON.parse(line.slice(6));
                         if (d.content) {
                             full += d.content;
-                            aDiv.textContent = full;
+                            contentDiv.textContent = full;
                             output.scrollTop = output.scrollHeight;
                         } else if (d.error) {
-                            aDiv.textContent = `⚠ 錯誤：${d.error}`;
+                            contentDiv.textContent = '⚠ 錯誤：' + d.error;
                             aDiv.classList.remove('streaming-cursor');
-                        } else if (d.done) {
-                            aDiv.classList.remove('streaming-cursor');
-                            const meta = el('div', { className: 'msg-meta' });
-                            meta.innerHTML = `<span>${model}</span><span>${new Date().toLocaleTimeString()}</span>`;
-                            aDiv.appendChild(meta);
                         }
                     } catch (_) { /* skip */ }
                 }
             }
             aDiv.classList.remove('streaming-cursor');
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+            const meta = el('div', { className: 'msg-meta' });
+            meta.innerHTML = '<span>' + model + ' (耗時 ' + elapsed + 's)</span><span>' + new Date().toLocaleTimeString() + '</span>';
+            aDiv.appendChild(meta);
         }
     } catch (e) {
-        aDiv.textContent = `⚠ 錯誤：${e.message}`;
+        contentDiv.textContent = '⚠ 錯誤：' + e.message;
         aDiv.classList.remove('streaming-cursor');
     }
     btn.disabled = false;
@@ -712,7 +742,7 @@ function addVideoResult(model, prompt, src) {
         <div class="vtc-header"><span class="vtc-model">${model}</span><span class="vtc-status succeeded">SUCCEEDED</span></div>
         <div class="vtc-prompt">${prompt.substring(0, 120)}</div>
         <video class="video-player" controls src="${src}"></video>
-        <div style="margin-top:8px"><a href="${src}" download class="img-dl">下載影片</a></div>`;
+        <div style="margin-top:8px"><a href="${src}" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片 (在新分頁開啟)</a></div>`;
     cont.insertBefore(card, cont.firstChild);
 }
 
@@ -821,15 +851,48 @@ function renderRefList() {
 }
 function removeRef(i) { refFiles.splice(i, 1); renderRefList(); }
 
+
+// ── MuleAI Image Edit ──────────────────────────────────────────
+function onMuleaiImgFilesAdd(files) {
+    const remaining = 9 - muleaiImgRefFiles.length;
+    const toAdd = Array.from(files).slice(0, remaining);
+    muleaiImgRefFiles = [...muleaiImgRefFiles, ...toAdd];
+    renderMuleaiImgThumbs();
+    document.getElementById('muleaiImgFileInput').value = '';
+}
+
+function removeMuleaiImgFile(idx) {
+    muleaiImgRefFiles.splice(idx, 1);
+    renderMuleaiImgThumbs();
+}
+
+function renderMuleaiImgThumbs() {
+    const grid = document.getElementById('muleaiImgThumbGrid');
+    const countEl = document.getElementById('muleaiImgRefCount');
+    const addBtn = document.getElementById('muleaiImgAddBtn');
+    if (!grid) return;
+    grid.innerHTML = muleaiImgRefFiles.map((f, i) => `
+        <div class="img-thumb">
+            <img src="${URL.createObjectURL(f)}" alt="${f.name}">
+            <button class="img-thumb-remove" onclick="removeMuleaiImgFile(${i})">✕</button>
+        </div>`).join('');
+    if (countEl) countEl.textContent = `${muleaiImgRefFiles.length} / 9 張`;
+    if (addBtn) addBtn.style.display = muleaiImgRefFiles.length >= 9 ? 'none' : '';
+}
+
 // ── API helpers ───────────────────────────────────────────────
 async function apiPost(url, body) {
     const r = await fetch(url, { method: 'POST', headers: authHeader(), body: JSON.stringify(body) });
-    if (r.status === 401) { handleLogout(); throw new Error('Unauthorized'); }
+    if (r.status === 401) { if(url.includes('muleai')) throw new Error('MuleAI API Key 無效或未提供'); handleLogout(); throw new Error('Unauthorized'); }
     return r.json();
 }
 async function apiPostForm(url, fd) {
-    const r = await fetch(url, { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}` }, body: fd });
-    if (r.status === 401) { handleLogout(); throw new Error('Unauthorized'); }
+    const headers = { 'Authorization': `Bearer ${apiKey}` };
+    if (typeof muleApiKey !== 'undefined' && muleApiKey) {
+        headers['X-MuleAI-API-Key'] = muleApiKey;
+    }
+    const r = await fetch(url, { method: 'POST', headers: headers, body: fd });
+    if (r.status === 401) { if(url.includes('muleai')) throw new Error('MuleAI API Key 無效或未提供'); handleLogout(); throw new Error('Unauthorized'); }
     if (r.status === 413) throw new Error('上傳檔案過大（上限 200MB）');
     const ct = r.headers.get('Content-Type') || '';
     if (ct.includes('application/json')) return r.json();
@@ -921,4 +984,111 @@ function hideLoading() {
 // ── Utils ─────────────────────────────────────────────────────
 function el(tag, props = {}) {
     return Object.assign(document.createElement(tag), props);
+}
+
+
+// ── MuleAI Generation ───────────────────────────────────────────
+
+async function sendMuleAIVideo() {
+    const prompt = document.getElementById('muleaiVidPrompt').value.trim();
+    if (!prompt) { toast('請輸入 Prompt', 'error'); return; }
+    
+    const negPrompt = document.getElementById('muleaiVidNegPrompt').value.trim();
+    const resolution = document.getElementById('muleaiVidResolution').value;
+    const duration = parseInt(document.getElementById('muleaiVidDuration').value);
+    const extend = document.getElementById('muleaiVidPromptExtend').checked;
+    const seedRaw = document.getElementById('muleaiVidSeed').value.trim();
+    const seed = seedRaw !== '' ? parseInt(seedRaw) : null;
+    const model = document.getElementById('muleaiModel').value || 'wan2.7-i2v-spicy';
+    
+    const fileInput = document.getElementById('muleaiFirstFrameInput');
+    const firstFrameFile = fileInput.files[0];
+    if (!firstFrameFile) { toast('請上傳首幀圖片', 'error'); return; }
+
+    const btn = document.getElementById('muleaiVidSendBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg> 提交中...';
+
+    try {
+        const fd = new FormData();
+        fd.append('model', model);
+        fd.append('prompt', prompt);
+        fd.append('negative_prompt', negPrompt);
+        fd.append('resolution', resolution);
+        fd.append('duration', duration);
+        fd.append('prompt_extend', extend);
+        if (seed !== null) fd.append('seed', seed);
+        fd.append('image', firstFrameFile);
+        
+        const res = await apiPostForm('/api/muleai/video', fd);
+        
+        if (res.success && res.task_id) {
+            addMuleAIVideoTask(res.task_id, model, prompt, res.status);
+            toast('影片任務已提交，輪詢中...', 'info');
+        } else {
+            toast(res.error || '提交失敗', 'error');
+        }
+    } catch (e) {
+        toast('錯誤：' + e.message, 'error');
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> 生成影片';
+}
+
+function addMuleAIVideoTask(taskId, model, prompt, status) {
+    const cont = document.getElementById('muleaiVideoResults');
+    const empty = cont.querySelector('.empty-state');
+    if (empty) empty.remove();
+    const startTime = Date.now();
+    const card = el('div', { className: 'video-task-card', id: 'mtask-' + taskId });
+    card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status ' + (status ? status.toLowerCase() : 'pending') + '" id="mst-' + taskId + '">' + (status || 'PENDING') + '</span><span class="vtc-timer" id="mtm-' + taskId + '">0s</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><div class="vtc-progress"><div class="vtc-progress-bar" id="mpb-' + taskId + '" style="width:5%"></div></div><div id="mrv-' + taskId + '"></div>';
+    cont.insertBefore(card, cont.firstChild);
+    pollMuleAIVideo(taskId, startTime, model);
+}
+
+async function pollMuleAIVideo(taskId, startTime, model) {
+    let tries = 0;
+    const maxTries = 360; // Up to 30 mins
+    const poll = async () => {
+        tries++;
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const tmEl = document.getElementById('mtm-' + taskId);
+        if (tmEl) tmEl.textContent = elapsed >= 60 ? Math.floor(elapsed/60) + 'm' + (elapsed%60) + 's' : elapsed + 's';
+
+        if (tries > maxTries) { 
+            const stEl = document.getElementById('mst-' + taskId);
+            if (stEl) { stEl.textContent = 'TIMEOUT'; stEl.className = 'vtc-status failed'; }
+            return; 
+        }
+        
+        try {
+            const res = await fetch('/api/muleai/video/status/' + taskId, { headers: authHeader() });
+            const data = await res.json();
+            const st = data.status;
+            const stEl = document.getElementById('mst-' + taskId);
+            const pbEl = document.getElementById('mpb-' + taskId);
+            const rvEl = document.getElementById('mrv-' + taskId);
+
+            if (st === 'SUCCEEDED' || st === 'completed') {
+                if (stEl) { stEl.textContent = 'SUCCEEDED'; stEl.className = 'vtc-status succeeded'; }
+                if (pbEl) pbEl.style.width = '100%';
+                if (rvEl && data.videos && data.videos.length > 0) {
+                    const src = data.videos[0];
+                    rvEl.innerHTML = '<video class="video-player" controls src="' + src + '"></video><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片 (在新分頁開啟)</a></div>';
+                }
+                toast('影片生成完成！', 'success');
+            } else if (st === 'FAILED' || st === 'failed') {
+                if (stEl) { stEl.textContent = 'FAILED'; stEl.className = 'vtc-status failed'; }
+                if (pbEl) { pbEl.style.width = '100%'; pbEl.style.background = 'var(--red)'; }
+                if (rvEl) rvEl.innerHTML = '<p style="font-size:0.82rem;color:var(--red)">錯誤：' + (data.error_message || (data.error ? data.error.detail : '未知錯誤')) + '</p>';
+                toast('影片生成失敗', 'error');
+            } else {
+                if (stEl) { stEl.textContent = st || 'PENDING'; stEl.className = 'vtc-status ' + (st ? st.toLowerCase() : 'pending'); }
+                const prog = Math.min(5 + (elapsed / 60) * 80, 90);
+                if (pbEl) pbEl.style.width = prog.toFixed(1) + '%';
+                setTimeout(poll, 10000); // Check every 10s
+            }
+        } catch (_) { setTimeout(poll, 10000); }
+    };
+    poll();
 }
