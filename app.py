@@ -405,7 +405,14 @@ async def muleai_video_status(task_id: str, muleai_key: Optional[str] = Depends(
                 status = data.get("task_info", {}).get("status", "pending")
                 videos = data.get("videos", [])
                 err = data.get("task_info", {}).get("error")
+
+                if status == "completed" or status == "SUCCEEDED":
+                    if videos and len(videos) > 0:
+                        local_path = await _async_download_video(videos[0])
+                        if local_path:
+                            videos = [local_path]
                 return {"success": True, "status": status, "videos": videos, "error_message": err}
+
             else:
                 return JSONResponse(status_code=resp.status_code, content={"success": False, "error": resp.text})
     except Exception as e:
@@ -788,11 +795,13 @@ async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
         status = getattr(rsp.output, "task_status", "UNKNOWN")
         result = {"task_id": task_id, "status": status}
         if status == "SUCCEEDED":
+
             video_url = getattr(rsp.output, "video_url", "")
             if video_url:
-                # Do not download locally anymore, just pass the remote URL
-                result["local_path"] = video_url
+                local = await _async_download_video(video_url)
+                result["local_path"] = local if local else video_url
                 result["video_url"] = video_url
+
         elif status == "FAILED":
             result["error_message"] = getattr(rsp.output, "message", "Unknown")
         return result
@@ -845,6 +854,36 @@ def _handle_video_async_response(rsp, model):
         return JSONResponse(status_code=500, content={"error": f"No task_id in response. status={task_status}"})
     return JSONResponse(status_code=500, content={"error": f"API error ({rsp.status_code}): {rsp.message}", "code": rsp.code})
 
+
+import httpx
+async def _async_download_image(url: str) -> Optional[str]:
+    try:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        fp = OUTPUT_IMG_DIR / f"img_{ts}_{uuid.uuid4().hex[:6]}.png"
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url, timeout=30)
+            if r.status_code == 200:
+                fp.write_bytes(r.content)
+                return f"/outputs/images/{fp.name}"
+    except Exception as e:
+        print(f"Image download error: {e}")
+    return None
+
+async def _async_download_video(url: str) -> Optional[str]:
+    try:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        fp = OUTPUT_VID_DIR / f"vid_{ts}_{uuid.uuid4().hex[:6]}.mp4"
+        async with httpx.AsyncClient() as client:
+            async with client.stream('GET', url, timeout=120) as r:
+                if r.status_code == 200:
+                    with open(fp, "wb") as f:
+                        async for chunk in r.aiter_bytes(chunk_size=8192):
+                            f.write(chunk)
+                    return f"/outputs/videos/{fp.name}"
+    except Exception as e:
+        print(f"Video download error: {e}")
+    return None
+
 def _download_image(url):
     try:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -856,6 +895,21 @@ def _download_image(url):
     except Exception as e:
         print(f"Image download error: {e}")
     return None
+
+def _download_video(url):
+    try:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        fp = OUTPUT_VID_DIR / f"vid_{ts}_{uuid.uuid4().hex[:6]}.mp4"
+        r = http_requests.get(url, stream=True, timeout=120)
+        if r.status_code == 200:
+            with open(fp, "wb") as f:
+                for chunk in r.iter_content(8192):
+                    f.write(chunk)
+            return f"/outputs/videos/{fp.name}"
+    except Exception as e:
+        print(f"Video download error: {e}")
+    return None
+
 
 def _download_video(url):
     try:

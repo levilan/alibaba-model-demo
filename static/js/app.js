@@ -14,6 +14,40 @@ let muleaiImgRefFiles = [];
 let loadingTimerInterval = null;
 let asrFile = null;
 
+
+// ── History Persistence ───────────────────────────────────────
+const TaskHistory = {
+    save(type, model, prompt, url) {
+        try {
+            const hist = JSON.parse(localStorage.getItem('ai_tester_history') || '[]');
+            if (hist.length > 0 && hist[0].url === url) return;
+            hist.unshift({ type, model, prompt, url, ts: Date.now() });
+            localStorage.setItem('ai_tester_history', JSON.stringify(hist.slice(0, 50)));
+        } catch(e) { console.error('History save error', e); }
+    },
+    load() {
+        try {
+            const hist = JSON.parse(localStorage.getItem('ai_tester_history') || '[]');
+            hist.reverse().forEach(item => {
+                if (item.type === 'video') addVideoResult(item.model, item.prompt, item.url, true);
+                else if (item.type === 'muleai_video') addMuleAIVideoResult(item.model, item.prompt, item.url, true);
+            });
+        } catch(e) { console.error('History load error', e); }
+    }
+};
+
+function addMuleAIVideoResult(model, prompt, src, isHistory = false) {
+    const cont = document.getElementById('muleaiVideoResults');
+    if (cont) {
+        const empty = cont.querySelector('.empty-state');
+        if (empty) empty.remove();
+        const card = el('div', { className: 'video-task-card' });
+        card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status succeeded">SUCCEEDED</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><video class="video-player" controls src="' + src + '"></video><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a></div>';
+        cont.insertBefore(card, cont.firstChild);
+        if (!isHistory) TaskHistory.save('muleai_video', model, prompt, src);
+    }
+}
+
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     if (apiKey) attemptAutoLogin();
@@ -99,7 +133,7 @@ function showApp() { console.log('SHOW APP EXECUTING');
     app.style.display = 'flex';
     const masked = apiKey.slice(0, 6) + '****' + apiKey.slice(-4);
     document.getElementById('apiKeyLabel').textContent = masked;
-    try { populateSelectors(); console.log('Populate OK'); } catch(e) { console.log('POPULATE ERROR:', e.message); toast('UI 載入發生錯誤，請聯絡開發者', 'error'); }
+    try { populateSelectors(); console.log('Populate OK'); TaskHistory.load(); } catch(e) { console.log('POPULATE ERROR:', e.message); toast('UI 載入發生錯誤，請聯絡開發者', 'error'); }
 }
 
 function handleLogout() {
@@ -700,6 +734,7 @@ async function sendVideo() {
             toast('任務已提交，輪詢中...', 'info');
         } else if (res.success && res.video_url) {
             addVideoResult(model, prompt, res.local_path || res.video_url);
+            TaskHistory.save('video', model, prompt, res.local_path || res.video_url);
             toast('影片生成完成！', 'success');
         } else {
             toast(res.error || '生成失敗', 'error');
@@ -734,7 +769,7 @@ function addVideoTask(taskId, model, prompt, status) {
     pollVideo(taskId, startTime);
 }
 
-function addVideoResult(model, prompt, src) {
+function addVideoResult(model, prompt, src, isHistory = false) {
     const cont = document.getElementById('videoResults');
     cont.querySelector('.empty-state')?.remove();
     const card = el('div', { className: 'video-task-card' });
@@ -742,7 +777,7 @@ function addVideoResult(model, prompt, src) {
         <div class="vtc-header"><span class="vtc-model">${model}</span><span class="vtc-status succeeded">SUCCEEDED</span></div>
         <div class="vtc-prompt">${prompt.substring(0, 120)}</div>
         <video class="video-player" controls src="${src}"></video>
-        <div style="margin-top:8px"><a href="${src}" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片 (在新分頁開啟)</a></div>`;
+        <div style="margin-top:8px"><a href="${src}" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a></div>`;
     cont.insertBefore(card, cont.firstChild);
 }
 
@@ -1072,9 +1107,10 @@ async function pollMuleAIVideo(taskId, startTime, model) {
             if (st === 'SUCCEEDED' || st === 'completed') {
                 if (stEl) { stEl.textContent = 'SUCCEEDED'; stEl.className = 'vtc-status succeeded'; }
                 if (pbEl) pbEl.style.width = '100%';
-                if (rvEl && data.videos && data.videos.length > 0) {
+                                if (rvEl && data.videos && data.videos.length > 0) {
                     const src = data.videos[0];
-                    rvEl.innerHTML = '<video class="video-player" controls src="' + src + '"></video><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片 (在新分頁開啟)</a></div>';
+                    rvEl.innerHTML = '<video class="video-player" controls src="' + src + '"></video><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a></div>';
+                    TaskHistory.save('muleai_video', model, prompt, src);
                 }
                 toast('影片生成完成！', 'success');
             } else if (st === 'FAILED' || st === 'failed') {
