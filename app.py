@@ -21,9 +21,6 @@ import dashscope
 from dashscope.aigc.image_generation import ImageGeneration
 from dashscope.api_entities.dashscope_response import Message
 from dashscope import VideoSynthesis
-from dashscope.audio.tts import SpeechSynthesizer as TTSv1
-from dashscope.audio.asr import Recognition
-
 _INTL_WS_URL = "wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference"
 import requests as http_requests
 
@@ -49,8 +46,7 @@ dashscope.base_websocket_api_url = _INTL_WS_URL
 UPLOAD_DIR      = Path(__file__).parent / "static" / "uploads"
 OUTPUT_IMG_DIR  = Path(__file__).parent / "outputs" / "images"
 OUTPUT_VID_DIR  = Path(__file__).parent / "outputs" / "videos"
-OUTPUT_AUDIO_DIR = Path(__file__).parent / "outputs" / "audio"
-for d in (UPLOAD_DIR, OUTPUT_IMG_DIR, OUTPUT_VID_DIR, OUTPUT_AUDIO_DIR):
+for d in (UPLOAD_DIR, OUTPUT_IMG_DIR, OUTPUT_VID_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 # 靜態檔案掛載
@@ -168,35 +164,11 @@ MODELS = {
         {"id": "wan2.7-videoedit", "name": "萬相 2.7 視頻編輯", "group": "萬相視頻編輯",
          "desc": "文字/參考圖驅動編輯", "type": "vedit", "audio": False, "min_dur": 2, "max_dur": 15},
     ],
-    "voice": {
-        "asr": [
-            {"id": "qwen3-asr-flash", "name": "Qwen3 ASR Flash",  "group": "Qwen3",   "desc": "新一代極速識別，多語言"},
-            {"id": "paraformer-v2",   "name": "Fun-ASR 語音識別", "group": "Fun-ASR", "desc": "高精度普通話識別"},
-            {"id": "sensevoice-v1",   "name": "Fun-ASR 多語言",   "group": "Fun-ASR", "desc": "中/英/日/韓/粵多語言"},
-        ],
-                "tts": [
-            {"id": "qwen-tts", "name": "Qwen TTS", "group": "Qwen", "desc": "HTTP 同步合成，穩定可靠"},
-        ],
-    },
     "muleai": [
         {"id": "wan2.7-i2v-spicy", "name": "Wan 2.7 I2V Spicy", "group": "影片生成", "desc": "Spicy 模型 (支援文字/圖片)"},
         {"id": "z-image-spicy", "name": "Z-Image Spicy", "group": "圖片生成", "desc": "Spicy 圖片生成模型"},
     ],
 }
-
-# TTS 預設音色清單（qwen3-tts-flash / qwen-tts 共用）
-TTS_VOICES = [
-    {"id": "Cherry",   "name": "芊悅",   "gender": "女", "style": "親切"},
-    {"id": "Ethan",    "name": "逸軒",   "gender": "男", "style": "穩重"},
-    {"id": "Serena",   "name": "晨煦",   "gender": "女", "style": "清爽"},
-    {"id": "Wayne",    "name": "韋恩",   "gender": "男", "style": "磁性"},
-    {"id": "Summer",   "name": "甜茶",   "gender": "女", "style": "活潑"},
-    {"id": "Belle",    "name": "不吃魚", "gender": "女", "style": "元氣"},
-    {"id": "Cove",     "name": "詹妮弗", "gender": "女", "style": "知性"},
-    {"id": "Aria",     "name": "卡捷琳娜","gender": "女", "style": "優雅"},
-    {"id": "Kai",      "name": "嘉熙",   "gender": "男", "style": "輕快"},
-    {"id": "Luna",     "name": "月桐",   "gender": "女", "style": "溫柔"},
-]
 
 
 # ─── Auth: API Key per user ────────────────────────────────────────
@@ -254,7 +226,7 @@ async def login(data: LoginRequest):
 # ─── API: Models ──────────────────────────────────────────────────
 @app.get("/api/models")
 async def get_models(api_key: str = Depends(get_api_key)):
-    return {**MODELS, "tts_voices": TTS_VOICES}
+    return MODELS
 
 # ─── API: Text Generation (SSE Streaming) ─────────────────────────
 class TextGenerateRequest(BaseModel):
@@ -981,87 +953,6 @@ def _download_video(url):
     except Exception as e:
         print(f"Video download error: {e}")
     return None
-
-# ─── API: Voice ASR ───────────────────────────────────────────────
-_ASR_FMT = {".wav": "wav", ".mp3": "mp3", ".m4a": "m4a",
-            ".flac": "flac", ".ogg": "ogg", ".opus": "opus"}
-
-@app.post("/api/voice/asr")
-async def voice_asr(request: Request, api_key: str = Depends(get_api_key)):
-    form = await request.form()
-    model = form.get("model", "paraformer-v2")
-    audio_file = form.get("audio")
-    
-    if not audio_file or not hasattr(audio_file, "filename") or not audio_file.filename:
-        return JSONResponse(status_code=400, content={"error": "請上傳音訊檔案"})
-
-    ext = Path(audio_file.filename).suffix.lower() or ".wav"
-    tmp_path = UPLOAD_DIR / f"{uuid.uuid4().hex}{ext}"
-    with open(tmp_path, "wb") as out_f:
-        shutil.copyfileobj(audio_file.file, out_f)
-
-    try:
-        audio_fmt = _ASR_FMT.get(ext, "wav")
-        recognizer = Recognition(
-            model=model,
-            callback=None,
-            format=audio_fmt,
-            sample_rate=16000,
-            api_key=api_key,
-        )
-        rsp = recognizer.call(f"file://{tmp_path.resolve()}")
-        if rsp and rsp.status_code == 200:
-            sentences = getattr(rsp, "get_sentence", None)
-            if sentences:
-                text = " ".join(s.get("text", "") for s in rsp.get_sentence())
-            else:
-                out = rsp.output if hasattr(rsp, "output") else {}
-                text = (out.get("text", "") if isinstance(out, dict)
-                        else getattr(out, "text", str(rsp)))
-            return {"success": True, "text": text, "model": model}
-        return JSONResponse(status_code=500, content={"error": f"ASR 失敗: {getattr(rsp, 'message', str(rsp))}"})
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        tmp_path.unlink(missing_ok=True)
-
-# ─── API: Voice TTS ───────────────────────────────────────────────
-class VoiceTTSRequest(BaseModel):
-    model: str = "qwen-tts"
-    voice: str = "Cherry"
-    text: str = ""
-    format: str = "mp3"
-
-@app.post("/api/voice/tts")
-async def voice_tts(data: VoiceTTSRequest, api_key: str = Depends(get_api_key)):
-    text = data.text.strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="請輸入合成文字")
-    if len(text) > 4000:
-        raise HTTPException(status_code=400, detail="文字長度不可超過 4000 字")
-
-    try:
-        rsp = TTSv1.call(
-            model=data.model,
-            text=text,
-            voice=data.voice,
-            format=data.format,
-            sample_rate=22050,
-            api_key=api_key,
-        )
-        audio_data = rsp.get_audio_data()
-        if audio_data:
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"tts_{ts}_{uuid.uuid4().hex[:6]}.{data.format}"
-            fp = OUTPUT_AUDIO_DIR / filename
-            fp.write_bytes(audio_data)
-            return {"success": True, "audio_url": f"/outputs/audio/{filename}",
-                    "model": data.model, "voice": data.voice}
-        response = rsp.get_response()
-        msg = getattr(response, "message", None) or getattr(response, "text", None) or str(response)
-        return JSONResponse(status_code=500, content={"error": f"TTS 失敗: {msg}"})
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
