@@ -212,7 +212,11 @@ def get_api_key(request: Request) -> str:
     return api_key
 
 def get_muleai_api_key(request: Request) -> Optional[str]:
-    return request.headers.get("X-MuleAI-API-Key", "").strip() or None
+    return (
+        request.headers.get("X-NenAI-API-Key", "").strip()
+        or request.headers.get("X-MuleAI-API-Key", "").strip()
+        or None
+    )
 
 # ─── Pages ────────────────────────────────────────────────────────
 @app.get("/")
@@ -387,21 +391,26 @@ async def muleai_generate(
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
     if not muleai_key:
-        raise HTTPException(status_code=401, detail="MuleAI API Key is missing.")
+        raise HTTPException(status_code=401, detail="NenAI API Key is missing.")
 
-    MULEAI_URL = f"https://api.mulerouter.ai/vendors/carrothub/v1/{model}/generation"
+    is_image_model = "z-image" in model
+    if is_image_model:
+        MULEAI_URL = "https://nen.com.tw/v1/image/generations"
+    else:
+        MULEAI_URL = "https://nen.com.tw/v1/video/generations"
+
     headers = {
         "Authorization": f"Bearer {muleai_key}",
         "Content-Type": "application/json"
     }
-    
+
     payload = {
+        "model": model,
         "prompt": prompt,
-        "prompt_extend": prompt_extend
     }
-    
-    if "z-image" not in model:
-        payload["resolution"] = resolution
+
+    if not is_image_model:
+        payload["size"] = resolution
         payload["duration"] = duration
         if image:
             image_bytes = await image.read()
@@ -413,6 +422,7 @@ async def muleai_generate(
         else:
             raise HTTPException(status_code=400, detail="Image is required for video generation")
     else:
+        payload["prompt_extend"] = prompt_extend
         if img_resolution:
             parts = img_resolution.split("*")
             if len(parts) == 2:
@@ -441,9 +451,12 @@ async def muleai_generate(
 @app.get("/api/muleai/status/{model}/{task_id}")
 async def muleai_task_status(model: str, task_id: str, muleai_key: Optional[str] = Depends(get_muleai_api_key)):
     if not muleai_key:
-        raise HTTPException(status_code=401, detail="MuleAI API Key is missing.")
+        raise HTTPException(status_code=401, detail="NenAI API Key is missing.")
 
-    MULEAI_STATUS_URL = f"https://api.mulerouter.ai/vendors/carrothub/v1/{model}/generation/{task_id}"
+    if "z-image" in model:
+        MULEAI_STATUS_URL = f"https://nen.com.tw/v1/image/generations/{task_id}"
+    else:
+        MULEAI_STATUS_URL = f"https://nen.com.tw/v1/video/generations/{task_id}"
     headers = {
         "Authorization": f"Bearer {muleai_key}"
     }

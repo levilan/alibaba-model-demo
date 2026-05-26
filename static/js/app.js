@@ -161,7 +161,7 @@ function authHeader() {
     return { 
         'Authorization': 'Bearer ' + apiKey, 
         'Content-Type': 'application/json',
-        'X-MuleAI-API-Key': muleApiKey || ''
+        'X-NenAI-API-Key': muleApiKey || ''
     };
 }
 
@@ -1117,10 +1117,10 @@ async function apiPost(url, body) {
 async function apiPostForm(url, fd) {
     const headers = { 'Authorization': `Bearer ${apiKey}` };
     if (typeof muleApiKey !== 'undefined' && muleApiKey) {
-        headers['X-MuleAI-API-Key'] = muleApiKey;
+        headers['X-NenAI-API-Key'] = muleApiKey;
     }
     const r = await fetch(url, { method: 'POST', headers: headers, body: fd });
-    if (r.status === 401) { if(url.includes('muleai')) throw new Error('MuleAI API Key 無效或未提供'); handleLogout(); throw new Error('Unauthorized'); }
+    if (r.status === 401) { if(url.includes('muleai')) throw new Error('NenAI API Key 無效或未提供'); handleLogout(); throw new Error('Unauthorized'); }
     if (r.status === 413) throw new Error('上傳檔案過大（上限 200MB）');
     const ct = r.headers.get('Content-Type') || '';
     if (ct.includes('application/json')) return r.json();

@@ -1,74 +1,130 @@
-# Alibaba Cloud AI Model Testing Platform
+# AI Model Tester
 
-這是一個基於 FastAPI (Python) 與原生 JavaScript/HTML 建構的 AI 模型測試平台，支援阿里雲 (DashScope) 以及 MuleRouter (MuleAI) 的模型 API。
-
-## 專案架構
-
-- **`app.py`**: FastAPI 後端主程式（負責 API 端點、模型清單管理、路由轉發、非同步串流處理與檔案下載）。
-- **`templates/index.html`**: 前端主頁面（UI 介面結構、各功能分頁、登入畫面）。
-- **`static/js/app.js`**: 前端核心邏輯（API 呼叫、狀態管理、UI 互動、動態渲染、歷史紀錄與輪詢機制）。
-- **`static/css/style.css`**: 全局視覺樣式。
-
-## 核心功能模組
-
-1. **登入與驗證機制**:
-   使用 API Key 進行登入。前端呼叫 `/login` 端點，成功後自 `/api/models` 取得最新模型清單，自動隱藏登入框並展示主應用程式 (`mainApp`)。
-2. **文字生成 (Text Generation)**: 
-   支援 Qwen 等大語言模型，並具備 SSE (Server-Sent Events) 即時串流輸出與 Thinking 過程顯示功能。支援 `Ctrl+Enter` 快速發送。
-3. **圖片與影片生成**: 
-   支援非同步任務提交。提交後取得 `task_id`，前端會自動輪詢狀態。生成完畢後，後端會自動將檔案下載至伺服器本機的 `outputs/` 資料夾，並於網頁預覽及供使用者下載。
-4. **MuleAI (進階圖生影片)**:
-   提供專屬頁籤，支援額外輸入 MuleAI API Key (`X-MuleAI-API-Key`)，目前綁定 `wan2.7-i2v-spicy` (圖生影片) 模型。支援上傳首幀參考圖片、解析度與時長設定，直接將遠端生成結果渲染為 `<video>` 播放器。
-
-## 近期重要更新內容
-
-- **歷史紀錄保存 (Local History)**：前端導入 `localStorage` 機制，使用者生成的圖片與影片任務會保留在瀏覽器中，重新整理網頁後自動還原歷史卡片，不再遺失生成進度。
-- **本機非同步下載機制**：全面重構後端的檔案下載 (`_download_image` 與 `_download_video`)，改用 `httpx.AsyncClient` 非同步串流下載，確保大檔案影片存入本地端時不阻塞文字生成的 SSE 串流。
-- **MuleAI (I2V) 深度整合**：修復了 MuleRouter 的 401 錯誤攔截邏輯（填錯 MuleAI Key 時不再強制登出），並完美對接圖生影片的 FormData 上傳架構。
-- **語音模型維護中**：語音模型 (Voice) 相關功能標示為修復中。
-
-## 部署與啟動方式
-
-本專案強烈建議使用 Docker 進行環境隔離與快速部署。
+## 快速部署
 
 ### 前置需求
-- 已安裝 [Docker](https://docs.docker.com/get-docker/) 與 [Docker Compose](https://docs.docker.com/compose/install/)
-- 準備好您的 DashScope API Key（格式通常為 `sk-...`）
 
-### 啟動步驟
+- [Docker](https://docs.docker.com/get-docker/) 與 Docker Compose
+- DashScope API Key（格式：`sk-...`）
+- NenAI API Key（NenAI 模型專用，選用）
 
-1. **複製專案到本地端**：
-   ```bash
-   git clone <你的專案網址>
-   cd ai-model-tester
-   ```
+### Docker 部署（推薦）
 
-2. **使用 Docker Compose 建置並啟動服務**：
-   ```bash
-   docker-compose up -d --build
-   ```
+```bash
+git clone <專案網址>
+cd ai-model-tester
+docker compose up -d --build
+```
 
-3. **開始使用**：
-   - 開啟您的瀏覽器，前往：`http://localhost:5050`
-   - 在登入畫面輸入您的 API Key 即可開始操作。
+瀏覽器開啟 `http://localhost:5050`，輸入 API Key 登入。
 
-### 常用維護指令
+**常用指令**
 
-- **查看運行日誌**：
-  ```bash
-  docker logs -f ai-model-tester-ai-model-tester-1
-  ```
-- **關閉服務**：
-  ```bash
-  docker-compose down
-  ```
-- **徹底清除快取並重新建置 (強制更新)**：
-  ```bash
-  docker-compose build --no-cache && docker-compose up -d
-  ```
+```bash
+# 查看日誌
+docker logs -f ai-model-tester-ai-model-tester-1
 
-## 開發者指南：如何新增模型
-1. 打開 `app.py`。
-2. 找到 `MODELS` 字典變數。
-3. 依照現有格式，在對應的陣列 (例如 `"text"`, `"image"`, `"video"`) 中加入新的字典物件（需包含 `id`, `name`, `group`, `desc` 等欄位）。
-4. 儲存檔案後，執行 `docker-compose restart ai-model-tester` 重啟後端。前端重新載入後，下拉選單即會自動更新。
+# 停止服務
+docker compose down
+
+# 強制重新建置
+docker compose build --no-cache && docker compose up -d
+```
+
+### 本機直接執行
+
+```bash
+pip install -r requirements.txt
+python app.py
+```
+
+---
+
+## 可用模型列表
+
+### 文字生成（需 DashScope API Key）
+
+| 模型 ID | 名稱 | 分類 |
+|---|---|---|
+| qwen3.7-max | Qwen3.7 Max | 旗艦 |
+| qwen3.6-max-preview | Qwen3.6 Max | 旗艦 |
+| qwen3-max | Qwen3 Max | 旗艦 |
+| qwen3.6-plus | Qwen3.6 Plus | 均衡 |
+| qwen3.5-plus | Qwen3.5 Plus | 均衡 |
+| qwen-plus | Qwen Plus | 均衡 |
+| qwen3.6-flash | Qwen3.6 Flash | 極速 |
+| qwen3.5-flash | Qwen3.5 Flash | 極速 |
+| qwen-flash | Qwen Flash | 極速 |
+| qwen3-coder-plus | Qwen3 Coder Plus | 代碼 |
+| qwen3-coder-flash | Qwen3 Coder Flash | 代碼 |
+| qwen-mt-plus | Qwen MT Plus | 翻譯 |
+| qwen-mt-flash | Qwen MT Flash | 翻譯 |
+| qwen-mt-lite | Qwen MT Lite | 翻譯 |
+| qwen-flash-character | Qwen Flash Character | 角色 |
+| deepseek-v3.2 | DeepSeek V3.2 | 第三方 |
+
+### 圖片生成（需 DashScope API Key）
+
+| 模型 ID | 名稱 | 分類 |
+|---|---|---|
+| qwen-image-2.0-pro | 千問圖像 2.0 Pro | 千問文生圖 |
+| qwen-image-2.0 | 千問圖像 2.0 | 千問文生圖 |
+| qwen-image-max | 千問圖像 Max | 千問文生圖 |
+| qwen-image-plus | 千問圖像 Plus | 千問文生圖 |
+| wan2.6-t2i | 萬相 2.6 T2I | 萬相文生圖 |
+| z-image-turbo | Z-Image Turbo | Z-Image |
+| wan2.7-image-pro | 萬相 2.7 Image Pro | 萬相圖像編輯 |
+| wan2.7-image | 萬相 2.7 Image | 萬相圖像編輯 |
+| wan2.6-image | 萬相 2.6 Image | 萬相圖像編輯 |
+| qwen-image-edit-max | 千問圖像編輯 Max | 千問圖像編輯 |
+| qwen-image-edit-plus | 千問圖像編輯 Plus | 千問圖像編輯 |
+
+### 影片生成（需 DashScope API Key）
+
+| 模型 ID | 名稱 | 分類 |
+|---|---|---|
+| wan2.7-t2v | 萬相 2.7 T2V | 文生影片 |
+| wan2.6-t2v | 萬相 2.6 T2V | 文生影片 |
+| wan2.7-i2v | 萬相 2.7 I2V | 圖生影片 |
+| wan2.6-i2v | 萬相 2.6 I2V | 圖生影片 |
+| wan2.6-i2v-flash | 萬相 2.6 I2V Flash | 圖生影片 |
+| wan2.7-r2v | 萬相 2.7 R2V | 參考生影片 |
+| wan2.6-r2v | 萬相 2.6 R2V | 參考生影片 |
+| wan2.6-r2v-flash | 萬相 2.6 R2V Flash | 參考生影片 |
+| happyhorse-1.0-t2v | HappyHorse T2V | HappyHorse |
+| happyhorse-1.0-i2v | HappyHorse I2V | HappyHorse |
+| happyhorse-1.0-r2v | HappyHorse R2V | HappyHorse |
+| happyhorse-1.0-video-edit | HappyHorse Video Edit | HappyHorse |
+| wan2.7-videoedit | 萬相 2.7 視頻編輯 | 萬相視頻編輯 |
+
+### NenAI 模型（需 NenAI API Key）
+
+| 模型 ID | 名稱 | 分類 |
+|---|---|---|
+| wan2.7-i2v-spicy | Wan 2.7 I2V Spicy | 影片生成 |
+| z-image-spicy | Z-Image Spicy | 圖片生成 |
+
+### 語音（需 DashScope API Key）
+
+**ASR 語音辨識**
+
+| 模型 ID | 名稱 |
+|---|---|
+| qwen3-asr-flash | Qwen3 ASR Flash |
+| paraformer-v2 | Fun-ASR 語音識別 |
+| sensevoice-v1 | Fun-ASR 多語言 |
+
+**TTS 語音合成**
+
+| 模型 ID | 名稱 | 音色 |
+|---|---|---|
+| qwen-tts / Cherry | 芊悅 | 女・親切 |
+| qwen-tts / Ethan | 逸軒 | 男・穩重 |
+| qwen-tts / Serena | 晨煦 | 女・清爽 |
+| qwen-tts / Wayne | 韋恩 | 男・磁性 |
+| qwen-tts / Summer | 甜茶 | 女・活潑 |
+| qwen-tts / Belle | 不吃魚 | 女・元氣 |
+| qwen-tts / Cove | 詹妮弗 | 女・知性 |
+| qwen-tts / Aria | 卡捷琳娜 | 女・優雅 |
+| qwen-tts / Kai | 嘉熙 | 男・輕快 |
+| qwen-tts / Luna | 月桐 | 女・溫柔 |
