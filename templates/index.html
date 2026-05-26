@@ -87,6 +87,10 @@
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
                 語音模型（修復中）
             </button>
+            <button class="tab-btn" data-tab="omni" onclick="switchTab('omni')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+                全模態即時通話
+            </button>
             <button class="tab-btn" data-tab="muleai" onclick="switchTab('muleai')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                 MuleAI
@@ -611,27 +615,35 @@
     <section id="tab-muleai" class="tab-content">
         <aside class="panel-sidebar">
             <div class="sidebar-section">
-                <div class="sidebar-section-title">基本設定 (MuleAI I2V)</div>
+                <div class="sidebar-section-title">基本設定 (MuleAI)</div>
                 <div class="form-group">
                     <label class="form-label">模型</label>
-                    <select id="muleaiModel" class="select-input"></select>
+                    <select id="muleaiModel" class="select-input" onchange="onMuleaiModelChange()"></select>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="muleaiVidResGroup">
                     <label class="form-label">解析度</label>
                     <select id="muleaiVidResolution" class="select-input">
                         <option value="1080p">1080p</option>
                         <option value="720p">720p</option>
                     </select>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="muleaiImgResGroup" style="display:none">
+                    <label class="form-label">圖片尺寸</label>
+                    <select id="muleaiImgResolution" class="select-input">
+                        <option value="1024*1536">1024 × 1536 (9:16)</option>
+                        <option value="1536*1024">1536 × 1024 (16:9)</option>
+                        <option value="1024*1024">1024 × 1024 (1:1)</option>
+                    </select>
+                </div>
+                <div class="form-group" id="muleaiVidDurGroup">
                     <label class="form-label">時長 (秒) <span class="param-val" id="muleaiVidDurVal">5</span></label>
                     <input type="range" id="muleaiVidDuration" min="2" max="15" step="1" value="5"
                            oninput="document.getElementById('muleaiVidDurVal').textContent=this.value">
                 </div>
             </div>
             
-            <div class="sidebar-section">
-                <div class="sidebar-section-title">首幀圖片 (必填)</div>
+            <div class="sidebar-section" id="muleaiImgUploadSection">
+                <div class="sidebar-section-title">首幀圖片 (影片必填)</div>
                 <div class="upload-zone" id="muleaiFirstFrameUpZone">
                     <input type="file" id="muleaiFirstFrameInput" accept="image/jpeg, image/png, image/webp"
                            onchange="previewImg(event,'muleaiFirstFramePreview','muleaiFirstFrameUpZone')">
@@ -699,6 +711,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=6"></script>
+<script src="/static/js/app.js?v=7"></script>
 </body>
 </html>

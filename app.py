@@ -8,7 +8,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any, AsyncGenerator
 
-from fastapi import FastAPI, Request, Depends, HTTPException, File, UploadFile, Form
+from fastapi import FastAPI, Request, Depends, HTTPException, File, UploadFile, Form, WebSocket, WebSocketDisconnect
+import websockets
+import asyncio
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -177,7 +179,8 @@ MODELS = {
         ],
     },
     "muleai": [
-        {"id": "wan2.7-i2v-spicy", "name": "Wan 2.7 I2V Spicy", "group": "MuleAI", "desc": "Spicy 模型 (支援文字/圖片)"},
+        {"id": "wan2.7-i2v-spicy", "name": "Wan 2.7 I2V Spicy", "group": "影片生成", "desc": "Spicy 模型 (支援文字/圖片)"},
+        {"id": "z-image-spicy", "name": "Z-Image Spicy", "group": "圖片生成", "desc": "Spicy 圖片生成模型"},
     ],
 }
 
@@ -265,7 +268,45 @@ class TextGenerateRequest(BaseModel):
     stream: bool = True
     enable_thinking: bool = False
 
+
+@app.websocket("/ws/omni")
+async def ws_omni_proxy(websocket: WebSocket, api_key: str, model: str = "qwen3.5-omni-flash-realtime"):
+    await websocket.accept()
+    url = f"wss://dashscope-intl.aliyuncs.com/api-ws/v1/realtime?model={model}"
+    headers = {"Authorization": f"Bearer {api_key}"}
+    try:
+        async with websockets.connect(url, additional_headers=headers) as target_ws:
+            async def forward_to_target():
+                try:
+                    while True:
+                        data = await websocket.receive_text()
+                        await target_ws.send(data)
+                except Exception:
+                    pass
+
+            async def forward_to_client():
+                try:
+                    while True:
+                        data = await target_ws.recv()
+                        await websocket.send_text(data)
+                except Exception:
+                    pass
+            
+            task1 = asyncio.create_task(forward_to_target())
+            task2 = asyncio.create_task(forward_to_client())
+            await asyncio.wait([task1, task2], return_when=asyncio.FIRST_COMPLETED)
+            task1.cancel()
+            task2.cancel()
+    except Exception as e:
+        print(f"WS proxy error: {e}")
+    finally:
+        try:
+            await websocket.close()
+        except:
+            pass
+
 @app.post("/api/text/generate")
+
 async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_api_key)):
     if not data.prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
@@ -329,17 +370,18 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
 
 
 # ─── API: MuleAI Video Generation (I2V) ───────────────────────────────────────
-@app.post("/api/muleai/video")
-async def muleai_video_generate(
+@app.post("/api/muleai/generate")
+async def muleai_generate(
     request: Request,
     model: str = Form("wan2.7-i2v-spicy"),
     prompt: str = Form(""),
     negative_prompt: Optional[str] = Form(None),
     resolution: str = Form("1080p"),
-    duration: int = Form(5),
+    duration: Optional[int] = Form(5),
+    img_resolution: Optional[str] = Form("1024*1536"),
     prompt_extend: bool = Form(True),
     seed: Optional[int] = Form(None),
-    image: UploadFile = File(...),
+    image: Optional[UploadFile] = File(None),
     muleai_key: Optional[str] = Depends(get_muleai_api_key)
 ):
     if not prompt:
@@ -347,26 +389,36 @@ async def muleai_video_generate(
     if not muleai_key:
         raise HTTPException(status_code=401, detail="MuleAI API Key is missing.")
 
-    # We need to read the image file and either convert it to base64 or upload it somewhere.
-    # The MuleRouter documentation says "URL or Base64-encoded string".
-    image_bytes = await image.read()
-    import base64
-    b64_img = base64.b64encode(image_bytes).decode('utf-8')
-    mime_type = image.content_type or 'image/jpeg'
-    data_uri = f"data:{mime_type};base64,{b64_img}"
-
-    MULEAI_VIDEO_URL = f"https://api.mulerouter.ai/vendors/carrothub/v1/{model}/generation"
+    MULEAI_URL = f"https://api.mulerouter.ai/vendors/carrothub/v1/{model}/generation"
     headers = {
         "Authorization": f"Bearer {muleai_key}",
         "Content-Type": "application/json"
     }
+    
     payload = {
         "prompt": prompt,
-        "image": data_uri,
-        "resolution": resolution,
-        "duration": duration,
         "prompt_extend": prompt_extend
     }
+    
+    if "z-image" not in model:
+        payload["resolution"] = resolution
+        payload["duration"] = duration
+        if image:
+            image_bytes = await image.read()
+            import base64
+            b64_img = base64.b64encode(image_bytes).decode('utf-8')
+            mime_type = image.content_type or 'image/jpeg'
+            data_uri = f"data:{mime_type};base64,{b64_img}"
+            payload["image"] = data_uri
+        else:
+            raise HTTPException(status_code=400, detail="Image is required for video generation")
+    else:
+        if img_resolution:
+            parts = img_resolution.split("*")
+            if len(parts) == 2:
+                payload["width"] = int(parts[0])
+                payload["height"] = int(parts[1])
+
     if negative_prompt:
         payload["negative_prompt"] = negative_prompt
     if seed is not None:
@@ -375,23 +427,23 @@ async def muleai_video_generate(
     import httpx
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(MULEAI_VIDEO_URL, headers=headers, json=payload)
+            resp = await client.post(MULEAI_URL, headers=headers, json=payload)
             
             if resp.status_code == 202 or resp.status_code == 200:
                 data = resp.json()
                 task_id = data.get("task_info", {}).get("id") or data.get("id")
-                return {"success": True, "task_id": task_id, "status": "pending"}
+                return {"success": True, "task_id": task_id, "status": "pending", "model": model}
             else:
                 return JSONResponse(status_code=resp.status_code, content={"success": False, "error": resp.text})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/muleai/video/status/{task_id}")
-async def muleai_video_status(task_id: str, muleai_key: Optional[str] = Depends(get_muleai_api_key)):
+@app.get("/api/muleai/status/{model}/{task_id}")
+async def muleai_task_status(model: str, task_id: str, muleai_key: Optional[str] = Depends(get_muleai_api_key)):
     if not muleai_key:
         raise HTTPException(status_code=401, detail="MuleAI API Key is missing.")
 
-    MULEAI_STATUS_URL = f"https://api.mulerouter.ai/vendors/carrothub/v1/wan2.7-i2v-spicy/generation/{task_id}"
+    MULEAI_STATUS_URL = f"https://api.mulerouter.ai/vendors/carrothub/v1/{model}/generation/{task_id}"
     headers = {
         "Authorization": f"Bearer {muleai_key}"
     }
@@ -404,14 +456,21 @@ async def muleai_video_status(task_id: str, muleai_key: Optional[str] = Depends(
                 data = resp.json()
                 status = data.get("task_info", {}).get("status", "pending")
                 videos = data.get("videos", [])
+                images = data.get("images", [])
+                if not images and data.get("image_url"):
+                    images = [data.get("image_url")]
                 err = data.get("task_info", {}).get("error")
 
-                if status == "completed" or status == "SUCCEEDED":
+                if status.upper() in ("COMPLETED", "SUCCEEDED"):
                     if videos and len(videos) > 0:
                         local_path = await _async_download_video(videos[0])
                         if local_path:
                             videos = [local_path]
-                return {"success": True, "status": status, "videos": videos, "error_message": err}
+                    elif images and len(images) > 0:
+                        local_path = await _async_download_image(images[0].get("url") if isinstance(images[0], dict) else images[0])
+                        if local_path:
+                            images = [local_path]
+                return {"success": True, "status": status, "videos": videos, "images": images, "error_message": err}
 
             else:
                 return JSONResponse(status_code=resp.status_code, content={"success": False, "error": resp.text})
@@ -895,21 +954,6 @@ def _download_image(url):
     except Exception as e:
         print(f"Image download error: {e}")
     return None
-
-def _download_video(url):
-    try:
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        fp = OUTPUT_VID_DIR / f"vid_{ts}_{uuid.uuid4().hex[:6]}.mp4"
-        r = http_requests.get(url, stream=True, timeout=120)
-        if r.status_code == 200:
-            with open(fp, "wb") as f:
-                for chunk in r.iter_content(8192):
-                    f.write(chunk)
-            return f"/outputs/videos/{fp.name}"
-    except Exception as e:
-        print(f"Video download error: {e}")
-    return None
-
 
 def _download_video(url):
     try:

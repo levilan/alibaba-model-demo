@@ -31,6 +31,7 @@ const TaskHistory = {
             hist.reverse().forEach(item => {
                 if (item.type === 'video') addVideoResult(item.model, item.prompt, item.url, true);
                 else if (item.type === 'muleai_video') addMuleAIVideoResult(item.model, item.prompt, item.url, true);
+                else if (item.type === 'muleai_image') addMuleAIImageResult(item.model, item.prompt, item.url, true);
             });
         } catch(e) { console.error('History load error', e); }
     }
@@ -45,6 +46,18 @@ function addMuleAIVideoResult(model, prompt, src, isHistory = false) {
         card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status succeeded">SUCCEEDED</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><video class="video-player" controls src="' + src + '"></video><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a></div>';
         cont.insertBefore(card, cont.firstChild);
         if (!isHistory) TaskHistory.save('muleai_video', model, prompt, src);
+    }
+}
+
+function addMuleAIImageResult(model, prompt, src, isHistory = false) {
+    const cont = document.getElementById('muleaiVideoResults');
+    if (cont) {
+        const empty = cont.querySelector('.empty-state');
+        if (empty) empty.remove();
+        const card = el('div', { className: 'video-task-card' });
+        card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status succeeded">SUCCEEDED</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><img src="' + src + '" alt="Generated Image" style="max-width:100%; border-radius:8px;"><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載圖片</a></div>';
+        cont.insertBefore(card, cont.firstChild);
+        if (!isHistory) TaskHistory.save('muleai_image', model, prompt, src);
     }
 }
 
@@ -153,11 +166,31 @@ function authHeader() {
 }
 
 // ── Selectors ─────────────────────────────────────────────────
+function onMuleaiModelChange() {
+    const model = document.getElementById('muleaiModel').value;
+    const isImage = model.includes('z-image');
+    document.getElementById('muleaiVidResGroup').style.display = isImage ? 'none' : '';
+    document.getElementById('muleaiImgResGroup').style.display = isImage ? '' : 'none';
+    document.getElementById('muleaiVidDurGroup').style.display = isImage ? 'none' : '';
+    document.getElementById('muleaiImgUploadSection').style.display = isImage ? 'none' : '';
+    
+    const promptInput = document.getElementById('muleaiVidPrompt');
+    if (promptInput) {
+        promptInput.placeholder = isImage ? "描述圖片畫面與細節..." : "描述影片動作與細節...";
+    }
+    
+    const sendBtn = document.getElementById('muleaiVidSendBtn');
+    if (sendBtn) {
+        sendBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>\n' + (isImage ? '生成圖片' : '生成影片');
+    }
+}
+
 function populateSelectors() {
     populateSelect('textModel', models.text);
     populateSelect('muleaiModel', models.muleai || []);
     onImgTaskChange();
     onVidTaskChange();
+    onMuleaiModelChange();
     populateSelect('asrModel', models.voice?.asr || []);
     populateSelect('ttsModel', models.voice?.tts || []);
     populateTtsVoices();
@@ -341,6 +374,166 @@ function switchTab(tab) {
     document.querySelectorAll('.tab-content').forEach(s => s.classList.remove('active'));
     document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
     document.getElementById(`tab-${tab}`).classList.add('active');
+}
+
+
+// ── Omni Realtime ─────────────────────────────────────────────
+let omniAudioContext;
+let omniMicrophone;
+let omniProcessor;
+let omniWebSocket;
+let outAudioCtx;
+let nextPlayTime = 0;
+
+async function startOmniConversation() {
+    if(!apiKey) { alert('請先設定 API Key'); return; }
+    
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const model = document.getElementById('omniModel').value;
+    const wsUrl = `${protocol}://${window.location.host}/ws/omni?api_key=${apiKey}&model=${model}`;
+    omniWebSocket = new WebSocket(wsUrl);
+    
+    omniWebSocket.onopen = async () => {
+        logOmniMessage('System', 'Connected. Setting up audio...');
+        
+        const setupMsg = {
+            "event_id": crypto.randomUUID(),
+            "type": "session.update",
+            "session": {
+                "modalities": ["text", "audio"],
+                "voice": document.getElementById('omniVoice').value,
+                "input_audio_format": "pcm16",
+                "output_audio_format": "pcm16",
+                "instructions": document.getElementById('omniInstructions').value,
+                "input_audio_transcription": {
+                    "model": null
+                },
+                "turn_detection": {
+                    "type": "server_vad",
+                    "threshold": 0.2,
+                    "prefix_padding_ms": 300,
+                    "silence_duration_ms": 800
+                }
+            }
+        };
+        omniWebSocket.send(JSON.stringify(setupMsg));
+        
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            omniAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            omniMicrophone = omniAudioContext.createMediaStreamSource(stream);
+            
+            omniProcessor = omniAudioContext.createScriptProcessor(4096, 1, 1);
+            omniProcessor.onaudioprocess = (e) => {
+                if (omniWebSocket.readyState !== WebSocket.OPEN) return;
+                
+                const float32Array = e.inputBuffer.getChannelData(0);
+                const int16Array = new Int16Array(float32Array.length);
+                for (let i = 0; i < float32Array.length; i++) {
+                    let s = Math.max(-1, Math.min(1, float32Array[i]));
+                    int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                }
+                
+                const bytes = new Uint8Array(int16Array.buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                const base64 = btoa(binary);
+                
+                omniWebSocket.send(JSON.stringify({
+                    "event_id": crypto.randomUUID(),
+                    "type": "input_audio_buffer.append",
+                    "audio": base64
+                }));
+            };
+            
+            omniMicrophone.connect(omniProcessor);
+            omniProcessor.connect(omniAudioContext.destination);
+            
+            document.getElementById('omniStartBtn').disabled = true;
+            document.getElementById('omniStopBtn').disabled = false;
+            logOmniMessage('System', 'Microphone active. Start speaking...');
+        } catch (err) {
+            logOmniMessage('Error', 'Microphone setup failed: ' + err.message);
+            stopOmniConversation();
+        }
+    };
+    
+    outAudioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+    nextPlayTime = 0;
+    
+    omniWebSocket.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'response.audio.delta' && msg.delta) {
+            const binary = atob(msg.delta);
+            const int16Array = new Int16Array(binary.length / 2);
+            for (let i = 0; i < binary.length; i+=2) {
+                int16Array[i/2] = binary.charCodeAt(i) | (binary.charCodeAt(i+1) << 8);
+            }
+            
+            const float32Array = new Float32Array(int16Array.length);
+            for (let i = 0; i < int16Array.length; i++) {
+                float32Array[i] = int16Array[i] / 32768.0;
+            }
+            
+            const audioBuffer = outAudioCtx.createBuffer(1, float32Array.length, 24000);
+            audioBuffer.getChannelData(0).set(float32Array);
+            
+            const source = outAudioCtx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(outAudioCtx.destination);
+            
+            const currentTime = outAudioCtx.currentTime;
+            if (nextPlayTime < currentTime) nextPlayTime = currentTime + 0.1;
+            source.start(nextPlayTime);
+            nextPlayTime += audioBuffer.duration;
+            
+        } else if (msg.type === 'conversation.item.input_audio_transcription.completed') {
+            logOmniMessage('User', msg.transcript);
+        } else if (msg.type === 'response.audio_transcript.done') {
+            logOmniMessage('LLM', msg.transcript);
+        } else if (msg.type === 'error') {
+            logOmniMessage('Error', JSON.stringify(msg.error || msg));
+        }
+    };
+    
+    omniWebSocket.onclose = () => {
+        logOmniMessage('System', 'Connection closed');
+        stopOmniConversation();
+    };
+}
+
+function stopOmniConversation() {
+    if (omniProcessor) {
+        omniProcessor.disconnect();
+        omniProcessor = null;
+    }
+    if (omniMicrophone) {
+        omniMicrophone.disconnect();
+        omniMicrophone = null;
+    }
+    if (omniAudioContext) {
+        omniAudioContext.close();
+        omniAudioContext = null;
+    }
+    if (omniWebSocket) {
+        omniWebSocket.close();
+        omniWebSocket = null;
+    }
+    if (outAudioCtx) {
+        outAudioCtx.close();
+        outAudioCtx = null;
+    }
+    document.getElementById('omniStartBtn').disabled = false;
+    document.getElementById('omniStopBtn').disabled = true;
+}
+
+function logOmniMessage(role, text) {
+    const area = document.getElementById('omniTranscriptionArea');
+    const roleColor = role === 'User' ? 'var(--primary-color)' : role === 'LLM' ? '#00c853' : '#757575';
+    area.innerHTML += `<div style="margin-bottom: 5px;"><strong style="color:${roleColor}">[${role}]</strong> ${text}</div>`;
+    area.scrollTop = area.scrollHeight;
 }
 
 // ── Voice ─────────────────────────────────────────────────────
@@ -1035,31 +1228,37 @@ async function sendMuleAIVideo() {
     const seedRaw = document.getElementById('muleaiVidSeed').value.trim();
     const seed = seedRaw !== '' ? parseInt(seedRaw) : null;
     const model = document.getElementById('muleaiModel').value || 'wan2.7-i2v-spicy';
+    const isImage = model.includes('z-image');
     
-    const fileInput = document.getElementById('muleaiFirstFrameInput');
-    const firstFrameFile = fileInput.files[0];
-    if (!firstFrameFile) { toast('請上傳首幀圖片', 'error'); return; }
+    const fd = new FormData();
+    if (!isImage) {
+        const fileInput = document.getElementById('muleaiFirstFrameInput');
+        const firstFrameFile = fileInput.files[0];
+        if (!firstFrameFile) { toast('請上傳首幀圖片', 'error'); return; }
+        fd.append('image', firstFrameFile);
+        fd.append('resolution', resolution);
+        fd.append('duration', duration);
+    } else {
+        const imgRes = document.getElementById('muleaiImgResolution').value;
+        fd.append('img_resolution', imgRes);
+    }
 
     const btn = document.getElementById('muleaiVidSendBtn');
     btn.disabled = true;
     btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg> 提交中...';
 
     try {
-        const fd = new FormData();
         fd.append('model', model);
         fd.append('prompt', prompt);
         fd.append('negative_prompt', negPrompt);
-        fd.append('resolution', resolution);
-        fd.append('duration', duration);
         fd.append('prompt_extend', extend);
         if (seed !== null) fd.append('seed', seed);
-        fd.append('image', firstFrameFile);
         
-        const res = await apiPostForm('/api/muleai/video', fd);
+        const res = await apiPostForm('/api/muleai/generate', fd);
         
         if (res.success && res.task_id) {
             addMuleAIVideoTask(res.task_id, model, prompt, res.status);
-            toast('影片任務已提交，輪詢中...', 'info');
+            toast('任務已提交，輪詢中...', 'info');
         } else {
             toast(res.error || '提交失敗', 'error');
         }
@@ -1067,7 +1266,7 @@ async function sendMuleAIVideo() {
         toast('錯誤：' + e.message, 'error');
     }
     btn.disabled = false;
-    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> 生成影片';
+    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> ' + (isImage ? '生成圖片' : '生成影片');
 }
 
 function addMuleAIVideoTask(taskId, model, prompt, status) {
@@ -1078,10 +1277,10 @@ function addMuleAIVideoTask(taskId, model, prompt, status) {
     const card = el('div', { className: 'video-task-card', id: 'mtask-' + taskId });
     card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status ' + (status ? status.toLowerCase() : 'pending') + '" id="mst-' + taskId + '">' + (status || 'PENDING') + '</span><span class="vtc-timer" id="mtm-' + taskId + '">0s</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><div class="vtc-progress"><div class="vtc-progress-bar" id="mpb-' + taskId + '" style="width:5%"></div></div><div id="mrv-' + taskId + '"></div>';
     cont.insertBefore(card, cont.firstChild);
-    pollMuleAIVideo(taskId, startTime, model);
+    pollMuleAIVideo(taskId, startTime, model, prompt);
 }
 
-async function pollMuleAIVideo(taskId, startTime, model) {
+async function pollMuleAIVideo(taskId, startTime, model, promptText) {
     let tries = 0;
     const maxTries = 360; // Up to 30 mins
     const poll = async () => {
@@ -1097,7 +1296,7 @@ async function pollMuleAIVideo(taskId, startTime, model) {
         }
         
         try {
-            const res = await fetch('/api/muleai/video/status/' + taskId, { headers: authHeader() });
+            const res = await fetch(`/api/muleai/status/${model}/${taskId}`, { headers: authHeader() });
             const data = await res.json();
             const st = data.status;
             const stEl = document.getElementById('mst-' + taskId);
@@ -1107,17 +1306,23 @@ async function pollMuleAIVideo(taskId, startTime, model) {
             if (st === 'SUCCEEDED' || st === 'completed') {
                 if (stEl) { stEl.textContent = 'SUCCEEDED'; stEl.className = 'vtc-status succeeded'; }
                 if (pbEl) pbEl.style.width = '100%';
-                                if (rvEl && data.videos && data.videos.length > 0) {
-                    const src = data.videos[0];
-                    rvEl.innerHTML = '<video class="video-player" controls src="' + src + '"></video><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a></div>';
-                    TaskHistory.save('muleai_video', model, prompt, src);
+                if (rvEl) {
+                    if (data.videos && data.videos.length > 0) {
+                        const src = data.videos[0];
+                        rvEl.innerHTML = '<video class="video-player" controls src="' + src + '"></video><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a></div>';
+                        TaskHistory.save('muleai_video', model, promptText || 'MuleAI Video', src);
+                    } else if (data.images && data.images.length > 0) {
+                        const src = data.images[0];
+                        rvEl.innerHTML = `<img src="${src}" alt="Generated Image" style="max-width:100%; border-radius:8px;"><div style="margin-top:8px"><a href="${src}" download target="_blank" rel="noopener noreferrer" class="img-dl">下載圖片</a></div>`;
+                        TaskHistory.save('muleai_image', model, promptText || 'MuleAI Image', src);
+                    }
                 }
-                toast('影片生成完成！', 'success');
+                toast('任務完成！', 'success');
             } else if (st === 'FAILED' || st === 'failed') {
                 if (stEl) { stEl.textContent = 'FAILED'; stEl.className = 'vtc-status failed'; }
                 if (pbEl) { pbEl.style.width = '100%'; pbEl.style.background = 'var(--red)'; }
                 if (rvEl) rvEl.innerHTML = '<p style="font-size:0.82rem;color:var(--red)">錯誤：' + (data.error_message || (data.error ? data.error.detail : '未知錯誤')) + '</p>';
-                toast('影片生成失敗', 'error');
+                toast('生成失敗', 'error');
             } else {
                 if (stEl) { stEl.textContent = st || 'PENDING'; stEl.className = 'vtc-status ' + (st ? st.toLowerCase() : 'pending'); }
                 const prog = Math.min(5 + (elapsed / 60) * 80, 90);
