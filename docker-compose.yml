@@ -8,4 +8,6 @@ services:
       - ./static/uploads:/app/static/uploads
     environment:
       - PYTHONUNBUFFERED=1
+      - OSS_ACCESS_KEY_ID=${OSS_ACCESS_KEY_ID:-}
+      - OSS_ACCESS_KEY_SECRET=${OSS_ACCESS_KEY_SECRET:-}
     restart: unless-stopped

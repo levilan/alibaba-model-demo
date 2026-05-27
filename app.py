@@ -28,6 +28,32 @@ import dashscope.audio.qwen_tts as QwenTTS
 _INTL_WS_URL = "wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference"
 import requests as http_requests
 
+# ─── OSS Storage ─────────────────────────────────────────────
+import oss2
+_OSS_BUCKET_NAME = "aimodel-oss"
+_OSS_ENDPOINT    = "https://oss-ap-southeast-1.aliyuncs.com"
+_OSS_URL_EXPIRE  = 7 * 24 * 3600  # 7 天預簽名 URL
+
+def _oss_bucket() -> Optional[oss2.Bucket]:
+    ak = os.environ.get("OSS_ACCESS_KEY_ID", "")
+    sk = os.environ.get("OSS_ACCESS_KEY_SECRET", "")
+    if not ak or not sk:
+        return None
+    auth = oss2.Auth(ak, sk)
+    return oss2.Bucket(auth, _OSS_ENDPOINT, _OSS_BUCKET_NAME)
+
+def _oss_put(data: bytes, key: str) -> Optional[str]:
+    """上傳至 OSS，回傳預簽名 URL；失敗回傳 None。"""
+    try:
+        bkt = _oss_bucket()
+        if bkt is None:
+            return None
+        bkt.put_object(key, data)
+        return bkt.sign_url("GET", key, _OSS_URL_EXPIRE)
+    except Exception as e:
+        print(f"OSS upload error [{key}]: {e}")
+        return None
+
 # ─── App Setup ────────────────────────────────────────────────
 app = FastAPI(title="Alibaba Cloud AI Model Testing Platform")
 
@@ -1051,10 +1077,14 @@ import httpx
 async def _async_download_image(url: str) -> Optional[str]:
     try:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        fp = OUTPUT_IMG_DIR / f"img_{ts}_{uuid.uuid4().hex[:6]}.png"
+        name = f"img_{ts}_{uuid.uuid4().hex[:6]}.png"
         async with httpx.AsyncClient() as client:
             r = await client.get(url, timeout=30)
             if r.status_code == 200:
+                oss_url = _oss_put(r.content, f"images/{name}")
+                if oss_url:
+                    return oss_url
+                fp = OUTPUT_IMG_DIR / name
                 fp.write_bytes(r.content)
                 return f"/outputs/images/{fp.name}"
     except Exception as e:
@@ -1064,13 +1094,16 @@ async def _async_download_image(url: str) -> Optional[str]:
 async def _async_download_video(url: str) -> Optional[str]:
     try:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        fp = OUTPUT_VID_DIR / f"vid_{ts}_{uuid.uuid4().hex[:6]}.mp4"
+        name = f"vid_{ts}_{uuid.uuid4().hex[:6]}.mp4"
         async with httpx.AsyncClient() as client:
             async with client.stream('GET', url, timeout=120) as r:
                 if r.status_code == 200:
-                    with open(fp, "wb") as f:
-                        async for chunk in r.aiter_bytes(chunk_size=8192):
-                            f.write(chunk)
+                    data = b"".join([chunk async for chunk in r.aiter_bytes(8192)])
+                    oss_url = _oss_put(data, f"videos/{name}")
+                    if oss_url:
+                        return oss_url
+                    fp = OUTPUT_VID_DIR / name
+                    fp.write_bytes(data)
                     return f"/outputs/videos/{fp.name}"
     except Exception as e:
         print(f"Video download error: {e}")
@@ -1079,9 +1112,13 @@ async def _async_download_video(url: str) -> Optional[str]:
 def _download_image(url):
     try:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        fp = OUTPUT_IMG_DIR / f"img_{ts}_{uuid.uuid4().hex[:6]}.png"
+        name = f"img_{ts}_{uuid.uuid4().hex[:6]}.png"
         r = http_requests.get(url, timeout=30)
         if r.status_code == 200:
+            oss_url = _oss_put(r.content, f"images/{name}")
+            if oss_url:
+                return oss_url
+            fp = OUTPUT_IMG_DIR / name
             fp.write_bytes(r.content)
             return f"/outputs/images/{fp.name}"
     except Exception as e:
@@ -1091,12 +1128,15 @@ def _download_image(url):
 def _download_video(url):
     try:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        fp = OUTPUT_VID_DIR / f"vid_{ts}_{uuid.uuid4().hex[:6]}.mp4"
+        name = f"vid_{ts}_{uuid.uuid4().hex[:6]}.mp4"
         r = http_requests.get(url, stream=True, timeout=120)
         if r.status_code == 200:
-            with open(fp, "wb") as f:
-                for chunk in r.iter_content(8192):
-                    f.write(chunk)
+            data = b"".join(r.iter_content(8192))
+            oss_url = _oss_put(data, f"videos/{name}")
+            if oss_url:
+                return oss_url
+            fp = OUTPUT_VID_DIR / name
+            fp.write_bytes(data)
             return f"/outputs/videos/{fp.name}"
     except Exception as e:
         print(f"Video download error: {e}")
@@ -1197,6 +1237,9 @@ async def voice_tts(data: VoiceTTSRequest, api_key: str = Depends(get_api_key)):
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             ext = "wav" if (url and url.endswith(".wav")) else "mp3"
             filename = f"tts_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
+            oss_url = _oss_put(audio_bytes, f"audio/{filename}")
+            if oss_url:
+                return {"success": True, "audio_url": oss_url, "model": _model, "voice": _voice}
             (OUTPUT_AUDIO_DIR / filename).write_bytes(audio_bytes)
             return {"success": True, "audio_url": f"/outputs/audio/{filename}",
                     "model": _model, "voice": _voice}
