@@ -61,9 +61,113 @@ function addMuleAIImageResult(model, prompt, src, isHistory = false) {
     }
 }
 
+// ── Omni Voice Map ────────────────────────────────────────────
+const OMNI_VOICE_MAP = {
+    'qwen3.5-omni': {
+        default: 'Tina',
+        groups: [
+            { label: '通用普通話', voices: [
+                ['Tina',       'Tina 甜甜 — 甜美暖心'],
+                ['Cindy',      'Cindy 林欣宜 — 台灣嗲嗲'],
+                ['Liora Mira', 'Liora Mira 清歡 — 烟火溫柔'],
+                ['Sunnybobi',  'Sunnybobi 知芝 — 大咧咧'],
+                ['Raymond',    'Raymond 林川野 — 宅男清亮'],
+                ['Ethan',      'Ethan 晨煦 — 陽光活力'],
+                ['Theo Calm',  'Theo Calm 予安 — 療癒靜默'],
+                ['Serena',     'Serena 蘇瑤 — 溫柔小姐姐'],
+                ['Harvey',     'Harvey 厚 — 低沉歲月感'],
+                ['Maia',       'Maia 四月 — 知性溫柔'],
+                ['Evan',       'Evan 江晨 — 年下奶狗'],
+                ['Qiao',       'Qiao 小喬妹 — 台灣甜妹個性'],
+                ['Momo',       'Momo 茉兔 — 撒嬌搞怪'],
+                ['Wil',        'Wil 偉倫 — 港台腔小哥'],
+                ['Angel',      'Angel 安琪 — 台式口音甜美'],
+                ['Li Cassian', 'Li Cassian 李公公 — 察言觀色'],
+                ['Mia',        'Mia 舒然 — 慢生活博主'],
+                ['Joyner',     'Joyner 阿逗 — 搞笑接地氣'],
+                ['Gold',       'Gold 金爺 — Rapper'],
+                ['Katerina',   'Katerina 卡捷琳娜 — 御姐韻律'],
+                ['Ryan',       'Ryan 甜茶 — 戲感張力'],
+                ['Jennifer',   'Jennifer 詹妮弗 — 電影質感美語'],
+                ['Aiden',      'Aiden 艾登 — 廚藝大男孩'],
+                ['Mione',      'Mione 敏兒 — 英式知性'],
+                ['Roya',       'Roya 蘿雅 — 熱愛運動'],
+            ]},
+            { label: '方言', voices: [
+                ['Sunny',        'Sunny 四川晴兒 — 甜川妹'],
+                ['Dylan',        'Dylan 北京曉東 — 北京少年'],
+                ['Eric',         'Eric 四川程川 — 成都男子'],
+                ['Peter',        'Peter 天津李彼得 — 相聲捧哏'],
+                ['Joseph Chen',  'Joseph Chen 阿樸伯 — 閩南老華僑'],
+                ['Marcus',       'Marcus 陝西秦川 — 老陝沉聲'],
+                ['Li',           'Li 南京老李 — 罵罵咧咧'],
+                ['Kiki',         'Kiki 粵語阿清 — 港妹閨蜜'],
+                ['Rocky',        'Rocky 粵語阿強 — 幽默在線陪聊'],
+            ]},
+            { label: '國際', voices: [
+                ['Sohee',      'Sohee 素熙 — 韓國歐尼'],
+                ['Lenn',       'Lenn 萊恩 — 德國叛逆青年'],
+                ['Ono Anna',   'Ono Anna 小野杏 — 日本鬼靈精'],
+                ['Sonrisa',    'Sonrisa 索尼莎 — 拉美熱情大姐'],
+                ['Bodega',     'Bodega 博德加 — 西班牙大叔'],
+                ['Emilien',    'Emilien 埃米爾安 — 法國浪漫'],
+                ['Andre',      'Andre 安德雷 — 磁性沉穩'],
+                ['Radio Gol',  'Radio Gol — 葡語足球詩人'],
+                ['Alek',       'Alek 阿列克 — 俄羅斯冷暖'],
+                ['Rizky',      'Rizky 阿力 — 印尼個性青年'],
+                ['Arda',       'Arda 阿爾達 — 土耳其溫潤'],
+                ['Hana',       'Hana 阿幸 — 越南成熟姐姐'],
+                ['Dolce',      'Dolce 多爾切 — 義大利慵懶'],
+                ['Jakub',      'Jakub 雅克 — 波蘭磁性'],
+                ['Griet',      'Griet 海娜 — 荷蘭文藝'],
+                ['Eliška',     'Eliška 艾莉卡 — 捷克匠心'],
+                ['Marina',     'Marina 瑪麗娜 — 多元文化'],
+                ['Siiri',      'Siiri 西芮 — 芬蘭舒緩'],
+                ['Ingrid',     'Ingrid 林恩 — 挪威鄉村'],
+                ['Sigga',      'Sigga 海娜 — 冰島知性'],
+                ['Bea',        'Bea 雅娜 — 菲律賓甜甜'],
+                ['Chloe',      'Chloe 思怡 — 馬來西亞白領'],
+            ]},
+        ]
+    },
+    'qwen2.5-omni': {
+        default: 'Ethan',
+        groups: [
+            { label: '音色', voices: [
+                ['Ethan',   'Ethan 晨煦 — 男・陽光'],
+                ['Chelsie', 'Chelsie 千雪 — 女・二次元'],
+            ]}
+        ]
+    }
+};
+
+function updateOmniVoices(model) {
+    const sel = document.getElementById('omniVoice');
+    if (!sel) return;
+    const key = model.includes('qwen2.5-omni') ? 'qwen2.5-omni' : 'qwen3.5-omni';
+    const data = OMNI_VOICE_MAP[key];
+    const prev = sel.value;
+    sel.innerHTML = '';
+    data.groups.forEach(g => {
+        const og = document.createElement('optgroup');
+        og.label = g.label;
+        g.voices.forEach(([v, label]) => {
+            const opt = document.createElement('option');
+            opt.value = v;
+            opt.textContent = label;
+            og.appendChild(opt);
+        });
+        sel.appendChild(og);
+    });
+    // 保留原選擇，否則用預設
+    const exists = [...sel.options].some(o => o.value === prev);
+    sel.value = exists ? prev : data.default;
+}
+
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     if (apiKey) attemptAutoLogin();
+    updateOmniVoices(document.getElementById('omniModel')?.value || 'qwen3.5-omni-flash-realtime');
 
     document.getElementById('apiKeyInput').addEventListener('keydown', e => {
         if (e.key === 'Enter') handleLogin();
@@ -168,20 +272,43 @@ function authHeader() {
 // ── Selectors ─────────────────────────────────────────────────
 function onMuleaiModelChange() {
     const model = document.getElementById('muleaiModel').value;
-    const isImage = model.includes('z-image');
-    document.getElementById('muleaiVidResGroup').style.display = isImage ? 'none' : '';
-    document.getElementById('muleaiImgResGroup').style.display = isImage ? '' : 'none';
-    document.getElementById('muleaiVidDurGroup').style.display = isImage ? 'none' : '';
-    document.getElementById('muleaiImgUploadSection').style.display = isImage ? 'none' : '';
-    
+    const isZImage   = model.includes('z-image');
+    const isImgEdit  = model === 'qwen-image-edit-spicy';
+    const isFaceSwap = model === 'face-swap';
+    const isImageModel = isZImage || isImgEdit || isFaceSwap;
+
+    // 解析度 / 時長控制
+    document.getElementById('muleaiVidResGroup').style.display = isImageModel ? 'none' : '';
+    document.getElementById('muleaiImgResGroup').style.display = isZImage ? '' : 'none';
+    document.getElementById('muleaiVidDurGroup').style.display = isImageModel ? 'none' : '';
+
+    // 來源圖片：影片模型必填、圖像編輯必填、換臉必填；純文生圖(z-image)不需要
+    document.getElementById('muleaiImgUploadSection').style.display = (!isZImage) ? '' : 'none';
+
+    // 換臉參考圖：僅 face-swap 顯示
+    document.getElementById('muleaiFaceImgSection').style.display = isFaceSwap ? '' : 'none';
+
+    // Prompt 區：face-swap 不需要
+    document.getElementById('muleaiPromptSection').style.display = isFaceSwap ? 'none' : '';
+
+    // 更新上傳區標題
+    const uploadTitle = document.getElementById('muleaiImgUploadTitle');
+    if (uploadTitle) {
+        if (isImgEdit) uploadTitle.textContent = '來源圖片 (必填)';
+        else if (isFaceSwap) uploadTitle.textContent = '來源圖片 (必填)';
+        else uploadTitle.textContent = '首幀圖片 (影片必填)';
+    }
+
     const promptInput = document.getElementById('muleaiVidPrompt');
     if (promptInput) {
-        promptInput.placeholder = isImage ? "描述圖片畫面與細節..." : "描述影片動作與細節...";
+        if (isZImage) promptInput.placeholder = "描述圖片畫面與細節...";
+        else if (isImgEdit) promptInput.placeholder = "描述編輯效果（例：將人物改為紅髮）...";
+        else promptInput.placeholder = "描述影片動作與細節...";
     }
-    
+
     const sendBtn = document.getElementById('muleaiVidSendBtn');
     if (sendBtn) {
-        sendBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>\n' + (isImage ? '生成圖片' : '生成影片');
+        sendBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>\n' + (isImageModel ? '生成圖片' : '生成影片');
     }
 }
 
@@ -377,13 +504,136 @@ function switchTab(tab) {
 }
 
 
-// ── Omni Realtime ─────────────────────────────────────────────
+// ── Omni ──────────────────────────────────────────────────────
 let omniAudioContext;
 let omniMicrophone;
 let omniProcessor;
 let omniWebSocket;
 let outAudioCtx;
 let nextPlayTime = 0;
+let omniChatHistory = [];   // for non-realtime models
+
+function onOmniModelChange() {
+    const model = document.getElementById('omniModel').value;
+    const isRealtime = model.includes('realtime');
+    document.getElementById('omniRealtimeControls').style.display = isRealtime ? '' : 'none';
+    document.getElementById('omniChatInputArea').style.display   = isRealtime ? 'none' : '';
+    // 切換模型時清空歷史
+    omniChatHistory = [];
+    const area = document.getElementById('omniTranscriptionArea');
+    area.innerHTML = '';
+    const hint = isRealtime
+        ? '點擊「開始通話」並允許麥克風權限，即可與 AI 即時對話'
+        : '在下方輸入訊息，AI 將以文字＋語音回覆（Ctrl+Enter 發送）';
+    area.innerHTML = `<div class="empty-state" style="width:100%"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg><p>${hint}</p></div>`;
+    updateOmniVoices(model);
+}
+
+async function sendOmniChat() {
+    const text = document.getElementById('omniChatInput').value.trim();
+    if (!text) return;
+    if (!apiKey) { toast('請先設定 API Key', 'error'); return; }
+
+    const model = document.getElementById('omniModel').value;
+    const voice = document.getElementById('omniVoice').value;
+    const instructions = document.getElementById('omniInstructions').value.trim();
+
+    omniChatHistory.push({ role: 'user', content: text });
+
+    const area = document.getElementById('omniTranscriptionArea');
+    const empty = area.querySelector('.empty-state');
+    if (empty) empty.remove();
+    area.innerHTML += `<div style="margin-bottom:8px"><strong style="color:var(--primary-color)">[User]</strong> ${text}</div>`;
+    area.scrollTop = area.scrollHeight;
+
+    document.getElementById('omniChatInput').value = '';
+    const sendBtn = document.getElementById('omniChatSendBtn');
+    sendBtn.disabled = true;
+
+    // 建立 AI 回覆容器
+    const replyId = 'omni-reply-' + Date.now();
+    area.innerHTML += `<div id="${replyId}" style="margin-bottom:12px"><strong style="color:#00c853">[AI]</strong> <span id="${replyId}-text"></span></div>`;
+    area.scrollTop = area.scrollHeight;
+
+    // 收集 PCM16 音訊 chunks
+    const audioChunks = [];
+    let textContent = '';
+
+    try {
+        const resp = await fetch('/api/omni/chat', {
+            method: 'POST',
+            headers: { ...authHeader(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model, messages: omniChatHistory, voice, instructions }),
+        });
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const msg = JSON.parse(line.slice(6));
+                if (msg.type === 'text') {
+                    textContent += msg.content;
+                    document.getElementById(replyId + '-text').textContent = textContent;
+                    area.scrollTop = area.scrollHeight;
+                } else if (msg.type === 'transcript') {
+                    textContent += msg.content;
+                    document.getElementById(replyId + '-text').textContent = textContent;
+                    area.scrollTop = area.scrollHeight;
+                } else if (msg.type === 'audio') {
+                    audioChunks.push(msg.data);
+                } else if (msg.type === 'error') {
+                    logOmniMessage('Error', msg.content);
+                }
+            }
+        }
+
+        // 更新對話歷史
+        omniChatHistory.push({ role: 'assistant', content: textContent || '（語音回覆）' });
+
+        // 播放音訊
+        if (audioChunks.length > 0) {
+            _playOmniPCM(audioChunks);
+        }
+    } catch (e) {
+        logOmniMessage('Error', e.message);
+    }
+    sendBtn.disabled = false;
+}
+
+function _playOmniPCM(chunks) {
+    // 每個 chunk 是獨立的 base64，需分開 decode 再合併 binary
+    const decoded = chunks.map(b64 => {
+        const bin = atob(b64);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        return arr;
+    });
+    const totalLen = decoded.reduce((s, a) => s + a.length, 0);
+    const combined = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const arr of decoded) { combined.set(arr, offset); offset += arr.length; }
+
+    const int16 = new Int16Array(combined.buffer);
+    const float32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768.0;
+
+    const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+    const buf = ctx.createBuffer(1, float32.length, 24000);
+    buf.getChannelData(0).set(float32);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+    src.onended = () => ctx.close();
+}
 
 async function startOmniConversation() {
     if(!apiKey) { alert('請先設定 API Key'); return; }
@@ -405,14 +655,11 @@ async function startOmniConversation() {
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
                 "instructions": document.getElementById('omniInstructions').value,
-                "input_audio_transcription": {
-                    "model": null
-                },
                 "turn_detection": {
                     "type": "server_vad",
-                    "threshold": 0.2,
+                    "threshold": 0.5,
                     "prefix_padding_ms": 300,
-                    "silence_duration_ms": 800
+                    "silence_duration_ms": 600
                 }
             }
         };
@@ -531,8 +778,10 @@ function stopOmniConversation() {
 
 function logOmniMessage(role, text) {
     const area = document.getElementById('omniTranscriptionArea');
+    const empty = area.querySelector('.empty-state');
+    if (empty) empty.remove();
     const roleColor = role === 'User' ? 'var(--primary-color)' : role === 'LLM' ? '#00c853' : '#757575';
-    area.innerHTML += `<div style="margin-bottom: 5px;"><strong style="color:${roleColor}">[${role}]</strong> ${text}</div>`;
+    area.innerHTML += `<div style="margin-bottom:5px"><strong style="color:${roleColor}">[${role}]</strong> ${text}</div>`;
     area.scrollTop = area.scrollHeight;
 }
 
@@ -1218,29 +1467,54 @@ function el(tag, props = {}) {
 // ── MuleAI Generation ───────────────────────────────────────────
 
 async function sendMuleAIVideo() {
-    const prompt = document.getElementById('muleaiVidPrompt').value.trim();
-    if (!prompt) { toast('請輸入 Prompt', 'error'); return; }
-    
-    const negPrompt = document.getElementById('muleaiVidNegPrompt').value.trim();
-    const resolution = document.getElementById('muleaiVidResolution').value;
-    const duration = parseInt(document.getElementById('muleaiVidDuration').value);
-    const extend = document.getElementById('muleaiVidPromptExtend').checked;
-    const seedRaw = document.getElementById('muleaiVidSeed').value.trim();
-    const seed = seedRaw !== '' ? parseInt(seedRaw) : null;
     const model = document.getElementById('muleaiModel').value || 'wan2.7-i2v-spicy';
-    const isImage = model.includes('z-image');
-    
+    const isZImage   = model.includes('z-image');
+    const isImgEdit  = model === 'qwen-image-edit-spicy';
+    const isFaceSwap = model === 'face-swap';
+    const isImageModel = isZImage || isImgEdit || isFaceSwap;
+
+    const prompt    = document.getElementById('muleaiVidPrompt').value.trim();
+    const negPrompt = document.getElementById('muleaiVidNegPrompt').value.trim();
+    const extend    = document.getElementById('muleaiVidPromptExtend').checked;
+    const seedRaw   = document.getElementById('muleaiVidSeed').value.trim();
+    const seed      = seedRaw !== '' ? parseInt(seedRaw) : null;
+
+    if (!isFaceSwap && !prompt) { toast('請輸入 Prompt', 'error'); return; }
+
     const fd = new FormData();
-    if (!isImage) {
-        const fileInput = document.getElementById('muleaiFirstFrameInput');
-        const firstFrameFile = fileInput.files[0];
-        if (!firstFrameFile) { toast('請上傳首幀圖片', 'error'); return; }
-        fd.append('image', firstFrameFile);
-        fd.append('resolution', resolution);
-        fd.append('duration', duration);
-    } else {
+    fd.append('model', model);
+
+    if (isFaceSwap) {
+        const srcFile  = document.getElementById('muleaiFirstFrameInput').files[0];
+        const faceFile = document.getElementById('muleaiFaceImgInput').files[0];
+        if (!srcFile)  { toast('請上傳來源圖片', 'error'); return; }
+        if (!faceFile) { toast('請上傳換臉參考圖', 'error'); return; }
+        fd.append('image', srcFile);
+        fd.append('face_image', faceFile);
+    } else if (isImgEdit) {
+        const srcFile = document.getElementById('muleaiFirstFrameInput').files[0];
+        if (!srcFile) { toast('請上傳來源圖片', 'error'); return; }
+        fd.append('image', srcFile);
+        fd.append('prompt', prompt);
+        fd.append('negative_prompt', negPrompt);
+        if (seed !== null) fd.append('seed', seed);
+    } else if (isZImage) {
         const imgRes = document.getElementById('muleaiImgResolution').value;
         fd.append('img_resolution', imgRes);
+        fd.append('prompt', prompt);
+        fd.append('negative_prompt', negPrompt);
+        fd.append('prompt_extend', extend);
+        if (seed !== null) fd.append('seed', seed);
+    } else {
+        // video
+        const srcFile = document.getElementById('muleaiFirstFrameInput').files[0];
+        if (!srcFile) { toast('請上傳首幀圖片', 'error'); return; }
+        fd.append('image', srcFile);
+        fd.append('prompt', prompt);
+        fd.append('negative_prompt', negPrompt);
+        fd.append('resolution', document.getElementById('muleaiVidResolution').value);
+        fd.append('duration', parseInt(document.getElementById('muleaiVidDuration').value));
+        if (seed !== null) fd.append('seed', seed);
     }
 
     const btn = document.getElementById('muleaiVidSendBtn');
@@ -1248,16 +1522,11 @@ async function sendMuleAIVideo() {
     btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg> 提交中...';
 
     try {
-        fd.append('model', model);
-        fd.append('prompt', prompt);
-        fd.append('negative_prompt', negPrompt);
-        fd.append('prompt_extend', extend);
-        if (seed !== null) fd.append('seed', seed);
-        
         const res = await apiPostForm('/api/muleai/generate', fd);
-        
+
         if (res.success && res.task_id) {
-            addMuleAIVideoTask(res.task_id, model, prompt, res.status);
+            const displayPrompt = isFaceSwap ? '換臉任務' : prompt;
+            addMuleAIVideoTask(res.task_id, model, displayPrompt, res.status);
             toast('任務已提交，輪詢中...', 'info');
         } else {
             toast(res.error || '提交失敗', 'error');
@@ -1266,7 +1535,7 @@ async function sendMuleAIVideo() {
         toast('錯誤：' + e.message, 'error');
     }
     btn.disabled = false;
-    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> ' + (isImage ? '生成圖片' : '生成影片');
+    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> ' + (isImageModel ? '生成圖片' : '生成影片');
 }
 
 function addMuleAIVideoTask(taskId, model, prompt, status) {
@@ -1303,7 +1572,7 @@ async function pollMuleAIVideo(taskId, startTime, model, promptText) {
             const pbEl = document.getElementById('mpb-' + taskId);
             const rvEl = document.getElementById('mrv-' + taskId);
 
-            if (st === 'SUCCEEDED' || st === 'completed') {
+            if (st && ['SUCCEEDED', 'SUCCESS', 'completed', 'COMPLETED'].includes(st.toUpperCase ? st.toUpperCase() : st)) {
                 if (stEl) { stEl.textContent = 'SUCCEEDED'; stEl.className = 'vtc-status succeeded'; }
                 if (pbEl) pbEl.style.width = '100%';
                 if (rvEl) {

@@ -85,7 +85,7 @@
             </button>
                         <button class="tab-btn" data-tab="voice" onclick="switchTab('voice')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
-                語音模型（修復中）
+                語音模型
             </button>
             <button class="tab-btn" data-tab="omni" onclick="switchTab('omni')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
@@ -611,6 +611,78 @@
 
     
 
+    <!-- ── Tab: Omni ─────────────────────────────────────── -->
+    <section id="tab-omni" class="tab-content">
+        <aside class="panel-sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">模型設定</div>
+                <div class="form-group">
+                    <label class="form-label">模型</label>
+                    <select id="omniModel" class="select-input" onchange="onOmniModelChange()">
+                        <optgroup label="即時通話 (Realtime)">
+                            <option value="qwen3.5-omni-flash-realtime">Qwen3.5 Omni Flash Realtime</option>
+                            <option value="qwen3.5-omni-plus-realtime">Qwen3.5 Omni Plus Realtime</option>
+                            <option value="qwen2.5-omni-3b-realtime">Qwen2.5 Omni 3B Realtime</option>
+                            <option value="qwen2.5-omni-7b-realtime">Qwen2.5 Omni 7B Realtime</option>
+                        </optgroup>
+                        <optgroup label="非同步對話 (HTTP)">
+                            <option value="qwen3.5-omni-flash">Qwen3.5 Omni Flash</option>
+                            <option value="qwen3.5-omni-plus">Qwen3.5 Omni Plus</option>
+                        </optgroup>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">音色</label>
+                    <select id="omniVoice" class="select-input"></select>
+                </div>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">對話設定</div>
+                <div class="form-group">
+                    <label class="form-label">角色指令</label>
+                    <textarea id="omniInstructions" class="textarea-input" rows="4"
+                        placeholder="描述 AI 的角色與回答風格...">你是個人助理，請用繁體中文回答用戶的問題。</textarea>
+                </div>
+            </div>
+            <!-- 即時通話操作 -->
+            <div class="sidebar-section" id="omniRealtimeControls">
+                <div class="sidebar-section-title">操作</div>
+                <div style="display:flex;gap:8px">
+                    <button id="omniStartBtn" class="btn btn-primary" style="flex:1" onclick="startOmniConversation()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/></svg>
+                        開始通話
+                    </button>
+                    <button id="omniStopBtn" class="btn btn-danger" style="flex:1" onclick="stopOmniConversation()" disabled>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                        結束通話
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <div class="panel-main" style="display:flex;flex-direction:column;height:100%">
+            <!-- 共用轉錄紀錄區 -->
+            <div class="results-area" id="omniTranscriptionArea" style="flex:1;overflow-y:auto;padding:16px;font-size:14px;line-height:1.7">
+                <div class="empty-state" style="width:100%">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+                    <p>選擇模型後開始對話</p>
+                </div>
+            </div>
+            <!-- 非同步模型輸入區 -->
+            <div id="omniChatInputArea" style="display:none;padding:12px;border-top:1px solid var(--border-color)">
+                <div style="display:flex;gap:8px;align-items:flex-end">
+                    <textarea id="omniChatInput" class="textarea-input" rows="2" style="flex:1;resize:none"
+                        placeholder="輸入訊息... (Ctrl+Enter 發送)"
+                        onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();sendOmniChat();}"></textarea>
+                    <button id="omniChatSendBtn" class="btn btn-primary" style="height:40px" onclick="sendOmniChat()">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                        發送
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- ── Tab: MuleAI ────────────────────────────────────── -->
     <section id="tab-muleai" class="tab-content">
         <aside class="panel-sidebar">
@@ -643,13 +715,24 @@
             </div>
             
             <div class="sidebar-section" id="muleaiImgUploadSection">
-                <div class="sidebar-section-title">首幀圖片 (影片必填)</div>
+                <div class="sidebar-section-title" id="muleaiImgUploadTitle">首幀圖片 (影片必填)</div>
                 <div class="upload-zone" id="muleaiFirstFrameUpZone">
                     <input type="file" id="muleaiFirstFrameInput" accept="image/jpeg, image/png, image/webp"
                            onchange="previewImg(event,'muleaiFirstFramePreview','muleaiFirstFrameUpZone')">
                     <div class="upload-zone-icon">🖼</div>
-                    <p>上傳參考圖片<br><span style="font-size:11px;color:var(--text-muted)">支援 JPG, PNG, WEBP</span></p>
+                    <p>上傳圖片<br><span style="font-size:11px;color:var(--text-muted)">支援 JPG, PNG, WEBP</span></p>
                     <img id="muleaiFirstFramePreview" class="upload-preview hidden" alt="preview">
+                </div>
+            </div>
+
+            <div class="sidebar-section" id="muleaiFaceImgSection" style="display:none">
+                <div class="sidebar-section-title">換臉參考圖 (必填)</div>
+                <div class="upload-zone" id="muleaiFaceImgUpZone">
+                    <input type="file" id="muleaiFaceImgInput" accept="image/jpeg, image/png, image/webp"
+                           onchange="previewImg(event,'muleaiFaceImgPreview','muleaiFaceImgUpZone')">
+                    <div class="upload-zone-icon">👤</div>
+                    <p>上傳換臉參考圖<br><span style="font-size:11px;color:var(--text-muted)">支援 JPG, PNG, WEBP</span></p>
+                    <img id="muleaiFaceImgPreview" class="upload-preview hidden" alt="preview">
                 </div>
             </div>
             
@@ -670,13 +753,15 @@
             <div class="prompt-panel">
                 <div class="prompt-row">
                     <div class="prompt-col">
-                        <div class="form-group" style="margin-bottom:8px">
-                            <label class="form-label">Prompt</label>
-                            <textarea id="muleaiVidPrompt" class="textarea-input" rows="2" placeholder="描述影片動作與細節..." onkeydown="if((event.ctrlKey || event.metaKey) && event.key==='Enter'){event.preventDefault();sendMuleAIVideo();}"></textarea>
-                        </div>
-                        <div class="form-group" style="margin-bottom:0">
-                            <label class="form-label">Negative Prompt</label>
-                            <textarea id="muleaiVidNegPrompt" class="textarea-input" rows="2" placeholder="不想出現的元素（可選）"></textarea>
+                        <div id="muleaiPromptSection">
+                            <div class="form-group" style="margin-bottom:8px">
+                                <label class="form-label">Prompt</label>
+                                <textarea id="muleaiVidPrompt" class="textarea-input" rows="2" placeholder="描述影片動作與細節..." onkeydown="if((event.ctrlKey || event.metaKey) && event.key==='Enter'){event.preventDefault();sendMuleAIVideo();}"></textarea>
+                            </div>
+                            <div class="form-group" style="margin-bottom:0">
+                                <label class="form-label">Negative Prompt</label>
+                                <textarea id="muleaiVidNegPrompt" class="textarea-input" rows="2" placeholder="不想出現的元素（可選）"></textarea>
+                            </div>
                         </div>
                     </div>
                     <div style="display:flex;flex-direction:column;justify-content:flex-end">
@@ -711,6 +796,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=8"></script>
+<script src="/static/js/app.js?v=16"></script>
 </body>
 </html>

@@ -23,6 +23,7 @@ from dashscope.api_entities.dashscope_response import Message
 from dashscope import VideoSynthesis
 from dashscope.audio.tts import SpeechSynthesizer as TTSv1
 from dashscope.audio.asr import Recognition
+import dashscope.audio.qwen_tts as QwenTTS
 
 _INTL_WS_URL = "wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference"
 import requests as http_requests
@@ -105,7 +106,7 @@ MODELS = {
         {
             "id": "qwen-image-plus", "name": "千問圖像 Plus", "group": "千問文生圖",
             "desc": "均衡品質與速度", "type": "t2i", "max_n": 4,
-            "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
+            "sizes": ["1328*1328","1664*928","928*1664","1472*1104","1104*1472"],
         },
         # ── 萬相文生圖 ────────────────────────────────────────────
         {
@@ -175,12 +176,14 @@ MODELS = {
             {"id": "sensevoice-v1",   "name": "Fun-ASR 多語言",   "group": "Fun-ASR", "desc": "中/英/日/韓/粵多語言"},
         ],
                 "tts": [
-            {"id": "qwen-tts", "name": "Qwen TTS", "group": "Qwen", "desc": "HTTP 同步合成，穩定可靠"},
+            {"id": "qwen3-tts-flash-2025-11-27", "name": "Qwen3 TTS Flash", "group": "Qwen3", "desc": "最新極速合成"},
         ],
     },
     "muleai": [
-        {"id": "wan2.7-i2v-spicy", "name": "Wan 2.7 I2V Spicy", "group": "影片生成", "desc": "Spicy 模型 (支援文字/圖片)"},
-        {"id": "z-image-spicy", "name": "Z-Image Spicy", "group": "圖片生成", "desc": "Spicy 圖片生成模型"},
+        {"id": "wan2.7-i2v-spicy",      "name": "Wan 2.7 I2V Spicy",  "group": "影片生成", "desc": "Spicy 模型 (支援文字/圖片)"},
+        {"id": "z-image-spicy",          "name": "Z-Image Spicy",       "group": "圖片生成", "desc": "Spicy 圖片生成模型"},
+        {"id": "qwen-image-edit-spicy",  "name": "圖像編輯 Spicy",      "group": "圖像編輯", "desc": "Spicy 圖像編輯模型 (prompt + 來源圖)"},
+        {"id": "face-swap",              "name": "圖像換臉",             "group": "圖像換臉", "desc": "換臉模型 (來源圖 + 換臉參考圖)"},
     ],
 }
 
@@ -271,6 +274,66 @@ class TextGenerateRequest(BaseModel):
     stop: List[str] = []
     stream: bool = True
     enable_thinking: bool = False
+
+
+class OmniChatRequest(BaseModel):
+    model: str = "qwen3.5-omni-flash"
+    messages: list = []
+    voice: str = "Ethan"
+    instructions: Optional[str] = None
+
+@app.post("/api/omni/chat")
+async def omni_chat(data: OmniChatRequest, api_key: str = Depends(get_api_key)):
+    msgs = []
+    if data.instructions:
+        msgs.append({"role": "system", "content": data.instructions})
+    msgs.extend(data.messages)
+
+    async def generate() -> AsyncGenerator[str, None]:
+        try:
+            user_client = AsyncOpenAI(api_key=api_key, base_url=BASE_URL_COMPATIBLE)
+            stream = await user_client.chat.completions.create(
+                model=data.model,
+                messages=msgs,
+                modalities=["text", "audio"],
+                audio={"voice": data.voice, "format": "pcm16"},
+                stream=True,
+                extra_headers=CUSTOM_HEADERS,
+            )
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+
+                # text content
+                text_content = getattr(delta, "content", None)
+                if text_content:
+                    yield f"data: {json.dumps({'type': 'text', 'content': text_content})}\n\n"
+
+                # audio — may be attribute or in model_extra (depends on SDK version)
+                audio = getattr(delta, "audio", None)
+                if audio is None:
+                    extra = getattr(delta, "model_extra", None) or {}
+                    audio = extra.get("audio")
+
+                if audio:
+                    # handle both object-style and dict-style
+                    audio_data   = audio.get("data")     if isinstance(audio, dict) else getattr(audio, "data", None)
+                    audio_trans  = audio.get("transcript") if isinstance(audio, dict) else getattr(audio, "transcript", None)
+                    if audio_data:
+                        yield f"data: {json.dumps({'type': 'audio', 'data': audio_data})}\n\n"
+                    if audio_trans:
+                        yield f"data: {json.dumps({'type': 'transcript', 'content': audio_trans})}\n\n"
+
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.websocket("/ws/omni")
@@ -373,7 +436,7 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
 
 
 
-# ─── API: MuleAI Video Generation (I2V) ───────────────────────────────────────
+# ─── API: MuleAI Video/Image Generation ───────────────────────────────────────
 @app.post("/api/muleai/generate")
 async def muleai_generate(
     request: Request,
@@ -386,62 +449,99 @@ async def muleai_generate(
     prompt_extend: bool = Form(True),
     seed: Optional[int] = Form(None),
     image: Optional[UploadFile] = File(None),
+    face_image: Optional[UploadFile] = File(None),
     muleai_key: Optional[str] = Depends(get_muleai_api_key)
 ):
-    if not prompt:
-        raise HTTPException(status_code=400, detail="Prompt is required")
     if not muleai_key:
         raise HTTPException(status_code=401, detail="NenAI API Key is missing.")
 
-    is_image_model = "z-image" in model
-    if is_image_model:
-        MULEAI_URL = "https://nen.com.tw/v1/image/generations"
-    else:
-        MULEAI_URL = "https://nen.com.tw/v1/video/generations"
+    is_z_image   = "z-image" in model
+    is_img_edit  = model == "qwen-image-edit-spicy"
+    is_face_swap = model == "face-swap"
+    is_image_model = is_z_image or is_img_edit or is_face_swap
+
+    if not is_face_swap and not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+
+    MULEAI_URL = "https://nen.com.tw/v1/image/generations" if is_image_model else "https://nen.com.tw/v1/video/generations"
 
     headers = {
         "Authorization": f"Bearer {muleai_key}",
         "Content-Type": "application/json"
     }
 
-    payload = {
-        "model": model,
-        "prompt": prompt,
-    }
+    import base64
 
-    if not is_image_model:
-        payload["size"] = resolution
-        payload["duration"] = duration
-        if image:
-            image_bytes = await image.read()
-            import base64
-            b64_img = base64.b64encode(image_bytes).decode('utf-8')
-            mime_type = image.content_type or 'image/jpeg'
-            data_uri = f"data:{mime_type};base64,{b64_img}"
-            payload["image"] = data_uri
-        else:
-            raise HTTPException(status_code=400, detail="Image is required for video generation")
-    else:
-        payload["prompt_extend"] = prompt_extend
+    async def _file_to_data_uri(f: UploadFile) -> str:
+        b = await f.read()
+        mime = f.content_type or "image/jpeg"
+        return f"data:{mime};base64,{base64.b64encode(b).decode()}"
+
+    if is_face_swap:
+        if not image or not face_image:
+            raise HTTPException(status_code=400, detail="Both image and face_image are required for face-swap")
+        payload = {
+            "model": model,
+            "image": await _file_to_data_uri(image),
+            "face_image": await _file_to_data_uri(face_image),
+        }
+    elif is_img_edit:
+        if not image:
+            raise HTTPException(status_code=400, detail="Source image is required for qwen-image-edit-spicy")
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "image": await _file_to_data_uri(image),
+        }
+        if negative_prompt:
+            payload["negative_prompt"] = negative_prompt
+        if seed is not None:
+            payload["seed"] = seed
+    elif is_z_image:
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "prompt_extend": prompt_extend,
+        }
         if img_resolution:
             parts = img_resolution.split("*")
             if len(parts) == 2:
                 payload["width"] = int(parts[0])
                 payload["height"] = int(parts[1])
-
-    if negative_prompt:
-        payload["negative_prompt"] = negative_prompt
-    if seed is not None:
-        payload["seed"] = seed
+        if negative_prompt:
+            payload["negative_prompt"] = negative_prompt
+        if seed is not None:
+            payload["seed"] = seed
+    else:
+        # video model
+        if not image:
+            raise HTTPException(status_code=400, detail="Image is required for video generation")
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "size": resolution,
+            "duration": duration,
+            "image": await _file_to_data_uri(image),
+        }
+        if negative_prompt:
+            payload["negative_prompt"] = negative_prompt
+        if seed is not None:
+            payload["seed"] = seed
 
     import httpx
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(MULEAI_URL, headers=headers, json=payload)
-            
-            if resp.status_code == 202 or resp.status_code == 200:
+
+            if resp.status_code in (200, 202):
                 data = resp.json()
-                task_id = data.get("task_info", {}).get("id") or data.get("id")
+                print(f"[NenAI generate raw] {data}")
+                task_id = (
+                    data.get("task_info", {}).get("id")
+                    or data.get("id")
+                    or data.get("task_id")
+                    or data.get("output", {}).get("task_id")
+                )
                 return {"success": True, "task_id": task_id, "status": "pending", "model": model}
             else:
                 return JSONResponse(status_code=resp.status_code, content={"success": False, "error": resp.text})
@@ -453,7 +553,7 @@ async def muleai_task_status(model: str, task_id: str, muleai_key: Optional[str]
     if not muleai_key:
         raise HTTPException(status_code=401, detail="NenAI API Key is missing.")
 
-    if "z-image" in model:
+    if "z-image" in model or model in ("qwen-image-edit-spicy", "face-swap"):
         MULEAI_STATUS_URL = f"https://nen.com.tw/v1/image/generations/{task_id}"
     else:
         MULEAI_STATUS_URL = f"https://nen.com.tw/v1/video/generations/{task_id}"
@@ -466,23 +566,43 @@ async def muleai_task_status(model: str, task_id: str, muleai_key: Optional[str]
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(MULEAI_STATUS_URL, headers=headers)
             if resp.status_code == 200:
-                data = resp.json()
-                status = data.get("task_info", {}).get("status", "pending")
-                videos = data.get("videos", [])
-                images = data.get("images", [])
-                if not images and data.get("image_url"):
-                    images = [data.get("image_url")]
-                err = data.get("task_info", {}).get("error")
+                raw = resp.json()
 
-                if status.upper() in ("COMPLETED", "SUCCEEDED"):
-                    if videos and len(videos) > 0:
-                        local_path = await _async_download_video(videos[0])
+                # NenAI 回應結構：{"code":"success","data":{"status":"SUCCESS","result_url":"...","data":{"images":[...],"task_info":{...}}}}
+                outer = raw.get("data", raw)   # 脫 code/message/data 外殼
+                inner = outer.get("data") or {}
+
+                # status：outer.status → inner.task_info.status
+                task_info = inner.get("task_info") or {}
+                status = outer.get("status") or task_info.get("status") or raw.get("status") or "pending"
+
+                err = outer.get("fail_reason") or task_info.get("error") or raw.get("message") or None
+                if err == "":
+                    err = None
+
+                # 圖片 URL：inner.images[] → outer.result_url
+                images = inner.get("images") or []
+                if not images and outer.get("result_url"):
+                    images = [outer["result_url"]]
+
+                # 影片 URL：inner.videos[] → outer.result_url (video model)
+                videos = inner.get("videos") or []
+                _is_img_model = "z-image" in model or model in ("qwen-image-edit-spicy", "face-swap")
+                if not videos and not _is_img_model and outer.get("result_url"):
+                    videos = [outer["result_url"]]
+
+                if status.upper() in ("COMPLETED", "SUCCEEDED", "SUCCESS"):
+                    if videos:
+                        url = videos[0].get("url") if isinstance(videos[0], dict) else videos[0]
+                        local_path = await _async_download_video(url)
                         if local_path:
                             videos = [local_path]
-                    elif images and len(images) > 0:
-                        local_path = await _async_download_image(images[0].get("url") if isinstance(images[0], dict) else images[0])
+                    elif images:
+                        url = images[0].get("url") if isinstance(images[0], dict) else images[0]
+                        local_path = await _async_download_image(url)
                         if local_path:
                             images = [local_path]
+
                 return {"success": True, "status": status, "videos": videos, "images": images, "error_message": err}
 
             else:
@@ -1002,17 +1122,22 @@ async def voice_asr(request: Request, api_key: str = Depends(get_api_key)):
 
     try:
         audio_fmt = _ASR_FMT.get(ext, "wav")
-        recognizer = Recognition(
-            model=model,
-            callback=None,
-            format=audio_fmt,
-            sample_rate=16000,
-            api_key=api_key,
-        )
-        rsp = recognizer.call(f"file://{tmp_path.resolve()}")
+        file_uri = f"file://{tmp_path.resolve()}"
+
+        def _run_asr():
+            recognizer = Recognition(
+                model=model,
+                callback=None,
+                format=audio_fmt,
+                sample_rate=16000,
+                api_key=api_key,
+            )
+            return recognizer.call(file_uri)
+
+        rsp = await asyncio.to_thread(_run_asr)
         if rsp and rsp.status_code == 200:
             sentences = getattr(rsp, "get_sentence", None)
-            if sentences:
+            if callable(sentences):
                 text = " ".join(s.get("text", "") for s in rsp.get_sentence())
             else:
                 out = rsp.output if hasattr(rsp, "output") else {}
@@ -1027,7 +1152,7 @@ async def voice_asr(request: Request, api_key: str = Depends(get_api_key)):
 
 # ─── API: Voice TTS ───────────────────────────────────────────────
 class VoiceTTSRequest(BaseModel):
-    model: str = "qwen-tts"
+    model: str = "qwen3-tts-flash-2025-11-27"
     voice: str = "Cherry"
     text: str = ""
     format: str = "mp3"
@@ -1041,24 +1166,41 @@ async def voice_tts(data: VoiceTTSRequest, api_key: str = Depends(get_api_key)):
         raise HTTPException(status_code=400, detail="文字長度不可超過 4000 字")
 
     try:
-        rsp = TTSv1.call(
-            model=data.model,
-            text=text,
-            voice=data.voice,
-            format=data.format,
-            sample_rate=22050,
-            api_key=api_key,
-        )
-        audio_data = rsp.get_audio_data()
-        if audio_data:
+        _model, _voice = data.model, data.voice
+
+        def _run_tts():
+            return QwenTTS.SpeechSynthesizer.call(
+                model=_model,
+                text=text,
+                voice=_voice,
+                api_key=api_key,
+            )
+
+        rsp = await asyncio.to_thread(_run_tts)
+
+        import base64
+        audio_bytes = None
+        out = getattr(rsp, "output", None)
+        audio_obj = getattr(out, "audio", None) if out else None
+        if audio_obj:
+            _get = (lambda k: audio_obj.get(k)) if isinstance(audio_obj, dict) else (lambda k: getattr(audio_obj, k, None))
+            b64 = _get("data")
+            url = _get("url")
+            if b64:
+                audio_bytes = base64.b64decode(b64)
+            elif url:
+                import httpx
+                async with httpx.AsyncClient(timeout=30) as cli:
+                    r = await cli.get(url)
+                    audio_bytes = r.content
+        if audio_bytes:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"tts_{ts}_{uuid.uuid4().hex[:6]}.{data.format}"
-            fp = OUTPUT_AUDIO_DIR / filename
-            fp.write_bytes(audio_data)
+            ext = "wav" if (url and url.endswith(".wav")) else "mp3"
+            filename = f"tts_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
+            (OUTPUT_AUDIO_DIR / filename).write_bytes(audio_bytes)
             return {"success": True, "audio_url": f"/outputs/audio/{filename}",
-                    "model": data.model, "voice": data.voice}
-        response = rsp.get_response()
-        msg = getattr(response, "message", None) or getattr(response, "text", None) or str(response)
+                    "model": _model, "voice": _voice}
+        msg = getattr(rsp, "message", None) or str(rsp)
         return JSONResponse(status_code=500, content={"error": f"TTS 失敗: {msg}"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
