@@ -1,5 +1,9 @@
 # AI Model Tester
 
+阿里巴巴雲端 AI 模型測試平台，支援文字生成、圖片生成、影片生成、語音辨識／合成、全模態即時通話，以及 NenAI 擴充模型。
+
+---
+
 ## 快速部署
 
 ### 前置需求
@@ -27,7 +31,7 @@ docker logs -f ai-model-tester-ai-model-tester-1
 # 停止服務
 docker compose down
 
-# 強制重新建置
+# 強制重新建置（更新程式碼後使用）
 docker compose build --no-cache && docker compose up -d
 ```
 
@@ -63,21 +67,25 @@ python app.py
 | qwen-flash-character | Qwen Flash Character | 角色 |
 | deepseek-v3.2 | DeepSeek V3.2 | 第三方 |
 
+---
+
 ### 圖片生成（需 DashScope API Key）
 
-| 模型 ID | 名稱 | 分類 |
-|---|---|---|
-| qwen-image-2.0-pro | 千問圖像 2.0 Pro | 千問文生圖 |
-| qwen-image-2.0 | 千問圖像 2.0 | 千問文生圖 |
-| qwen-image-max | 千問圖像 Max | 千問文生圖 |
-| qwen-image-plus | 千問圖像 Plus | 千問文生圖 |
-| wan2.6-t2i | 萬相 2.6 T2I | 萬相文生圖 |
-| z-image-turbo | Z-Image Turbo | Z-Image |
-| wan2.7-image-pro | 萬相 2.7 Image Pro | 萬相圖像編輯 |
-| wan2.7-image | 萬相 2.7 Image | 萬相圖像編輯 |
-| wan2.6-image | 萬相 2.6 Image | 萬相圖像編輯 |
-| qwen-image-edit-max | 千問圖像編輯 Max | 千問圖像編輯 |
-| qwen-image-edit-plus | 千問圖像編輯 Plus | 千問圖像編輯 |
+| 模型 ID | 名稱 | 分類 | 允許尺寸 |
+|---|---|---|---|
+| qwen-image-2.0-pro | 千問圖像 2.0 Pro | 千問文生圖 | 1024×1024 等 |
+| qwen-image-2.0 | 千問圖像 2.0 | 千問文生圖 | 1024×1024 等 |
+| qwen-image-max | 千問圖像 Max | 千問文生圖 | 1024×1024 等 |
+| qwen-image-plus | 千問圖像 Plus | 千問文生圖 | 1328×1328、1664×928、928×1664、1472×1104、1104×1472 |
+| wan2.6-t2i | 萬相 2.6 T2I | 萬相文生圖 | 1024×1024 等 |
+| z-image-turbo | Z-Image Turbo | Z-Image | 1024×1024 等 |
+| wan2.7-image-pro | 萬相 2.7 Image Pro | 萬相圖像編輯 | 1024×1024 等 |
+| wan2.7-image | 萬相 2.7 Image | 萬相圖像編輯 | 1024×1024 等 |
+| wan2.6-image | 萬相 2.6 Image | 萬相圖像編輯 | 1024×1024 等 |
+| qwen-image-edit-max | 千問圖像編輯 Max | 千問圖像編輯 | 1024×1024 等 |
+| qwen-image-edit-plus | 千問圖像編輯 Plus | 千問圖像編輯 | 1024×1024 等 |
+
+---
 
 ### 影片生成（需 DashScope API Key）
 
@@ -97,34 +105,76 @@ python app.py
 | happyhorse-1.0-video-edit | HappyHorse Video Edit | HappyHorse |
 | wan2.7-videoedit | 萬相 2.7 視頻編輯 | 萬相視頻編輯 |
 
+---
+
 ### NenAI 模型（需 NenAI API Key）
 
-| 模型 ID | 名稱 | 分類 |
-|---|---|---|
-| wan2.7-i2v-spicy | Wan 2.7 I2V Spicy | 影片生成 |
-| z-image-spicy | Z-Image Spicy | 圖片生成 |
+| 模型 ID | 名稱 | 分類 | 輸入 |
+|---|---|---|---|
+| wan2.7-i2v-spicy | Wan 2.7 I2V Spicy | 影片生成 | 文字 / 圖片 |
+| z-image-spicy | Z-Image Spicy | 圖片生成 | 文字 prompt |
+| qwen-image-edit-spicy | 圖像編輯 Spicy | 圖像編輯 | prompt + 來源圖 |
+| face-swap | 圖像換臉 | 圖像換臉 | 來源圖 + 換臉參考圖（無需 prompt）|
+
+---
 
 ### 語音（需 DashScope API Key）
 
 **ASR 語音辨識**
 
-| 模型 ID | 名稱 |
-|---|---|
-| qwen3-asr-flash | Qwen3 ASR Flash |
-| paraformer-v2 | Fun-ASR 語音識別 |
-| sensevoice-v1 | Fun-ASR 多語言 |
+| 模型 ID | 名稱 | 描述 |
+|---|---|---|
+| qwen3-asr-flash | Qwen3 ASR Flash | 新一代極速識別，多語言 |
+| paraformer-v2 | Fun-ASR 語音識別 | 高精度普通話識別 |
+| sensevoice-v1 | Fun-ASR 多語言 | 中／英／日／韓／粵 |
 
 **TTS 語音合成**
 
-| 模型 ID | 名稱 | 音色 |
+| 模型 ID | 名稱 | 可用音色 |
 |---|---|---|
-| qwen-tts / Cherry | 芊悅 | 女・親切 |
-| qwen-tts / Ethan | 逸軒 | 男・穩重 |
-| qwen-tts / Serena | 晨煦 | 女・清爽 |
-| qwen-tts / Wayne | 韋恩 | 男・磁性 |
-| qwen-tts / Summer | 甜茶 | 女・活潑 |
-| qwen-tts / Belle | 不吃魚 | 女・元氣 |
-| qwen-tts / Cove | 詹妮弗 | 女・知性 |
-| qwen-tts / Aria | 卡捷琳娜 | 女・優雅 |
-| qwen-tts / Kai | 嘉熙 | 男・輕快 |
-| qwen-tts / Luna | 月桐 | 女・溫柔 |
+| qwen3-tts-flash-2025-11-27 | Qwen3 TTS Flash | Cherry、Ethan、Serena、Wayne、Summer、Belle、Cove、Aria、Kai、Luna |
+
+---
+
+### 全模態即時通話（需 DashScope API Key）
+
+**即時通話（Realtime WebSocket）**
+
+| 模型 ID | 名稱 |
+|---|---|
+| qwen3.5-omni-flash-realtime | Qwen3.5 Omni Flash Realtime |
+| qwen3.5-omni-plus-realtime | Qwen3.5 Omni Plus Realtime |
+| qwen2.5-omni-3b-realtime | Qwen2.5 Omni 3B Realtime |
+| qwen2.5-omni-7b-realtime | Qwen2.5 Omni 7B Realtime |
+
+**非同步對話（HTTP Streaming）**
+
+| 模型 ID | 名稱 |
+|---|---|
+| qwen3.5-omni-flash | Qwen3.5 Omni Flash |
+| qwen3.5-omni-plus | Qwen3.5 Omni Plus |
+
+**音色（依模型系列）**
+
+| 模型系列 | 預設音色 | 音色數量 |
+|---|---|---|
+| qwen3.5-omni-* | Tina（甜甜） | 56 個（通用普通話 / 方言 / 國際） |
+| qwen2.5-omni-* | Ethan（晨煦） | 2 個 |
+
+qwen3.5-omni 部分音色：Tina、Cindy（台灣腔）、Ethan、Serena、Harvey、Maia、Ryan、Jennifer、Katerina、Sunny（四川）、Dylan（北京）、Kiki（粵語）、Sohee（韓）、Ono Anna（日）、Emilien（法）…等共 56 個。
+
+---
+
+## 主要依賴套件
+
+| 套件 | 版本 |
+|---|---|
+| fastapi | 0.136.3 |
+| uvicorn[standard] | 0.48.0 |
+| openai | 2.38.0 |
+| dashscope | 1.25.19 |
+| Pillow | 12.2.0 |
+| httpx | 0.28.1 |
+| websockets | 16.0 |
+| aiohttp | 3.13.5 |
+| pydantic | 2.13.4 |
