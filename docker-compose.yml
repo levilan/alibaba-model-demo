@@ -10,4 +10,6 @@ services:
       - PYTHONUNBUFFERED=1
       - OSS_ACCESS_KEY_ID=${OSS_ACCESS_KEY_ID:-}
       - OSS_ACCESS_KEY_SECRET=${OSS_ACCESS_KEY_SECRET:-}
+      # 聲音設計僅北京地域可用，需北京區 API Key
+      - DASHSCOPE_BJ_API_KEY=${DASHSCOPE_BJ_API_KEY:-}
     restart: unless-stopped

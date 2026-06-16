@@ -24,6 +24,8 @@ from dashscope import VideoSynthesis
 from dashscope.audio.tts import SpeechSynthesizer as TTSv1
 from dashscope.audio.asr import Recognition
 import dashscope.audio.qwen_tts as QwenTTS
+from dashscope.audio.tts_v2 import SpeechSynthesizer as CosyTTS, AudioFormat, VoiceEnrollmentService
+from dashscope.utils.oss_utils import upload_file as _dashscope_upload_file
 
 _INTL_WS_URL = "wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference"
 import requests as http_requests
@@ -77,7 +79,8 @@ UPLOAD_DIR      = Path(__file__).parent / "static" / "uploads"
 OUTPUT_IMG_DIR  = Path(__file__).parent / "outputs" / "images"
 OUTPUT_VID_DIR  = Path(__file__).parent / "outputs" / "videos"
 OUTPUT_AUDIO_DIR = Path(__file__).parent / "outputs" / "audio"
-for d in (UPLOAD_DIR, OUTPUT_IMG_DIR, OUTPUT_VID_DIR, OUTPUT_AUDIO_DIR):
+OUTPUT_CLONE_DIR = Path(__file__).parent / "outputs" / "voice_clone"
+for d in (UPLOAD_DIR, OUTPUT_IMG_DIR, OUTPUT_VID_DIR, OUTPUT_AUDIO_DIR, OUTPUT_CLONE_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 # 靜態檔案掛載
@@ -203,6 +206,8 @@ MODELS = {
         ],
                 "tts": [
             {"id": "qwen3-tts-flash-2025-11-27", "name": "Qwen3 TTS Flash", "group": "Qwen3", "desc": "最新極速合成"},
+            {"id": "cosyvoice-v3-plus",  "name": "CosyVoice v3 Plus",  "group": "CosyVoice", "desc": "高擬真多語言合成（龍系音色）"},
+            {"id": "cosyvoice-v3-flash", "name": "CosyVoice v3 Flash", "group": "CosyVoice", "desc": "極速版多語言合成（龍系音色）"},
         ],
     },
     "muleai": [
@@ -225,6 +230,30 @@ TTS_VOICES = [
     {"id": "Aria",     "name": "卡捷琳娜","gender": "女", "style": "優雅"},
     {"id": "Kai",      "name": "嘉熙",   "gender": "男", "style": "輕快"},
     {"id": "Luna",     "name": "月桐",   "gender": "女", "style": "溫柔"},
+]
+
+# CosyVoice v3 音色清單（cosyvoice-v3-plus / cosyvoice-v3-flash 共用）
+COSYVOICE_VOICES = [
+    {"id": "longanyang",        "name": "龍安洋",   "gender": "男", "style": "社交陪伴 中/英"},
+    {"id": "longanhuan",        "name": "龍安歡",   "gender": "女", "style": "社交陪伴 中/英"},
+    {"id": "longanrou_v3",      "name": "龍安柔",   "gender": "女", "style": "社交陪伴 中/英"},
+    {"id": "longanyun_v3",      "name": "龍安昀",   "gender": "男", "style": "語音助手 中/英"},
+    {"id": "longanwen_v3",      "name": "龍安溫",   "gender": "女", "style": "語音助手 中/英"},
+    {"id": "longxiaochun_v3",   "name": "龍小淳",   "gender": "女", "style": "語音助手 中/英"},
+    {"id": "longxiaoxia_v3",    "name": "龍小夏",   "gender": "女", "style": "語音助手 中/英"},
+    {"id": "longyumi_v3",       "name": "YUMI",     "gender": "女", "style": "語音助手 中/英"},
+    {"id": "longhua_v3",        "name": "龍華",     "gender": "女", "style": "社交陪伴 中/英"},
+    {"id": "longcheng_v3",      "name": "龍橙",     "gender": "男", "style": "社交陪伴 中/英"},
+    {"id": "longfei_v3",        "name": "龍飛",     "gender": "男", "style": "詩歌朗誦 中/英"},
+    {"id": "longmiao_v3",       "name": "龍妙",     "gender": "女", "style": "有聲書 中/英"},
+    {"id": "longyue_v3",        "name": "龍悅",     "gender": "女", "style": "有聲書 中/英"},
+    {"id": "longshuo_v3",       "name": "龍碩",     "gender": "男", "style": "新聞播報 中/英"},
+    {"id": "longshu_v3",        "name": "龍書",     "gender": "男", "style": "新聞播報 中/英"},
+    {"id": "loongbella_v3",     "name": "Bella3.0", "gender": "女", "style": "新聞播報 中/英"},
+    {"id": "longjiaxin_v3",     "name": "龍嘉欣",   "gender": "女", "style": "粵語 粵/英"},
+    {"id": "longlaotie_v3",     "name": "龍老鐵",   "gender": "男", "style": "東北話 中/英"},
+    {"id": "loongriko_v3",      "name": "Riko",     "gender": "女", "style": "日語"},
+    {"id": "loongkyong_v3",     "name": "loongkyong","gender": "女", "style": "韓語"},
 ]
 
 
@@ -283,7 +312,7 @@ async def login(data: LoginRequest):
 # ─── API: Models ──────────────────────────────────────────────────
 @app.get("/api/models")
 async def get_models(api_key: str = Depends(get_api_key)):
-    return {**MODELS, "tts_voices": TTS_VOICES}
+    return {**MODELS, "tts_voices": TTS_VOICES, "cosyvoice_voices": COSYVOICE_VOICES}
 
 # ─── API: Text Generation (SSE Streaming) ─────────────────────────
 class TextGenerateRequest(BaseModel):
@@ -1198,7 +1227,7 @@ class VoiceTTSRequest(BaseModel):
     format: str = "mp3"
 
 @app.post("/api/voice/tts")
-async def voice_tts(data: VoiceTTSRequest, api_key: str = Depends(get_api_key)):
+async def voice_tts(data: VoiceTTSRequest, request: Request, api_key: str = Depends(get_api_key)):
     text = data.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="請輸入合成文字")
@@ -1207,6 +1236,52 @@ async def voice_tts(data: VoiceTTSRequest, api_key: str = Depends(get_api_key)):
 
     try:
         _model, _voice = data.model, data.voice
+        _fmt = (data.format or "mp3").lower()
+
+        # ── CosyVoice v3：使用 tts_v2 SpeechSynthesizer，直接回傳音訊 bytes ──
+        if _model.startswith("cosyvoice"):
+            _cosy_fmt = AudioFormat.WAV_24000HZ_MONO_16BIT if _fmt == "wav" else AudioFormat.MP3_24000HZ_MONO_256KBPS
+            _ext = "wav" if _fmt == "wav" else "mp3"
+
+            # 設計音色屬北京地域：合成需改走北京 websocket + 北京區金鑰
+            _design = _is_design_voice(_voice)
+            if _design:
+                _syn_key = _design_key(request)
+                if not _syn_key:
+                    return JSONResponse(status_code=400, content={"error": "此為設計音色（北京地域），需提供設計 API Key（北京區）才能合成"})
+                _syn_ws = _BJ_WS_URL
+            else:
+                _syn_key, _syn_ws = api_key, _INTL_WS_URL
+
+            def _run_cosy():
+                dashscope.api_key = _syn_key  # tts_v2 由全域讀取 apikey
+                # 跨區（北京）WS 冷啟動可能超過 SDK 固定的 5s 連線逾時，重試一次（重試時連線已暖）
+                last_exc = None
+                for _ in range(2):
+                    try:
+                        synth = CosyTTS(
+                            model=_model,
+                            voice=_voice,
+                            format=_cosy_fmt,
+                            url=_syn_ws,
+                            headers={"Authorization": f"bearer {_syn_key}"},
+                        )
+                        return synth.call(text)
+                    except TimeoutError as e:
+                        last_exc = e
+                raise last_exc
+
+            audio_bytes = await asyncio.to_thread(_run_cosy)
+            if audio_bytes:
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"tts_{ts}_{uuid.uuid4().hex[:6]}.{_ext}"
+                oss_url = _oss_put(audio_bytes, f"audio/{filename}")
+                if oss_url:
+                    return {"success": True, "audio_url": oss_url, "model": _model, "voice": _voice}
+                (OUTPUT_AUDIO_DIR / filename).write_bytes(audio_bytes)
+                return {"success": True, "audio_url": f"/outputs/audio/{filename}",
+                        "model": _model, "voice": _voice}
+            return JSONResponse(status_code=500, content={"error": "TTS 失敗: CosyVoice 未回傳音訊"})
 
         def _run_tts():
             return QwenTTS.SpeechSynthesizer.call(
@@ -1247,6 +1322,264 @@ async def voice_tts(data: VoiceTTSRequest, api_key: str = Depends(get_api_key)):
         return JSONResponse(status_code=500, content={"error": f"TTS 失敗: {msg}"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ─── API: Voice Enrollment（CosyVoice 聲音複刻管理）──────────────
+_CLONE_EXT = {".wav", ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".flac", ".wma", ".amr"}
+
+# 每個模型固定一組 prefix（僅小寫字母+數字、<10 字），用來把複刻音色歸屬到模型，
+# 並可透過 list_voices(prefix=...) 依模型過濾。
+_CLONE_PREFIX = {
+    "cosyvoice-v3-plus":   "v3plus",
+    "cosyvoice-v3-flash":  "v3flash",
+    "cosyvoice-v3.5-plus": "v35plus",
+    "cosyvoice-v3.5-flash":"v35flash",
+}
+
+def _clone_prefix(target_model: str) -> str:
+    return _CLONE_PREFIX.get(target_model, "clone")
+
+# 聲音設計僅北京地域可用，因此設計音色（建立/列出/刪除/合成）都走北京端點與北京區金鑰。
+# 設計回傳的 voice_id 形如 cosyvoice-v3-flash-vd-v3flash-xxxx，含 "-vd-" 標記。
+_BJ_HTTP_URL = "https://dashscope.aliyuncs.com/api/v1"
+_BJ_WS_URL   = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+
+def _bj_key() -> Optional[str]:
+    return os.environ.get("DASHSCOPE_BJ_API_KEY", "").strip() or None
+
+def _design_key(request: Request) -> Optional[str]:
+    """設計（北京地域）用的金鑰：優先取前端 header，其次環境變數。"""
+    hdr = (request.headers.get("X-Design-Api-Key", "") or "").strip()
+    return hdr or _bj_key()
+
+def _is_design_voice(voice_id: str) -> bool:
+    return "-vd-" in (voice_id or "")
+
+def _enroll_rest(base: str, key: str, action: str, **fields) -> dict:
+    """以 RESTful 呼叫 voice-enrollment 的管理動作（list_voice / delete_voice 等），回傳 JSON dict。"""
+    payload = {"model": "voice-enrollment", "input": {"action": action, **fields}}
+    r = http_requests.post(
+        f"{base}/services/audio/tts/customization",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json=payload, timeout=30,
+    )
+    try:
+        body = r.json() if r.content else {}
+    except Exception:
+        body = {}
+    return {"status": r.status_code, "body": body}
+
+@app.post("/api/voice/clone")
+async def voice_clone(request: Request, api_key: str = Depends(get_api_key)):
+    """本地上傳音檔 → 透過 DashScope 暫存上傳取得 oss:// URL → 呼叫 CosyVoice 複刻 → 回傳 voice_id。
+
+    不需 OSS、不需公開網址：音檔上傳到 DashScope 自家暫存，複刻時帶
+    X-DashScope-OssResourceResolve 標頭讓服務端解析 oss:// 連結。
+    """
+    form = await request.form()
+    target_model = (form.get("target_model") or "cosyvoice-v3-plus").strip()
+    audio_file = form.get("audio")
+
+    if not target_model.startswith("cosyvoice"):
+        return JSONResponse(status_code=400, content={"error": "複刻僅支援 CosyVoice 模型"})
+    if not audio_file or not hasattr(audio_file, "filename") or not audio_file.filename:
+        return JSONResponse(status_code=400, content={"error": "請上傳音訊檔案（建議 10–20 秒、單聲道、≥16kHz）"})
+
+    ext = Path(audio_file.filename).suffix.lower()
+    if ext not in _CLONE_EXT:
+        return JSONResponse(status_code=400, content={"error": f"不支援的音訊格式：{ext or '未知'}"})
+
+    audio_bytes = await asyncio.to_thread(audio_file.file.read)
+    if len(audio_bytes) > 10 * 1024 * 1024:
+        return JSONResponse(status_code=400, content={"error": "音檔過大（上限 10MB）"})
+
+    # 暫存到本地供 DashScope SDK 上傳
+    tmp_path = OUTPUT_CLONE_DIR / f"{uuid.uuid4().hex}{ext}"
+    tmp_path.write_bytes(audio_bytes)
+
+    try:
+        def _run_clone():
+            # 1) 上傳本地檔到 DashScope 暫存，取得 oss:// URL
+            #    upload_file 需以 file:// 開頭才會實際上傳，否則回傳 None
+            oss_url = _dashscope_upload_file(target_model, f"file://{tmp_path.resolve()}", api_key)
+            if not oss_url:
+                raise RuntimeError("音檔上傳 DashScope 暫存失敗")
+            # 2) 複刻；oss:// 需帶 OssResourceResolve 標頭讓服務端解析
+            svc = VoiceEnrollmentService(
+                api_key=api_key,
+                headers={"X-DashScope-OssResourceResolve": "enable"},
+            )
+            return svc.create_voice(target_model=target_model, prefix=_clone_prefix(target_model), url=oss_url)
+
+        voice_id = await asyncio.to_thread(_run_clone)
+        if not voice_id:
+            return JSONResponse(status_code=500, content={"error": "複刻失敗：未取得 voice_id"})
+        return {"success": True, "voice_id": voice_id, "target_model": target_model}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"複刻失敗: {e}"})
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+@app.get("/api/voice/voices")
+async def voice_list(request: Request, target_model: str = "cosyvoice-v3-plus", api_key: str = Depends(get_api_key)):
+    """列出此帳號在指定模型下的音色（含狀態）。
+
+    複刻音色在國際版（用登入金鑰查詢）；設計音色在北京地域（用 DASHSCOPE_BJ_API_KEY 查詢）。
+    兩者合併回傳，並標記 region 供前端與合成路由判斷。
+    """
+    if not target_model.startswith("cosyvoice"):
+        return JSONResponse(status_code=400, content={"error": "僅支援 CosyVoice 模型"})
+    prefix = _clone_prefix(target_model)
+
+    def _norm(v):
+        _get = (lambda k: v.get(k)) if isinstance(v, dict) else (lambda k: getattr(v, k, None))
+        return {"voice_id": _get("voice_id"), "status": _get("status"),
+                "gmt_create": _get("gmt_create"), "gmt_modified": _get("gmt_modified")}
+
+    items = []
+    # 1) 國際版複刻音色（SDK，登入金鑰）
+    try:
+        def _run_list_intl():
+            return VoiceEnrollmentService(api_key=api_key).list_voices(prefix=prefix, page_index=0, page_size=100)
+        for v in (await asyncio.to_thread(_run_list_intl)) or []:
+            it = _norm(v)
+            if not _is_design_voice(it["voice_id"]):   # 排除非本區的設計音色，避免重複
+                it["region"] = "intl"
+                items.append(it)
+    except Exception as e:
+        print(f"voice_list intl error: {e}")
+
+    # 2) 北京地域設計音色（REST，北京金鑰）
+    bj = _design_key(request)
+    if bj:
+        try:
+            def _run_list_bj():
+                return _enroll_rest(_BJ_HTTP_URL, bj, "list_voice", prefix=prefix, page_index=0, page_size=100)
+            res = await asyncio.to_thread(_run_list_bj)
+            for v in ((res.get("body") or {}).get("output") or {}).get("voice_list", []) or []:
+                it = _norm(v)
+                if _is_design_voice(it["voice_id"]):
+                    it["region"] = "beijing"
+                    items.append(it)
+        except Exception as e:
+            print(f"voice_list beijing error: {e}")
+
+    return {"success": True, "target_model": target_model, "voices": items}
+
+
+@app.delete("/api/voice/voices/{voice_id}")
+async def voice_delete(voice_id: str, request: Request, api_key: str = Depends(get_api_key)):
+    """刪除一個音色。設計音色（-vd-）走北京地域，其餘走國際版。"""
+    try:
+        if _is_design_voice(voice_id):
+            bj = _design_key(request)
+            if not bj:
+                return JSONResponse(status_code=400, content={"error": "設計音色刪除需提供設計 API Key（北京區）"})
+            def _run_delete():
+                res = _enroll_rest(_BJ_HTTP_URL, bj, "delete_voice", voice_id=voice_id)
+                if res["status"] != 200:
+                    b = res["body"]
+                    raise RuntimeError(f"[{res['status']}] {b.get('code','')} {b.get('message','')}")
+        else:
+            def _run_delete():
+                VoiceEnrollmentService(api_key=api_key).delete_voice(voice_id)
+
+        await asyncio.to_thread(_run_delete)
+        return {"success": True, "voice_id": voice_id}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"刪除失敗: {e}"})
+
+
+# ─── API: Voice Design（CosyVoice 聲音設計，用文字描述生成音色）────
+# 注意：DashScope Python SDK 不支援聲音設計，需走 RESTful API。
+class VoiceDesignRequest(BaseModel):
+    target_model: str = "cosyvoice-v3-plus"
+    voice_prompt: str = ""   # 描述目標音色特徵（中/英，≤500 字）
+    preview_text: str = ""   # 試聽範例文字（≤200 字）
+
+@app.post("/api/voice/design")
+async def voice_design(data: VoiceDesignRequest, request: Request, api_key: str = Depends(get_api_key)):
+    target_model = data.target_model.strip()
+    voice_prompt = data.voice_prompt.strip()
+    preview_text = data.preview_text.strip()
+
+    if not target_model.startswith("cosyvoice"):
+        return JSONResponse(status_code=400, content={"error": "聲音設計僅支援 CosyVoice 模型"})
+    if not voice_prompt:
+        return JSONResponse(status_code=400, content={"error": "請輸入音色描述（voice_prompt）"})
+    if len(voice_prompt) > 500:
+        return JSONResponse(status_code=400, content={"error": "音色描述不可超過 500 字"})
+    # 聲音設計必須同時提供 voice_prompt 與 preview_text（API 規定），preview_text 需 15–200 字
+    if not preview_text:
+        return JSONResponse(status_code=400, content={"error": "聲音設計需提供試聽文字（preview_text，15–200 字）"})
+    if len(preview_text) < 15:
+        return JSONResponse(status_code=400, content={"error": "試聽文字需至少 15 字"})
+    if len(preview_text) > 200:
+        return JSONResponse(status_code=400, content={"error": "試聽文字不可超過 200 字"})
+
+    # 聲音設計僅在北京地域可用，固定走北京端點 + 北京區金鑰（前端 header 優先，其次環境變數）。
+    bj_key = _design_key(request)
+    if not bj_key:
+        return JSONResponse(status_code=400, content={"error": "聲音設計需提供設計 API Key（北京區）"})
+    bj_url = f"{_BJ_HTTP_URL}/services/audio/tts/customization"
+
+    design_input = {
+        "action": "create_voice",
+        "target_model": target_model,
+        "voice_prompt": voice_prompt,
+        "preview_text": preview_text,
+        "prefix": _clone_prefix(target_model),
+    }
+    payload = {
+        "model": "voice-enrollment",
+        "input": design_input,
+        "parameters": {"sample_rate": 24000, "response_format": "wav"},
+    }
+    headers = {"Authorization": f"Bearer {bj_key}", "Content-Type": "application/json"}
+
+    try:
+        def _run_design():
+            return http_requests.post(bj_url, headers=headers, json=payload, timeout=60)
+
+        rsp = await asyncio.to_thread(_run_design)
+        try:
+            body = rsp.json() if rsp.content else {}
+        except Exception:
+            body = {}
+        out = body.get("output") or {}
+        voice_id = out.get("voice_id")
+        if rsp.status_code != 200 or not voice_id:
+            return JSONResponse(status_code=500, content={
+                "error": f"聲音設計失敗: [{rsp.status_code}] {body.get('code','')} {body.get('message','') or rsp.text}".strip(),
+                "request_id": body.get("request_id", ""),
+            })
+
+        # 試聽音訊：文檔格式為 output.preview_audio.data（base64）
+        preview_url = None
+        pa = out.get("preview_audio") or {}
+        audio_b64 = (pa.get("data") if isinstance(pa, dict) else None) or out.get("audio") or out.get("data")
+        audio_remote = (pa.get("url") if isinstance(pa, dict) else None) or out.get("audio_url") or out.get("url")
+        try:
+            if audio_b64 and isinstance(audio_b64, str):
+                import base64
+                audio_bytes = base64.b64decode(audio_b64)
+            elif audio_remote:
+                audio_bytes = (await asyncio.to_thread(http_requests.get, audio_remote, timeout=30)).content
+            else:
+                audio_bytes = None
+            if audio_bytes:
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                fn = f"design_{ts}_{uuid.uuid4().hex[:6]}.wav"
+                preview_url = _oss_put(audio_bytes, f"audio/{fn}")
+                if not preview_url:
+                    (OUTPUT_AUDIO_DIR / fn).write_bytes(audio_bytes)
+                    preview_url = f"/outputs/audio/{fn}"
+        except Exception:
+            preview_url = None
+
+        return {"success": True, "voice_id": voice_id, "target_model": target_model, "preview_url": preview_url}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"聲音設計失敗: {e}"})
 
 if __name__ == "__main__":
     import uvicorn

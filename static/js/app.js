@@ -6,7 +6,7 @@
 // ── State ─────────────────────────────────────────────────────
 let apiKey = sessionStorage.getItem('dashscope_api_key') || '';
 let muleApiKey = sessionStorage.getItem('muleai_api_key') || '';
-let models = { text: [], image: [], video: [], voice: { asr: [], tts: [] }, tts_voices: [], muleai: [] };
+let models = { text: [], image: [], video: [], voice: { asr: [], tts: [] }, tts_voices: [], cosyvoice_voices: [], muleai: [] };
 let refFiles = [];
 let editRefFiles = [];  // for video editing reference images
 let imgRefFiles = [];   // for image edit reference images (up to 9)
@@ -320,19 +320,218 @@ function populateSelectors() {
     onMuleaiModelChange();
     populateSelect('asrModel', models.voice?.asr || []);
     populateSelect('ttsModel', models.voice?.tts || []);
-    populateTtsVoices();
+    const ttsModelSel = document.getElementById('ttsModel');
+    if (ttsModelSel) ttsModelSel.onchange = onTtsModelChange;
+    restoreDesignKey();
+    onTtsModelChange();
+}
+
+let clonedVoices = [];  // { voice_id, target_model, status } 來自後端的複刻音色
+
+function onTtsModelChange() {
+    const model = document.getElementById('ttsModel')?.value || '';
+    if (model.startsWith('cosyvoice')) {
+        loadClonedVoices(model);   // 會在取得清單後呼叫 populateTtsVoices
+    } else {
+        clonedVoices = [];
+        populateTtsVoices();
+    }
 }
 
 function populateTtsVoices() {
     const sel = document.getElementById('ttsVoice');
     if (!sel) return;
+    const model = document.getElementById('ttsModel')?.value || '';
+    const isCosy = model.startsWith('cosyvoice');
+    const list = isCosy ? (models.cosyvoice_voices || []) : (models.tts_voices || []);
+    const prev = sel.value;
     sel.innerHTML = '';
-    (models.tts_voices || []).forEach(v => {
+    list.forEach(v => {
         sel.appendChild(Object.assign(document.createElement('option'), {
             value: v.id,
             textContent: `${v.name}（${v.gender}）— ${v.style}`,
         }));
     });
+    // 複刻 / 設計音色（已就緒者可直接合成）
+    clonedVoices.forEach(c => {
+        const ready = !c.status || c.status === 'OK';
+        const tag = (c.region === 'beijing' || (c.voice_id || '').includes('-vd-')) ? '🎨 設計' : '🎙️ 複刻';
+        const opt = Object.assign(document.createElement('option'), {
+            value: c.voice_id,
+            textContent: `${tag} — ${c.voice_id}${ready ? '' : `（${c.status}）`}`,
+        });
+        if (!ready) opt.disabled = true;
+        sel.appendChild(opt);
+    });
+    if (prev) sel.value = prev;
+    // 切換複刻區塊顯示
+    const cloneGroup = document.getElementById('ttsCloneGroup');
+    if (cloneGroup) cloneGroup.style.display = isCosy ? '' : 'none';
+    renderCloneList();
+}
+
+// 設計（北京區）API Key：前端輸入，存 localStorage，透過 X-Design-Api-Key header 帶到北京區操作
+function getDesignKey() {
+    return (document.getElementById('ttsDesignKey')?.value || '').trim();
+}
+function saveDesignKey() {
+    try { localStorage.setItem('designApiKey', getDesignKey()); } catch (_) {}
+}
+function restoreDesignKey() {
+    try {
+        const k = localStorage.getItem('designApiKey');
+        const el = document.getElementById('ttsDesignKey');
+        if (k && el) el.value = k;
+    } catch (_) {}
+}
+function voiceHeaders(extra) {
+    const h = { 'Authorization': `Bearer ${apiKey}`, ...(extra || {}) };
+    const dk = getDesignKey();
+    if (dk) h['X-Design-Api-Key'] = dk;
+    return h;
+}
+
+async function loadClonedVoices(model) {
+    if (!apiKey) { clonedVoices = []; populateTtsVoices(); return; }
+    try {
+        const res = await fetch(`/api/voice/voices?target_model=${encodeURIComponent(model)}`, {
+            headers: voiceHeaders(),
+        });
+        const data = await res.json();
+        clonedVoices = (res.ok && data.success) ? (data.voices || []) : [];
+    } catch (_) {
+        clonedVoices = [];
+    }
+    populateTtsVoices();
+}
+
+function renderCloneList() {
+    const box = document.getElementById('ttsCloneList');
+    if (!box) return;
+    if (!clonedVoices.length) {
+        box.innerHTML = '<p style="margin:8px 0 0;color:var(--text-muted);font-size:12px">尚無複刻音色</p>';
+        return;
+    }
+    box.innerHTML = '';
+    clonedVoices.forEach(c => {
+        const ready = !c.status || c.status === 'OK';
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px';
+        const label = document.createElement('span');
+        label.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        label.title = c.voice_id;
+        const icon = !ready ? '⏳' : (c.region === 'beijing' || (c.voice_id || '').includes('-vd-')) ? '🎨' : '🎙️';
+        label.textContent = `${icon} ${c.voice_id}${ready ? '' : `（${c.status}）`}`;
+        const del = Object.assign(document.createElement('button'), {
+            className: 'btn btn-ghost btn-sm', textContent: '刪除',
+        });
+        del.onclick = () => deleteClone(c.voice_id);
+        row.append(label, del);
+        box.appendChild(row);
+    });
+}
+
+async function deleteClone(voiceId) {
+    if (!confirm(`確定刪除複刻音色？\n${voiceId}`)) return;
+    try {
+        const res = await fetch(`/api/voice/voices/${encodeURIComponent(voiceId)}`, {
+            method: 'DELETE',
+            headers: voiceHeaders(),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            loadClonedVoices(document.getElementById('ttsModel').value);
+        } else {
+            alert(data.error || '刪除失敗');
+        }
+    } catch (err) {
+        alert('刪除失敗：' + err.message);
+    }
+}
+
+let cloneFile = null;
+function onCloneFileChange(e) {
+    cloneFile = e.target.files[0] || null;
+    document.getElementById('ttsCloneFileName').textContent = cloneFile ? cloneFile.name : '尚未選擇檔案';
+    document.getElementById('ttsCloneBtn').style.display = cloneFile ? '' : 'none';
+    document.getElementById('ttsCloneStatus').textContent = '';
+}
+
+async function sendClone() {
+    if (!cloneFile) return;
+    const model = document.getElementById('ttsModel').value;
+    const btn = document.getElementById('ttsCloneBtn');
+    const status = document.getElementById('ttsCloneStatus');
+    btn.disabled = true;
+    status.style.color = 'var(--text-muted)';
+    status.textContent = '複刻中…（約需數秒）';
+    try {
+        const fd = new FormData();
+        fd.append('audio', cloneFile);
+        fd.append('target_model', model);
+        const res = await fetch('/api/voice/clone', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${apiKey}` },
+            body: fd,
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            status.style.color = 'var(--success, #16a34a)';
+            status.textContent = `✓ 複刻完成：${data.voice_id}`;
+            await loadClonedVoices(model);
+            document.getElementById('ttsVoice').value = data.voice_id;
+        } else {
+            status.style.color = 'var(--error, #dc2626)';
+            status.textContent = data.error || '複刻失敗';
+        }
+    } catch (err) {
+        status.style.color = 'var(--error, #dc2626)';
+        status.textContent = '複刻失敗：' + err.message;
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function sendDesign() {
+    const model = document.getElementById('ttsModel').value;
+    const prompt = document.getElementById('ttsDesignPrompt').value.trim();
+    const preview = document.getElementById('ttsDesignPreview').value.trim();
+    const btn = document.getElementById('ttsDesignBtn');
+    const status = document.getElementById('ttsDesignStatus');
+    const audio = document.getElementById('ttsDesignPreviewAudio');
+    if (!getDesignKey()) { status.style.color = 'var(--error, #dc2626)'; status.textContent = '請先填入設計 API Key（北京區）'; return; }
+    if (!prompt) { status.style.color = 'var(--error, #dc2626)'; status.textContent = '請輸入音色描述'; return; }
+    if (preview.length < 15) { status.style.color = 'var(--error, #dc2626)'; status.textContent = '試聽文字需 15–200 字（必填）'; return; }
+    btn.disabled = true;
+    audio.style.display = 'none';
+    status.style.color = 'var(--text-muted)';
+    status.textContent = '生成中…（約需數秒）';
+    try {
+        const res = await fetch('/api/voice/design', {
+            method: 'POST',
+            headers: voiceHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ target_model: model, voice_prompt: prompt, preview_text: preview }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            status.style.color = 'var(--success, #16a34a)';
+            status.textContent = `✓ 已生成：${data.voice_id}`;
+            if (data.preview_url) {
+                audio.src = data.preview_url;
+                audio.style.display = '';
+            }
+            await loadClonedVoices(model);
+            document.getElementById('ttsVoice').value = data.voice_id;
+        } else {
+            status.style.color = 'var(--error, #dc2626)';
+            status.textContent = data.error || '生成失敗';
+        }
+    } catch (err) {
+        status.style.color = 'var(--error, #dc2626)';
+        status.textContent = '生成失敗：' + err.message;
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 function populateSelect(id, list, filterFn = null) {
@@ -871,7 +1070,7 @@ async function sendTTS() {
     try {
         const res = await fetch('/api/voice/tts', {
             method: 'POST',
-            headers: authHeader(),
+            headers: { ...authHeader(), ...(getDesignKey() ? { 'X-Design-Api-Key': getDesignKey() } : {}) },
             body: JSON.stringify({ model, voice, text, format }),
         });
         const data = await res.json();

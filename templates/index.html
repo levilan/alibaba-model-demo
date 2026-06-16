@@ -538,6 +538,40 @@
                     <label class="form-label" data-tip="選擇語音音色，不同音色有不同性別、風格與語調">音色</label>
                     <select id="ttsVoice" class="select-input"></select>
                 </div>
+                <div class="form-group" id="ttsCloneGroup" style="display:none">
+                    <label class="form-label" data-tip="上傳 10–20 秒、單聲道、≥16kHz 的清晰人聲音檔，複刻出專屬音色（複刻音色會加入上方音色清單）">聲音複刻</label>
+                    <input type="file" id="ttsCloneFile"
+                           accept="audio/wav,audio/mp3,audio/mpeg,audio/m4a,audio/flac,audio/ogg,audio/*"
+                           style="display:none" onchange="onCloneFileChange(event)">
+                    <button class="btn btn-outline btn-sm" style="width:100%"
+                            onclick="document.getElementById('ttsCloneFile').click()">選擇音檔</button>
+                    <p id="ttsCloneFileName" style="margin:6px 0 0;color:var(--text-muted);font-size:12px">尚未選擇檔案</p>
+                    <button id="ttsCloneBtn" class="btn btn-primary btn-sm" style="width:100%;margin-top:8px;display:none"
+                            onclick="sendClone()">開始複刻</button>
+                    <p id="ttsCloneStatus" style="margin:6px 0 0;font-size:12px"></p>
+
+                    <div style="margin-top:12px;border-top:1px solid var(--border, #e5e7eb);padding-top:10px">
+                        <label class="form-label" data-tip="不需上傳音檔，用文字描述目標音色特徵（中/英，≤500字）即可生成定制音色">聲音設計（文字生成音色）</label>
+                        <input id="ttsDesignKey" class="select-input" type="password" autocomplete="off"
+                               placeholder="設計 API Key（北京區，sk-...）" style="width:100%;font-size:13px"
+                               oninput="saveDesignKey()"
+                               data-tip="聲音設計僅北京地域可用，需填入北京區的 DashScope API Key；設計音色的列出/合成/刪除都會用這把 key">
+                        <textarea id="ttsDesignPrompt" class="textarea-input" rows="3" maxlength="500"
+                                  placeholder="描述目標音色，例：沉穩的中年男性播音員，音色低沉渾厚，語速平穩"
+                                  style="width:100%;margin-top:6px;font-size:13px"></textarea>
+                        <input id="ttsDesignPreview" class="select-input" type="text" maxlength="200"
+                               placeholder="試聽文字（必填，15–200 字）" style="width:100%;margin-top:6px;font-size:13px">
+                        <button id="ttsDesignBtn" class="btn btn-primary btn-sm" style="width:100%;margin-top:8px"
+                                onclick="sendDesign()">生成音色</button>
+                        <p id="ttsDesignStatus" style="margin:6px 0 0;font-size:12px"></p>
+                        <audio id="ttsDesignPreviewAudio" controls style="width:100%;margin-top:6px;display:none"></audio>
+                    </div>
+
+                    <div style="margin-top:12px;border-top:1px solid var(--border, #e5e7eb);padding-top:8px">
+                        <label class="form-label" style="font-size:12px">我的音色（複刻 / 設計）</label>
+                        <div id="ttsCloneList"></div>
+                    </div>
+                </div>
                 <div class="form-group">
                     <label class="form-label">輸出格式</label>
                     <select id="ttsFormat" class="select-input">
