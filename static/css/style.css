@@ -376,15 +376,27 @@ input[type="range"]::-webkit-slider-thumb {
     gap: 12px; align-content: flex-start;
 }
 
+/* Image results grid */
+#imageResults {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    align-content: start;
+}
+
 /* Image card */
 .img-card {
-    width: calc(50% - 6px); position: relative;
+    width: auto; position: relative;
     background: var(--bg-white); border: 1px solid var(--border);
     border-radius: var(--radius-lg); overflow: hidden;
     transition: var(--t); animation: fadeUp 0.25s ease;
 }
 .img-card:hover { border-color: var(--ali-orange); box-shadow: 0 2px 12px rgba(255,106,0,0.1); }
-.img-card img { width: 100%; aspect-ratio: 1; object-fit: cover; }
+.img-card img {
+    width: 100%; max-height: 300px; object-fit: cover;
+    cursor: zoom-in; transition: opacity var(--t);
+    display: block;
+}
+.img-card img:hover { opacity: 0.88; }
 .img-card-footer {
     padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;
     border-top: 1px solid var(--border);
@@ -433,9 +445,20 @@ input[type="range"]::-webkit-slider-thumb {
     transition: width 0.5s ease; animation: pulse 2s ease-in-out infinite;
 }
 .video-player {
-    width: 100%; max-width: 560px; border-radius: var(--radius);
+    width: 100%; border-radius: var(--radius);
     border: 1px solid var(--border); margin-top: 8px;
+    display: block;
 }
+
+.video-card-actions {
+    display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap;
+}
+
+.muleai-img-result {
+    display: block; width: 100%; border-radius: var(--radius);
+    margin-top: 8px; cursor: zoom-in; transition: opacity var(--t);
+}
+.muleai-img-result:hover { opacity: 0.88; }
 
 /* ─── Upload area ────────────────────────────────────────────── */
 .upload-zone {
@@ -513,6 +536,39 @@ input[type="range"]::-webkit-slider-thumb {
 @keyframes spin     { to   { transform: rotate(360deg); } }
 @keyframes blink    { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
 @keyframes pulse    { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+/* ─── Lightbox ───────────────────────────────────────────────── */
+.lightbox {
+    position: fixed; inset: 0; z-index: 3000;
+    background: rgba(0,0,0,0.92);
+    display: flex; align-items: center; justify-content: center;
+    cursor: zoom-out;
+    animation: fadeIn 0.15s ease;
+}
+.lightbox-inner {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    max-width: 92vw; max-height: 92vh; cursor: default;
+}
+.lightbox-inner img {
+    max-width: 90vw; max-height: 88vh;
+    border-radius: var(--radius); object-fit: contain;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.6); display: block;
+}
+.lightbox-inner video {
+    max-width: 90vw; max-height: 82vh;
+    border-radius: var(--radius);
+    box-shadow: 0 12px 48px rgba(0,0,0,0.6);
+}
+.lightbox-close {
+    position: fixed; top: 16px; right: 16px;
+    width: 40px; height: 40px;
+    background: rgba(255,255,255,0.15); border: none; border-radius: 50%;
+    color: white; font-size: 1.1rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background var(--t); z-index: 3001; line-height: 1;
+}
+.lightbox-close:hover { background: rgba(255,255,255,0.3); }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 /* ─── Voice Panel ─────────────────────────────────────────────── */
 .voice-result {

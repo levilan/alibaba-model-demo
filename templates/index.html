@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alibaba Cloud AI Testing Platform</title>
-    <meta name="description" content="Test Alibaba Cloud (DashScope) AI models — Text, Image & Video Generation">
+    <title>NenAI Testing Platform</title>
+    <meta name="description" content="Test NenAI models — Text, Image & Video Generation">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -27,23 +27,17 @@
             </div>
             <div class="login-header-text">
                 <h1>AI Testing Platform</h1>
-                <p>Alibaba Cloud DashScope</p>
+                <p>NenAI Platform</p>
             </div>
         </div>
         <div class="login-body">
             <div class="login-desc">
-                使用您的 <strong>DashScope API Key</strong>（格式：<code>sk-...</code>）登入，所有 AI 呼叫將使用此 Key。
-            </div>
-                        <div class="form-group">
-                <label class="form-label" for="apiKeyInput">API Key</label>
-                <input type="password" id="apiKeyInput"
-                       placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
-                       autocomplete="off" spellcheck="false">
+                使用您的 <strong>NenAI API Key</strong>（格式：<code>sk-...</code>）登入，所有 AI 呼叫將使用此 Key。
             </div>
             <div class="form-group">
-                <label class="form-label" for="muleApiKeyInput">NenAI API Key（選用）</label>
-                <input type="password" id="muleApiKeyInput"
-                       placeholder="請輸入 NenAI API Key"
+                <label class="form-label" for="apiKeyInput">NenAI API Key</label>
+                <input type="password" id="apiKeyInput"
+                       placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
                        autocomplete="off" spellcheck="false">
             </div>
             <button id="loginBtn" class="btn btn-primary btn-full" onclick="handleLogin()">
@@ -66,7 +60,7 @@
                     <path d="M8 17a4.5 4.5 0 01-.5-8.973A6.3 6.3 0 0119.5 13h.9a2.7 2.7 0 010 5.4H8z" fill="white"/>
                 </svg>
             </div>
-            <span class="brand-name">Alibaba Cloud</span>
+            <span class="brand-name">NenAI</span>
             <span class="brand-badge">AI Lab</span>
         </div>
 
@@ -83,13 +77,9 @@
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
                 影片生成
             </button>
-            <button class="tab-btn" data-tab="omni" onclick="switchTab('omni')">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
-                全模態即時通話
-            </button>
-            <button class="tab-btn" data-tab="muleai" onclick="switchTab('muleai')">
+<button class="tab-btn" data-tab="muleai" onclick="switchTab('muleai')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                MuleAI
+                NenAI Spicy
             </button>
         </nav>
 
@@ -583,6 +573,15 @@
 
 </div>
 
+<!-- Lightbox -->
+<div id="lightbox" class="lightbox hidden" onclick="closeLightbox()">
+    <button class="lightbox-close" onclick="event.stopPropagation();closeLightbox()">✕</button>
+    <div class="lightbox-inner" onclick="event.stopPropagation()">
+        <img id="lightboxImg" src="" alt="預覽" style="display:none">
+        <video id="lightboxVideo" controls style="display:none"></video>
+    </div>
+</div>
+
 <!-- Toast & Loading -->
 <div id="toastContainer" class="toast-container"></div>
 <div id="loadingOverlay" class="loading-overlay hidden">
@@ -593,6 +592,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=8"></script>
+<script src="/static/js/app.js?v=9"></script>
 </body>
 </html>

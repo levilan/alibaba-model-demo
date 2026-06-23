@@ -1,11 +1,10 @@
 /**
- * Alibaba Cloud AI Testing Platform
+ * NenAI Testing Platform
  * Frontend JS — API Key auth, SSE streaming, polling
  */
 
 // ── State ─────────────────────────────────────────────────────
-let apiKey = sessionStorage.getItem('dashscope_api_key') || '';
-let muleApiKey = sessionStorage.getItem('muleai_api_key') || '';
+let apiKey = sessionStorage.getItem('nenai_api_key') || '';
 let models = { text: [], image: [], video: [], muleai: [] };
 let refFiles = [];
 let editRefFiles = [];  // for video editing reference images
@@ -42,7 +41,7 @@ function addMuleAIVideoResult(model, prompt, src, isHistory = false) {
         const empty = cont.querySelector('.empty-state');
         if (empty) empty.remove();
         const card = el('div', { className: 'video-task-card' });
-        card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status succeeded">SUCCEEDED</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><video class="video-player" controls src="' + src + '"></video><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a></div>';
+        card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status succeeded">SUCCEEDED</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><video class="video-player" controls src="' + src + '"></video><div class="video-card-actions"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a><button class="btn btn-ghost btn-sm" onclick="openLightbox(\'' + src + '\', \'video\')">展開預覽</button></div>';
         cont.insertBefore(card, cont.firstChild);
         if (!isHistory) TaskHistory.save('muleai_video', model, prompt, src);
     }
@@ -54,7 +53,7 @@ function addMuleAIImageResult(model, prompt, src, isHistory = false) {
         const empty = cont.querySelector('.empty-state');
         if (empty) empty.remove();
         const card = el('div', { className: 'video-task-card' });
-        card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status succeeded">SUCCEEDED</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><img src="' + src + '" alt="Generated Image" style="max-width:100%; border-radius:8px;"><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載圖片</a></div>';
+        card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status succeeded">SUCCEEDED</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><img src="' + src + '" alt="Generated Image" class="muleai-img-result" onclick="openLightbox(\'' + src + '\')"><div class="video-card-actions"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載圖片</a></div>';
         cont.insertBefore(card, cont.firstChild);
         if (!isHistory) TaskHistory.save('muleai_image', model, prompt, src);
     }
@@ -67,18 +66,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('apiKeyInput').addEventListener('keydown', e => {
         if (e.key === 'Enter') handleLogin();
     });
-    document.getElementById('muleApiKeyInput').addEventListener('keydown', e => {
-        if (e.key === 'Enter') handleLogin();
-    });
         document.getElementById('textPrompt').addEventListener('keydown', e => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') sendText();
     });
-    const muleaiPrompt = document.getElementById('muleaiPrompt');
-    if (muleaiPrompt) {
-        muleaiPrompt.addEventListener('keydown', e => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') sendMuleAIText();
-        });
-    }
 });
 
 async function attemptAutoLogin() {
@@ -89,7 +79,7 @@ async function attemptAutoLogin() {
             showApp();
         } else {
             apiKey = '';
-            sessionStorage.removeItem('dashscope_api_key');
+            sessionStorage.removeItem('nenai_api_key');
         }
     } catch (_) { /* show login */ }
 }
@@ -97,12 +87,10 @@ async function attemptAutoLogin() {
 // ── Auth ──────────────────────────────────────────────────────
 async function handleLogin() {
     const key = document.getElementById('apiKeyInput').value.trim();
-    const mKey = document.getElementById('muleApiKeyInput').value.trim();
     const errEl = document.getElementById('loginError');
     errEl.textContent = '';
 
-    if (!key) { errEl.textContent = '請輸入 API Key'; return; }
-    if (!key.startsWith('sk-')) { errEl.textContent = 'API Key 格式有誤，須以 sk- 開頭'; return; }
+    if (!key) { errEl.textContent = '請輸入 NenAI API Key'; return; }
 
     const btn = document.getElementById('loginBtn');
     btn.disabled = true;
@@ -117,14 +105,7 @@ async function handleLogin() {
         const data = await res.json();
         if (data.success) {
             apiKey = key;
-            sessionStorage.setItem('dashscope_api_key', key);
-            if (mKey) {
-                muleApiKey = mKey;
-                sessionStorage.setItem('muleai_api_key', mKey);
-            } else {
-                muleApiKey = '';
-                sessionStorage.removeItem('muleai_api_key');
-            }
+            sessionStorage.setItem('nenai_api_key', key);
             const mRes = await fetch('/api/models', { headers: authHeader() });
             models = await mRes.json();
             showApp();
@@ -138,29 +119,26 @@ async function handleLogin() {
     btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg><span>登入</span>';
 }
 
-function showApp() { console.log('SHOW APP EXECUTING'); 
+function showApp() {
     document.getElementById('loginOverlay').style.display = 'none';
     const app = document.getElementById('mainApp');
     app.classList.remove('hidden');
     app.style.display = 'flex';
     const masked = apiKey.slice(0, 6) + '****' + apiKey.slice(-4);
     document.getElementById('apiKeyLabel').textContent = masked;
-    try { populateSelectors(); console.log('Populate OK'); TaskHistory.load(); } catch(e) { console.log('POPULATE ERROR:', e.message); toast('UI 載入發生錯誤，請聯絡開發者', 'error'); }
+    try { populateSelectors(); TaskHistory.load(); } catch(e) { toast('UI 載入發生錯誤，請聯絡開發者', 'error'); }
 }
 
 function handleLogout() {
     apiKey = '';
-    muleApiKey = '';
-    sessionStorage.removeItem('dashscope_api_key');
-    sessionStorage.removeItem('muleai_api_key');
+    sessionStorage.removeItem('nenai_api_key');
     location.reload();
 }
 
 function authHeader() {
-    return { 
-        'Authorization': 'Bearer ' + apiKey, 
+    return {
+        'Authorization': 'Bearer ' + apiKey,
         'Content-Type': 'application/json',
-        'X-NenAI-API-Key': muleApiKey || ''
     };
 }
 
@@ -686,7 +664,7 @@ async function sendImage() {
                 const src = img.local_path || img.url;
                 const card = el('div', { className: 'img-card' });
                 card.innerHTML = `
-                    <img src="${src}" alt="Generated" loading="lazy">
+                    <img src="${src}" alt="Generated" loading="lazy" onclick="openLightbox('${src}')">
                     <div class="img-card-footer">
                         <span class="img-model-tag">${res.model}</span>
                         <a href="${src}" download class="img-dl">下載</a>
@@ -843,13 +821,16 @@ function addVideoResult(model, prompt, src, isHistory = false) {
         <div class="vtc-header"><span class="vtc-model">${model}</span><span class="vtc-status succeeded">SUCCEEDED</span></div>
         <div class="vtc-prompt">${prompt.substring(0, 120)}</div>
         <video class="video-player" controls src="${src}"></video>
-        <div style="margin-top:8px"><a href="${src}" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a></div>`;
+        <div class="video-card-actions">
+            <a href="${src}" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a>
+            <button class="btn btn-ghost btn-sm" onclick="openLightbox('${src}', 'video')">展開預覽</button>
+        </div>`;
     cont.insertBefore(card, cont.firstChild);
 }
 
 async function pollVideo(taskId, startTime) {
     let tries = 0;
-    const maxTries = 180; // 15 min max (5s * 180)
+    const maxTries = 360; // 30 min max (5s * 360) — video-edit/重型任務常超過 15 min
     const poll = async () => {
         tries++;
         // 更新計時器
@@ -871,7 +852,10 @@ async function pollVideo(taskId, startTime) {
                 if (pbEl) pbEl.style.width = '100%';
                 if (rvEl && data.local_path) {
                     rvEl.innerHTML = `<video class="video-player" controls src="${data.local_path}"></video>
-                        <div style="margin-top:8px"><a href="${data.local_path}" download class="img-dl">下載影片</a></div>`;
+                        <div class="video-card-actions">
+                            <a href="${data.local_path}" download class="img-dl">下載影片</a>
+                            <button class="btn btn-ghost btn-sm" onclick="openLightbox('${data.local_path}', 'video')">展開預覽</button>
+                        </div>`;
                 }
                 toast('影片生成完成！', 'success');
             } else if (st === 'FAILED') {
@@ -984,16 +968,13 @@ function renderMuleaiImgThumbs() {
 // ── API helpers ───────────────────────────────────────────────
 async function apiPost(url, body) {
     const r = await fetch(url, { method: 'POST', headers: authHeader(), body: JSON.stringify(body) });
-    if (r.status === 401) { if(url.includes('muleai')) throw new Error('MuleAI API Key 無效或未提供'); handleLogout(); throw new Error('Unauthorized'); }
+    if (r.status === 401) { handleLogout(); throw new Error('Unauthorized'); }
     return r.json();
 }
 async function apiPostForm(url, fd) {
     const headers = { 'Authorization': `Bearer ${apiKey}` };
-    if (typeof muleApiKey !== 'undefined' && muleApiKey) {
-        headers['X-NenAI-API-Key'] = muleApiKey;
-    }
     const r = await fetch(url, { method: 'POST', headers: headers, body: fd });
-    if (r.status === 401) { if(url.includes('muleai')) throw new Error('NenAI API Key 無效或未提供'); handleLogout(); throw new Error('Unauthorized'); }
+    if (r.status === 401) { handleLogout(); throw new Error('Unauthorized'); }
     if (r.status === 413) throw new Error('上傳檔案過大（上限 200MB）');
     const ct = r.headers.get('Content-Type') || '';
     if (ct.includes('application/json')) return r.json();
@@ -1087,6 +1068,39 @@ function el(tag, props = {}) {
     return Object.assign(document.createElement(tag), props);
 }
 
+
+// ── Lightbox ──────────────────────────────────────────────────
+function openLightbox(src, type = 'image') {
+    const lb  = document.getElementById('lightbox');
+    const img = document.getElementById('lightboxImg');
+    const vid = document.getElementById('lightboxVideo');
+    if (type === 'video') {
+        img.style.display = 'none';
+        img.src = '';
+        vid.src = src;
+        vid.style.display = '';
+    } else {
+        vid.style.display = 'none';
+        vid.pause();
+        vid.src = '';
+        img.src = src;
+        img.style.display = '';
+    }
+    lb.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+    const lb  = document.getElementById('lightbox');
+    const vid = document.getElementById('lightboxVideo');
+    lb.classList.add('hidden');
+    vid.pause();
+    vid.src = '';
+    document.getElementById('lightboxImg').src = '';
+    document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
 
 // ── MuleAI Generation ───────────────────────────────────────────
 
@@ -1182,11 +1196,11 @@ async function pollMuleAIVideo(taskId, startTime, model, promptText) {
                 if (rvEl) {
                     if (data.videos && data.videos.length > 0) {
                         const src = data.videos[0];
-                        rvEl.innerHTML = '<video class="video-player" controls src="' + src + '"></video><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a></div>';
+                        rvEl.innerHTML = '<video class="video-player" controls src="' + src + '"></video><div class="video-card-actions"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a><button class="btn btn-ghost btn-sm" onclick="openLightbox(\'' + src + '\', \'video\')">展開預覽</button></div>';
                         TaskHistory.save('muleai_video', model, promptText || 'MuleAI Video', src);
                     } else if (data.images && data.images.length > 0) {
                         const src = data.images[0];
-                        rvEl.innerHTML = `<img src="${src}" alt="Generated Image" style="max-width:100%; border-radius:8px;"><div style="margin-top:8px"><a href="${src}" download target="_blank" rel="noopener noreferrer" class="img-dl">下載圖片</a></div>`;
+                        rvEl.innerHTML = '<img src="' + src + '" alt="Generated Image" class="muleai-img-result" onclick="openLightbox(\'' + src + '\')"><div class="video-card-actions"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載圖片</a></div>';
                         TaskHistory.save('muleai_image', model, promptText || 'MuleAI Image', src);
                     }
                 }
