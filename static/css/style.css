@@ -384,7 +384,11 @@ input[type="range"]::-webkit-slider-thumb {
     transition: var(--t); animation: fadeUp 0.25s ease;
 }
 .img-card:hover { border-color: var(--ali-orange); box-shadow: 0 2px 12px rgba(255,106,0,0.1); }
-.img-card img { width: 100%; aspect-ratio: 1; object-fit: cover; }
+.img-card img {
+    width: 100%; height: auto; max-height: 480px;
+    object-fit: contain; background: var(--bg);
+    cursor: zoom-in; display: block;
+}
 .img-card-footer {
     padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;
     border-top: 1px solid var(--border);
@@ -401,6 +405,13 @@ input[type="range"]::-webkit-slider-thumb {
     text-decoration: none; transition: var(--t);
 }
 .img-dl:hover { background: var(--ali-orange); color: white; }
+.img-lb-btn {
+    font-size: 0.75rem; color: var(--ali-orange); font-weight: 500;
+    background: var(--ali-orange-soft); padding: 3px 10px;
+    border-radius: var(--radius-sm); border: 1px solid var(--ali-orange-mid);
+    cursor: pointer; transition: var(--t); margin-left: 8px;
+}
+.img-lb-btn:hover { background: var(--ali-orange); color: white; }
 
 /* Video results */
 .video-results-area {
@@ -433,9 +444,32 @@ input[type="range"]::-webkit-slider-thumb {
     transition: width 0.5s ease; animation: pulse 2s ease-in-out infinite;
 }
 .video-player {
-    width: 100%; max-width: 560px; border-radius: var(--radius);
+    width: 100%; border-radius: var(--radius);
     border: 1px solid var(--border); margin-top: 8px;
 }
+
+/* ─── Lightbox ────────────────────────────────────────────────── */
+.lightbox {
+    display: none; position: fixed; inset: 0; z-index: 2000;
+    background: rgba(0,0,0,0.88);
+    align-items: center; justify-content: center;
+    cursor: zoom-out; animation: fadeIn 0.15s ease;
+}
+.lightbox.open { display: flex; }
+.lightbox-media {
+    max-width: 92vw; max-height: 92vh; object-fit: contain;
+    border-radius: var(--radius-lg); box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+    cursor: default;
+}
+.lightbox-close {
+    position: absolute; top: 16px; right: 20px;
+    background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25);
+    color: white; font-size: 1.3rem; line-height: 1;
+    width: 36px; height: 36px; border-radius: 50%;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+}
+.lightbox-close:hover { background: rgba(255,255,255,0.3); }
 
 /* ─── Upload area ────────────────────────────────────────────── */
 .upload-zone {

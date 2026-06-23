@@ -556,6 +556,13 @@
                                placeholder="設計 API Key（北京區，sk-...）" style="width:100%;font-size:13px"
                                oninput="saveDesignKey()"
                                data-tip="聲音設計僅北京地域可用，需填入北京區的 DashScope API Key；設計音色的列出/合成/刪除都會用這把 key">
+                        <select id="ttsDesignModel" class="select-input" style="width:100%;margin-top:6px;font-size:13px"
+                                data-tip="設計目標模型；v3.5 系列僅北京地域，且僅能透過設計/複刻產生音色（無系統預設音色）">
+                            <option value="cosyvoice-v3-flash">cosyvoice-v3-flash</option>
+                            <option value="cosyvoice-v3-plus">cosyvoice-v3-plus</option>
+                            <option value="cosyvoice-v3.5-flash">cosyvoice-v3.5-flash</option>
+                            <option value="cosyvoice-v3.5-plus">cosyvoice-v3.5-plus</option>
+                        </select>
                         <textarea id="ttsDesignPrompt" class="textarea-input" rows="3" maxlength="500"
                                   placeholder="描述目標音色，例：沉穩的中年男性播音員，音色低沉渾厚，語速平穩"
                                   style="width:100%;margin-top:6px;font-size:13px"></textarea>
@@ -656,8 +663,6 @@
                         <optgroup label="即時通話 (Realtime)">
                             <option value="qwen3.5-omni-flash-realtime">Qwen3.5 Omni Flash Realtime</option>
                             <option value="qwen3.5-omni-plus-realtime">Qwen3.5 Omni Plus Realtime</option>
-                            <option value="qwen2.5-omni-3b-realtime">Qwen2.5 Omni 3B Realtime</option>
-                            <option value="qwen2.5-omni-7b-realtime">Qwen2.5 Omni 7B Realtime</option>
                         </optgroup>
                         <optgroup label="非同步對話 (HTTP)">
                             <option value="qwen3.5-omni-flash">Qwen3.5 Omni Flash</option>
@@ -830,6 +835,13 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=16"></script>
+<!-- ─── Lightbox ──────────────────────────────────────────── -->
+<div id="lightbox" class="lightbox" onclick="closeLightbox()">
+    <button class="lightbox-close" onclick="event.stopPropagation();closeLightbox()">&#x2715;</button>
+    <img id="lightboxImg" class="lightbox-media" src="" alt="" style="display:none" onclick="event.stopPropagation()">
+    <video id="lightboxVid" class="lightbox-media" controls style="display:none" onclick="event.stopPropagation()"></video>
+</div>
+
+<script src="/static/js/app.js?v=17"></script>
 </body>
 </html>

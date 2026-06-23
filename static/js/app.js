@@ -3,10 +3,30 @@
  * Frontend JS — API Key auth, SSE streaming, polling
  */
 
+// ── Lightbox ──────────────────────────────────────────────────
+function openLightbox(src, type) {
+    const img = document.getElementById('lightboxImg');
+    const vid = document.getElementById('lightboxVid');
+    if (type === 'video') {
+        img.style.display = 'none';
+        vid.src = src; vid.style.display = '';
+    } else {
+        vid.pause(); vid.src = ''; vid.style.display = 'none';
+        img.src = src; img.style.display = '';
+    }
+    document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+    const vid = document.getElementById('lightboxVid');
+    if (vid) { vid.pause(); vid.src = ''; }
+    document.getElementById('lightbox')?.classList.remove('open');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
 // ── State ─────────────────────────────────────────────────────
 let apiKey = sessionStorage.getItem('dashscope_api_key') || '';
 let muleApiKey = sessionStorage.getItem('muleai_api_key') || '';
-let models = { text: [], image: [], video: [], voice: { asr: [], tts: [] }, tts_voices: [], cosyvoice_voices: [], muleai: [] };
+let models = { text: [], image: [], video: [], voice: { asr: [], tts: [] }, tts_voices: [], cosyvoice_voices: {}, muleai: [] };
 let refFiles = [];
 let editRefFiles = [];  // for video editing reference images
 let imgRefFiles = [];   // for image edit reference images (up to 9)
@@ -43,7 +63,7 @@ function addMuleAIVideoResult(model, prompt, src, isHistory = false) {
         const empty = cont.querySelector('.empty-state');
         if (empty) empty.remove();
         const card = el('div', { className: 'video-task-card' });
-        card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status succeeded">SUCCEEDED</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><video class="video-player" controls src="' + src + '"></video><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a></div>';
+        card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status succeeded">SUCCEEDED</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><video class="video-player" controls src="' + src + '"></video><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a><button class="img-lb-btn" onclick="openLightbox(\'' + src + '\',\'video\')">⛶ 放大</button></div>';
         cont.insertBefore(card, cont.firstChild);
         if (!isHistory) TaskHistory.save('muleai_video', model, prompt, src);
     }
@@ -55,7 +75,7 @@ function addMuleAIImageResult(model, prompt, src, isHistory = false) {
         const empty = cont.querySelector('.empty-state');
         if (empty) empty.remove();
         const card = el('div', { className: 'video-task-card' });
-        card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status succeeded">SUCCEEDED</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><img src="' + src + '" alt="Generated Image" style="max-width:100%; border-radius:8px;"><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載圖片</a></div>';
+        card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status succeeded">SUCCEEDED</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><img src="' + src + '" alt="Generated Image" style="max-width:100%;height:auto;border-radius:8px;cursor:zoom-in" onclick="openLightbox(\'' + src + '\')"><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載圖片</a></div>';
         cont.insertBefore(card, cont.firstChild);
         if (!isHistory) TaskHistory.save('muleai_image', model, prompt, src);
     }
@@ -343,7 +363,7 @@ function populateTtsVoices() {
     if (!sel) return;
     const model = document.getElementById('ttsModel')?.value || '';
     const isCosy = model.startsWith('cosyvoice');
-    const list = isCosy ? (models.cosyvoice_voices || []) : (models.tts_voices || []);
+    const list = isCosy ? ((models.cosyvoice_voices || {})[model] || []) : (models.tts_voices || []);
     const prev = sel.value;
     sel.innerHTML = '';
     list.forEach(v => {
@@ -355,7 +375,9 @@ function populateTtsVoices() {
     // 複刻 / 設計音色（已就緒者可直接合成）
     clonedVoices.forEach(c => {
         const ready = !c.status || c.status === 'OK';
-        const tag = (c.region === 'beijing' || (c.voice_id || '').includes('-vd-')) ? '🎨 設計' : '🎙️ 複刻';
+        const isDesign = c.region === 'beijing' || (c.voice_id || '').includes('-vd-');
+        const m = (c.model || '').replace('cosyvoice-', '');
+        const tag = isDesign ? `🎨 設計${m ? '(' + m + ')' : ''}` : '🎙️ 複刻';
         const opt = Object.assign(document.createElement('option'), {
             value: c.voice_id,
             textContent: `${tag} — ${c.voice_id}${ready ? '' : `（${c.status}）`}`,
@@ -420,8 +442,10 @@ function renderCloneList() {
         const label = document.createElement('span');
         label.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
         label.title = c.voice_id;
-        const icon = !ready ? '⏳' : (c.region === 'beijing' || (c.voice_id || '').includes('-vd-')) ? '🎨' : '🎙️';
-        label.textContent = `${icon} ${c.voice_id}${ready ? '' : `（${c.status}）`}`;
+        const isDesign = c.region === 'beijing' || (c.voice_id || '').includes('-vd-');
+        const icon = !ready ? '⏳' : isDesign ? '🎨' : '🎙️';
+        const m = (c.model || '').replace('cosyvoice-', '');
+        label.textContent = `${icon} ${m ? '[' + m + '] ' : ''}${c.voice_id}${ready ? '' : `（${c.status}）`}`;
         const del = Object.assign(document.createElement('button'), {
             className: 'btn btn-ghost btn-sm', textContent: '刪除',
         });
@@ -493,7 +517,7 @@ async function sendClone() {
 }
 
 async function sendDesign() {
-    const model = document.getElementById('ttsModel').value;
+    const model = document.getElementById('ttsDesignModel').value;
     const prompt = document.getElementById('ttsDesignPrompt').value.trim();
     const preview = document.getElementById('ttsDesignPreview').value.trim();
     const btn = document.getElementById('ttsDesignBtn');
@@ -520,7 +544,7 @@ async function sendDesign() {
                 audio.src = data.preview_url;
                 audio.style.display = '';
             }
-            await loadClonedVoices(model);
+            await loadClonedVoices(document.getElementById('ttsDesignModel').value);
             document.getElementById('ttsVoice').value = data.voice_id;
         } else {
             status.style.color = 'var(--error, #dc2626)';
@@ -1261,7 +1285,7 @@ async function sendImage() {
                 const src = img.local_path || img.url;
                 const card = el('div', { className: 'img-card' });
                 card.innerHTML = `
-                    <img src="${src}" alt="Generated" loading="lazy">
+                    <img src="${src}" alt="Generated" loading="lazy" onclick="openLightbox('${src}')">
                     <div class="img-card-footer">
                         <span class="img-model-tag">${res.model}</span>
                         <a href="${src}" download class="img-dl">下載</a>
@@ -1418,7 +1442,7 @@ function addVideoResult(model, prompt, src, isHistory = false) {
         <div class="vtc-header"><span class="vtc-model">${model}</span><span class="vtc-status succeeded">SUCCEEDED</span></div>
         <div class="vtc-prompt">${prompt.substring(0, 120)}</div>
         <video class="video-player" controls src="${src}"></video>
-        <div style="margin-top:8px"><a href="${src}" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a></div>`;
+        <div style="margin-top:8px"><a href="${src}" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a><button class="img-lb-btn" onclick="openLightbox('${src}','video')">⛶ 放大</button></div>`;
     cont.insertBefore(card, cont.firstChild);
 }
 
@@ -1446,7 +1470,7 @@ async function pollVideo(taskId, startTime) {
                 if (pbEl) pbEl.style.width = '100%';
                 if (rvEl && data.local_path) {
                     rvEl.innerHTML = `<video class="video-player" controls src="${data.local_path}"></video>
-                        <div style="margin-top:8px"><a href="${data.local_path}" download class="img-dl">下載影片</a></div>`;
+                        <div style="margin-top:8px"><a href="${data.local_path}" download class="img-dl">下載影片</a><button class="img-lb-btn" onclick="openLightbox('${data.local_path}','video')">⛶ 放大</button></div>`;
                 }
                 toast('影片生成完成！', 'success');
             } else if (st === 'FAILED') {
@@ -1777,11 +1801,11 @@ async function pollMuleAIVideo(taskId, startTime, model, promptText) {
                 if (rvEl) {
                     if (data.videos && data.videos.length > 0) {
                         const src = data.videos[0];
-                        rvEl.innerHTML = '<video class="video-player" controls src="' + src + '"></video><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a></div>';
+                        rvEl.innerHTML = '<video class="video-player" controls src="' + src + '"></video><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a><button class="img-lb-btn" onclick="openLightbox(\'' + src + '\',\'video\')">⛶ 放大</button></div>';
                         TaskHistory.save('muleai_video', model, promptText || 'MuleAI Video', src);
                     } else if (data.images && data.images.length > 0) {
                         const src = data.images[0];
-                        rvEl.innerHTML = `<img src="${src}" alt="Generated Image" style="max-width:100%; border-radius:8px;"><div style="margin-top:8px"><a href="${src}" download target="_blank" rel="noopener noreferrer" class="img-dl">下載圖片</a></div>`;
+                        rvEl.innerHTML = `<img src="${src}" alt="Generated Image" style="max-width:100%;height:auto;border-radius:8px;cursor:zoom-in" onclick="openLightbox('${src}')"><div style="margin-top:8px"><a href="${src}" download target="_blank" rel="noopener noreferrer" class="img-dl">下載圖片</a></div>`;
                         TaskHistory.save('muleai_image', model, promptText || 'MuleAI Image', src);
                     }
                 }

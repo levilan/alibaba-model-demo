@@ -94,26 +94,22 @@ MODELS = {
         # ── 旗艦 ──────────────────────────────────────────────────
         {"id": "qwen3.7-max",        "name": "Qwen3.7 Max",      "group": "旗艦",   "desc": "最新旗艦，最強推理",     "thinking": True},
         {"id": "qwen3.6-max-preview","name": "Qwen3.6 Max",     "group": "旗艦",   "desc": "新一代旗艦，強推理",     "thinking": True},
-        {"id": "qwen3-max",          "name": "Qwen3 Max",        "group": "旗艦",   "desc": "最強推理，262K context", "thinking": True},
         # ── 均衡 ──────────────────────────────────────────────────
         {"id": "qwen3.6-plus",       "name": "Qwen3.6 Plus",     "group": "均衡",   "desc": "1M context，性價比最佳", "thinking": True},
         {"id": "qwen3.5-plus",       "name": "Qwen3.5 Plus",     "group": "均衡",   "desc": "前代均衡模型",           "thinking": True},
-        {"id": "qwen-plus",          "name": "Qwen Plus",        "group": "均衡",   "desc": "穩定均衡，廣泛任務",     "thinking": False},
         # ── 極速 ──────────────────────────────────────────────────
         {"id": "qwen3.6-flash",      "name": "Qwen3.6 Flash",    "group": "極速",   "desc": "新一代極速模型",         "thinking": True},
         {"id": "qwen3.5-flash",      "name": "Qwen3.5 Flash",    "group": "極速",   "desc": "速度快、成本低",         "thinking": True},
-        {"id": "qwen-flash",         "name": "Qwen Flash",       "group": "極速",   "desc": "前代極速模型",           "thinking": False},
         # ── 代碼 ──────────────────────────────────────────────────
         {"id": "qwen3-coder-plus",   "name": "Qwen3 Coder Plus", "group": "代碼",   "desc": "代碼生成旗艦",           "thinking": True},
         {"id": "qwen3-coder-flash",  "name": "Qwen3 Coder Flash","group": "代碼",   "desc": "代碼生成極速",           "thinking": True},
-        # ── 翻譯 ──────────────────────────────────────────────────
-        {"id": "qwen-mt-plus",       "name": "Qwen MT Plus",     "group": "翻譯",   "desc": "機器翻譯，高品質",       "thinking": False},
-        {"id": "qwen-mt-flash",      "name": "Qwen MT Flash",    "group": "翻譯",   "desc": "機器翻譯，極速",         "thinking": False},
-        {"id": "qwen-mt-lite",       "name": "Qwen MT Lite",     "group": "翻譯",   "desc": "機器翻譯，輕量",         "thinking": False},
         # ── 角色 ──────────────────────────────────────────────────
         {"id": "qwen-flash-character","name": "Qwen Flash Character","group": "角色", "desc": "角色扮演專用",          "thinking": False},
         # ── 第三方 ────────────────────────────────────────────────
-        {"id": "deepseek-v3.2",      "name": "DeepSeek V3.2",    "group": "第三方", "desc": "深度推理（國際版）",     "thinking": False},
+        {"id": "deepseek-v4-pro",      "name": "DeepSeek V4 pro",    "group": "第三方", "desc": "深度推理 pro（國際版)",     "thinking": False},
+        {"id": "deepseek-v4-flash",      "name": "DeepSeek V4 flash",    "group": "第三方", "desc": "深度推理 flash（國際版）",     "thinking": False},
+        {"id": "deepseek-v3.2",      "name": "DeepSeek V3.2",    "group": "第三方", "desc": "深度推理 前一代（國際版）",     "thinking": False},
+        {"id": "glm-5.1",      "name": "GLM 5.1",    "group": "第三方", "desc": "智譜AI推出的面向長程任務模型",     "thinking": False},
     ],
     "image": [
         # ── 千問文生圖 ────────────────────────────────────────────
@@ -190,9 +186,12 @@ MODELS = {
         {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片",     "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
         # ── HappyHorse ────────────────────────────────────────────
-        {"id": "happyhorse-1.0-t2v",        "name": "HappyHorse T2V",        "group": "HappyHorse", "desc": "高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},
-        {"id": "happyhorse-1.0-i2v",        "name": "HappyHorse I2V",        "group": "HappyHorse", "desc": "高還原度圖生影片（首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15},
-        {"id": "happyhorse-1.0-r2v",        "name": "HappyHorse R2V",        "group": "HappyHorse", "desc": "多圖參考生影片（最多 9 張）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15},
+        {"id": "happyhorse-1.1-t2v",        "name": "HappyHorse T2V",        "group": "HappyHorse", "desc": "高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},    
+        {"id": "happyhorse-1.0-t2v",        "name": "HappyHorse T2V",        "group": "HappyHorse", "desc": "前一代高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},
+        {"id": "happyhorse-1.1-i2v",        "name": "HappyHorse I2V",        "group": "HappyHorse", "desc": "高還原度圖生影片（首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15},
+        {"id": "happyhorse-1.0-i2v",        "name": "HappyHorse I2V",        "group": "HappyHorse", "desc": "前一代高還原度圖生影片（首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15},
+        {"id": "happyhorse-1.1-r2v",        "name": "HappyHorse R2V",        "group": "HappyHorse", "desc": "多圖參考生影片（最多 9 張）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15},
+        {"id": "happyhorse-1.0-r2v",        "name": "HappyHorse R2V",        "group": "HappyHorse", "desc": "前一代多圖參考生影片（最多 9 張）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15},
         {"id": "happyhorse-1.0-video-edit", "name": "HappyHorse Video Edit", "group": "HappyHorse", "desc": "視頻編輯（最多 5 張參考圖）", "type": "vedit", "audio": False, "min_dur": 3, "max_dur": 15},
         # ── 視頻編輯 ──────────────────────────────────────────────
         {"id": "wan2.7-videoedit", "name": "萬相 2.7 視頻編輯", "group": "萬相視頻編輯",
@@ -232,29 +231,38 @@ TTS_VOICES = [
     {"id": "Luna",     "name": "月桐",   "gender": "女", "style": "溫柔"},
 ]
 
-# CosyVoice v3 音色清單（cosyvoice-v3-plus / cosyvoice-v3-flash 共用）
-COSYVOICE_VOICES = [
-    {"id": "longanyang",        "name": "龍安洋",   "gender": "男", "style": "社交陪伴 中/英"},
-    {"id": "longanhuan",        "name": "龍安歡",   "gender": "女", "style": "社交陪伴 中/英"},
-    {"id": "longanrou_v3",      "name": "龍安柔",   "gender": "女", "style": "社交陪伴 中/英"},
-    {"id": "longanyun_v3",      "name": "龍安昀",   "gender": "男", "style": "語音助手 中/英"},
-    {"id": "longanwen_v3",      "name": "龍安溫",   "gender": "女", "style": "語音助手 中/英"},
-    {"id": "longxiaochun_v3",   "name": "龍小淳",   "gender": "女", "style": "語音助手 中/英"},
-    {"id": "longxiaoxia_v3",    "name": "龍小夏",   "gender": "女", "style": "語音助手 中/英"},
-    {"id": "longyumi_v3",       "name": "YUMI",     "gender": "女", "style": "語音助手 中/英"},
-    {"id": "longhua_v3",        "name": "龍華",     "gender": "女", "style": "社交陪伴 中/英"},
-    {"id": "longcheng_v3",      "name": "龍橙",     "gender": "男", "style": "社交陪伴 中/英"},
-    {"id": "longfei_v3",        "name": "龍飛",     "gender": "男", "style": "詩歌朗誦 中/英"},
-    {"id": "longmiao_v3",       "name": "龍妙",     "gender": "女", "style": "有聲書 中/英"},
-    {"id": "longyue_v3",        "name": "龍悅",     "gender": "女", "style": "有聲書 中/英"},
-    {"id": "longshuo_v3",       "name": "龍碩",     "gender": "男", "style": "新聞播報 中/英"},
-    {"id": "longshu_v3",        "name": "龍書",     "gender": "男", "style": "新聞播報 中/英"},
-    {"id": "loongbella_v3",     "name": "Bella3.0", "gender": "女", "style": "新聞播報 中/英"},
-    {"id": "longjiaxin_v3",     "name": "龍嘉欣",   "gender": "女", "style": "粵語 粵/英"},
-    {"id": "longlaotie_v3",     "name": "龍老鐵",   "gender": "男", "style": "東北話 中/英"},
-    {"id": "loongriko_v3",      "name": "Riko",     "gender": "女", "style": "日語"},
-    {"id": "loongkyong_v3",     "name": "loongkyong","gender": "女", "style": "韓語"},
-]
+# CosyVoice v3 音色清單：v3-plus 與 v3-flash 的可用音色不同（實測 + 官方音色列表確認）。
+#   cosyvoice-v3-plus  → 僅 longanyang / longanhuan（無後綴）
+#   cosyvoice-v3-flash → 完整的 _v3 後綴清單（longanyang/longanhuan 共用）
+# 帶 _v3 後綴的音色用在 v3-plus 會回 InvalidParameter（engine 418）。
+COSYVOICE_VOICES = {
+    "cosyvoice-v3-plus": [
+        {"id": "longanyang", "name": "龍安洋", "gender": "男", "style": "社交陪伴 中/英"},
+        {"id": "longanhuan", "name": "龍安歡", "gender": "女", "style": "社交陪伴 中/英"},
+    ],
+    "cosyvoice-v3-flash": [
+        {"id": "longanyang",        "name": "龍安洋",   "gender": "男", "style": "社交陪伴 中/英"},
+        {"id": "longanhuan",        "name": "龍安歡",   "gender": "女", "style": "社交陪伴 中/英"},
+        {"id": "longanrou_v3",      "name": "龍安柔",   "gender": "女", "style": "社交陪伴 中/英"},
+        {"id": "longanyun_v3",      "name": "龍安昀",   "gender": "男", "style": "語音助手 中/英"},
+        {"id": "longanwen_v3",      "name": "龍安溫",   "gender": "女", "style": "語音助手 中/英"},
+        {"id": "longxiaochun_v3",   "name": "龍小淳",   "gender": "女", "style": "語音助手 中/英"},
+        {"id": "longxiaoxia_v3",    "name": "龍小夏",   "gender": "女", "style": "語音助手 中/英"},
+        {"id": "longyumi_v3",       "name": "YUMI",     "gender": "女", "style": "語音助手 中/英"},
+        {"id": "longhua_v3",        "name": "龍華",     "gender": "女", "style": "社交陪伴 中/英"},
+        {"id": "longcheng_v3",      "name": "龍橙",     "gender": "男", "style": "社交陪伴 中/英"},
+        {"id": "longfei_v3",        "name": "龍飛",     "gender": "男", "style": "詩歌朗誦 中/英"},
+        {"id": "longmiao_v3",       "name": "龍妙",     "gender": "女", "style": "有聲書 中/英"},
+        {"id": "longyue_v3",        "name": "龍悅",     "gender": "女", "style": "有聲書 中/英"},
+        {"id": "longshuo_v3",       "name": "龍碩",     "gender": "男", "style": "新聞播報 中/英"},
+        {"id": "longshu_v3",        "name": "龍書",     "gender": "男", "style": "新聞播報 中/英"},
+        {"id": "loongbella_v3",     "name": "Bella3.0", "gender": "女", "style": "新聞播報 中/英"},
+        {"id": "longjiaxin_v3",     "name": "龍嘉欣",   "gender": "女", "style": "粵語 粵/英"},
+        {"id": "longlaotie_v3",     "name": "龍老鐵",   "gender": "男", "style": "東北話 中/英"},
+        {"id": "loongriko_v3",      "name": "Riko",     "gender": "女", "style": "日語"},
+        {"id": "loongkyong_v3",     "name": "loongkyong","gender": "女", "style": "韓語"},
+    ],
+}
 
 
 # ─── Auth: API Key per user ────────────────────────────────────────
@@ -1250,6 +1258,8 @@ async def voice_tts(data: VoiceTTSRequest, request: Request, api_key: str = Depe
                 if not _syn_key:
                     return JSONResponse(status_code=400, content={"error": "此為設計音色（北京地域），需提供設計 API Key（北京區）才能合成"})
                 _syn_ws = _BJ_WS_URL
+                # 由 voice_id 反推正確的 target_model（支援 v3 / v3.5），避免與前端選的模型不一致
+                _model = _model_from_voice(_voice) or _model
             else:
                 _syn_key, _syn_ws = api_key, _INTL_WS_URL
 
@@ -1354,6 +1364,11 @@ def _design_key(request: Request) -> Optional[str]:
 def _is_design_voice(voice_id: str) -> bool:
     return "-vd-" in (voice_id or "")
 
+def _model_from_voice(voice_id: str) -> Optional[str]:
+    """設計/複刻 voice_id 形如 {target_model}-vd-{prefix}-{hash}，反推 target_model。"""
+    vid = voice_id or ""
+    return vid.split("-vd-")[0] if "-vd-" in vid else None
+
 def _enroll_rest(base: str, key: str, action: str, **fields) -> dict:
     """以 RESTful 呼叫 voice-enrollment 的管理動作（list_voice / delete_voice 等），回傳 JSON dict。"""
     payload = {"model": "voice-enrollment", "input": {"action": action, **fields}}
@@ -1449,17 +1464,19 @@ async def voice_list(request: Request, target_model: str = "cosyvoice-v3-plus", 
     except Exception as e:
         print(f"voice_list intl error: {e}")
 
-    # 2) 北京地域設計音色（REST，北京金鑰）
+    # 2) 北京地域設計音色（REST，北京金鑰）。設計音色可跨 v3 / v3.5 模型，不依主模型 prefix 過濾，
+    #    全部列出（以 -vd- 篩選），並標示各自的模型，方便前端顯示與合成（合成會由 voice_id 反推模型）。
     bj = _design_key(request)
     if bj:
         try:
             def _run_list_bj():
-                return _enroll_rest(_BJ_HTTP_URL, bj, "list_voice", prefix=prefix, page_index=0, page_size=100)
+                return _enroll_rest(_BJ_HTTP_URL, bj, "list_voice", page_index=0, page_size=100)
             res = await asyncio.to_thread(_run_list_bj)
             for v in ((res.get("body") or {}).get("output") or {}).get("voice_list", []) or []:
                 it = _norm(v)
                 if _is_design_voice(it["voice_id"]):
                     it["region"] = "beijing"
+                    it["model"] = _model_from_voice(it["voice_id"])
                     items.append(it)
         except Exception as e:
             print(f"voice_list beijing error: {e}")
