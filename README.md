@@ -20,7 +20,7 @@ cd ai-model-tester
 docker compose up -d --build
 ```
 
-瀏覽器開啟 `http://localhost:5050`，輸入 API Key 登入。
+瀏覽器開啟 `http://localhost`，輸入 API Key 登入。
 
 **常用指令**
 
@@ -52,13 +52,10 @@ python app.py
 |---|---|---|
 | qwen3.7-max | Qwen3.7 Max | 旗艦 |
 | qwen3.6-max-preview | Qwen3.6 Max | 旗艦 |
-| qwen3-max | Qwen3 Max | 旗艦 |
 | qwen3.6-plus | Qwen3.6 Plus | 均衡 |
 | qwen3.5-plus | Qwen3.5 Plus | 均衡 |
-| qwen-plus | Qwen Plus | 均衡 |
 | qwen3.6-flash | Qwen3.6 Flash | 極速 |
 | qwen3.5-flash | Qwen3.5 Flash | 極速 |
-| qwen-flash | Qwen Flash | 極速 |
 | qwen3-coder-plus | Qwen3 Coder Plus | 代碼 |
 | qwen3-coder-flash | Qwen3 Coder Flash | 代碼 |
 | qwen-mt-plus | Qwen MT Plus | 翻譯 |
@@ -85,6 +82,8 @@ python app.py
 | qwen-image-edit-max | 千問圖像編輯 Max | 千問圖像編輯 | 1024×1024 等 |
 | qwen-image-edit-plus | 千問圖像編輯 Plus | 千問圖像編輯 | 1024×1024 等 |
 
+圖片輸出支援點擊放大預覽（lightbox），以自然比例顯示不裁切。
+
 ---
 
 ### 影片生成（需 DashScope API Key）
@@ -104,6 +103,8 @@ python app.py
 | happyhorse-1.0-r2v | HappyHorse R2V | HappyHorse |
 | happyhorse-1.0-video-edit | HappyHorse Video Edit | HappyHorse |
 | wan2.7-videoedit | 萬相 2.7 視頻編輯 | 萬相視頻編輯 |
+
+影片輸出支援「⛶ 放大」按鈕在 lightbox 中預覽，播放器填滿卡片寬度。
 
 ---
 
@@ -133,6 +134,14 @@ python app.py
 | 模型 ID | 名稱 | 可用音色 |
 |---|---|---|
 | qwen3-tts-flash-2025-11-27 | Qwen3 TTS Flash | Cherry、Ethan、Serena、Wayne、Summer、Belle、Cove、Aria、Kai、Luna |
+| cosyvoice-v3-plus | CosyVoice v3 Plus | 龍安洋、龍安歡 |
+| cosyvoice-v3-flash | CosyVoice v3 Flash | 龍安洋、龍安歡、龍安柔、龍安昀、龍安溫、龍小淳、龍小夏、YUMI、龍華、龍橙、龍飛、龍妙、龍悅、龍碩、龍書、Bella3.0、龍嘉欣（粵）、龍老鐵（東北話）、Riko（日）、loongkyong（韓）共 20 個 |
+| cosyvoice-v3.5-plus | CosyVoice v3.5 Plus | 設計 / 複刻音色（北京地域，需設計 API Key） |
+| cosyvoice-v3.5-flash | CosyVoice v3.5 Flash | 設計 / 複刻音色（北京地域，需設計 API Key） |
+
+> **聲音複刻**：上傳 10–20 秒人聲音檔即可複刻專屬音色（國際版）。
+>
+> **聲音設計**：用文字描述目標音色特徵即可生成定制音色（北京地域，需額外填入北京區 DashScope API Key）。設計音色可跨 v3 / v3.5 模型使用，合成時系統自動依 voice_id 選用正確模型。
 
 ---
 
