@@ -356,7 +356,16 @@
                 <!-- 自動配音（僅 wan2.7-t2v 支援） -->
                 <div class="toggle-row" id="vidAudioRow" style="display:none">
                     <label data-tip="為生成的影片自動添加背景音效與環境音（萬相 2.7 T2V 專屬功能）。根據影片內容智能匹配音效">自動配音</label>
-                    <label class="toggle"><input type="checkbox" id="vidAudio"><span class="toggle-slider"></span></label>
+                    <label class="toggle"><input type="checkbox" id="vidAudio" onchange="onVidAudioToggle(this)"><span class="toggle-slider"></span></label>
+                </div>
+                <!-- T2V 自訂音訊上傳（audio 開啟後顯示） -->
+                <div id="vidT2VAudioZone" style="display:none;margin-top:8px">
+                    <div class="upload-zone" id="vidT2VAudioUpZone" style="padding:10px 8px">
+                        <input type="file" id="vidT2VAudioInput" accept="audio/wav,audio/mp3,audio/mpeg,audio/m4a,audio/*"
+                               onchange="onT2VAudioUpload(event)">
+                        <div class="upload-zone-icon" style="font-size:20px">🎵</div>
+                        <p id="vidT2VAudioHint" style="font-size:12px">上傳音訊（可選）<br><span style="font-size:11px;color:var(--text-muted)">留空由模型自動配音</span></p>
+                    </div>
                 </div>
                 <div class="toggle-row">
                     <label data-tip="啟用後模型自動擴充提示詞，補充動作細節、場景描述、鏡頭語言等，通常能提升影片連貫性與畫面品質">Prompt Extend</label>

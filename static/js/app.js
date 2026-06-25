@@ -354,6 +354,23 @@ function onI2VModeChange() {
         (mode === 'first_clip' || mode === 'first_clip_last_frame') ? '' : 'none';
 }
 
+// T2V 自動配音開關 → 展開/收合上傳區
+function onVidAudioToggle(cb) {
+    const zone = document.getElementById('vidT2VAudioZone');
+    if (zone) zone.style.display = cb.checked ? '' : 'none';
+    if (!cb.checked) {
+        const inp = document.getElementById('vidT2VAudioInput');
+        if (inp) inp.value = '';
+        const hint = document.getElementById('vidT2VAudioHint');
+        if (hint) hint.innerHTML = '上傳音訊（可選）<br><span style="font-size:11px;color:var(--text-muted)">留空由模型自動配音</span>';
+    }
+}
+function onT2VAudioUpload(e) {
+    const f = e.target.files[0];
+    const hint = document.getElementById('vidT2VAudioHint');
+    if (f && hint) hint.innerHTML = `<strong>${f.name}</strong><br><span style="font-size:11px;color:var(--text-muted)">${(f.size/1024).toFixed(0)} KB</span>`;
+}
+
 // 音訊 / 片段上傳名稱顯示
 function onAudioUpload(e) {
     const f = e.target.files[0];
@@ -761,10 +778,17 @@ async function sendVideo() {
     try {
         let res;
         if (taskType === 't2v') {
-            const body = { model, prompt, negative_prompt: negPrompt, resolution, duration, audio,
-                           prompt_extend: vidExtend, watermark: vidWatermark };
-            if (vidSeed !== null) body.seed = vidSeed;
-            res = await apiPost('/api/video/t2v', body);
+            const fd = new FormData();
+            fd.append('model', model); fd.append('prompt', prompt);
+            fd.append('negative_prompt', negPrompt); fd.append('resolution', resolution);
+            fd.append('duration', duration); fd.append('audio', audio);
+            fd.append('prompt_extend', vidExtend); fd.append('watermark', vidWatermark);
+            if (vidSeed !== null) fd.append('seed', vidSeed);
+            if (audio) {
+                const audioFile = document.getElementById('vidT2VAudioInput').files[0];
+                if (audioFile) fd.append('audio_file', audioFile);
+            }
+            res = await apiPostForm('/api/video/t2v', fd);
 
         } else if (taskType === 'i2v') {
             const i2vMode = document.getElementById('videoI2VMode').value;

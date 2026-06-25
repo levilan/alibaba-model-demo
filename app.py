@@ -656,33 +656,42 @@ def _res_to_wh(resolution: str) -> tuple[int, int]:
     return 1280, 720
 
 # ─── API: Video T2V ───────────────────────────────────────────────
-class VideoT2VRequest(BaseModel):
-    model: str = "wan2.6-t2v"
-    prompt: str = ""
-    negative_prompt: str = ""
-    resolution: str = "720P"
-    ratio: str = "16:9"
-    duration: int = 5
-    audio: bool = False
-    prompt_extend: bool = False
-    watermark: bool = False
-    seed: Optional[int] = None
-
 @app.post("/api/video/t2v")
-async def video_t2v(data: VideoT2VRequest, api_key: str = Depends(get_api_key)):
-    if not data.prompt:
+async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
+    form = await request.form()
+    model           = form.get("model", "wan2.6-t2v")
+    prompt          = form.get("prompt", "")
+    negative_prompt = form.get("negative_prompt", "")
+    resolution      = form.get("resolution", "720P")
+    ratio           = form.get("ratio", "16:9")
+    duration        = int(form.get("duration", 5))
+    audio           = str(form.get("audio", "false")).lower() in ("true", "1", "yes")
+    prompt_extend   = str(form.get("prompt_extend", "false")).lower() in ("true", "1", "yes")
+    watermark       = str(form.get("watermark", "false")).lower() in ("true", "1", "yes")
+    seed_str        = str(form.get("seed", ""))
+    seed            = int(seed_str) if seed_str.strip() else None
+    audio_file      = form.get("audio_file")
+
+    if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
 
-    w, h = _res_to_wh(data.resolution)
-    payload: dict = {"model": data.model, "prompt": data.prompt,
-                     "duration": data.duration, "width": w, "height": h}
+    w, h = _res_to_wh(resolution)
+    payload: dict = {"model": model, "prompt": prompt,
+                     "duration": duration, "width": w, "height": h}
     meta: dict = {}
-    if data.negative_prompt: meta["negative_prompt"] = data.negative_prompt
-    if data.audio:           meta["audio"] = True
-    if data.prompt_extend:   meta["prompt_extend"] = True
-    if data.watermark:       meta["watermark"] = True
-    if data.seed is not None: meta["seed"] = data.seed
-    if data.ratio:           meta["ratio"] = data.ratio
+    if negative_prompt: meta["negative_prompt"] = negative_prompt
+    if prompt_extend:   meta["prompt_extend"] = True
+    if watermark:       meta["watermark"] = True
+    if seed is not None: meta["seed"] = seed
+    if ratio:           meta["ratio"] = ratio
+
+    if audio_file and hasattr(audio_file, "filename") and audio_file.filename:
+        ab = await audio_file.read()
+        audio_mime = audio_file.content_type or "audio/mpeg"
+        meta["audio"] = f"data:{audio_mime};base64,{base64.b64encode(ab).decode()}"
+    elif audio:
+        meta["audio"] = True
+
     if meta: payload["metadata"] = meta
 
     try:
@@ -691,7 +700,7 @@ async def video_t2v(data: VideoT2VRequest, api_key: str = Depends(get_api_key)):
                                      headers={"Authorization": f"Bearer {api_key}",
                                               "Content-Type": "application/json"},
                                      json=payload)
-            return _handle_video_create_response(resp, data.model)
+            return _handle_video_create_response(resp, model)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
