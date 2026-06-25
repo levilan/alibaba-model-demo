@@ -473,19 +473,36 @@ async def muleai_task_status(model: str, task_id: str, api_key: str = Depends(ge
                 images = inner.get("images") or outer.get("images") or rj.get("images") or []
                 if not images and (inner.get("image_url") or outer.get("image_url")):
                     images = [inner.get("image_url") or outer.get("image_url")]
-                if not videos and outer.get("result_url"):
-                    videos = [outer.get("result_url")]
+                # result_url fallback：圖片模型放 images，影片模型放 videos
+                if outer.get("result_url"):
+                    if _is_img and not images:
+                        images = [outer.get("result_url")]
+                    elif not _is_img and not videos:
+                        videos = [outer.get("result_url")]
                 err = inner.get("task_info", {}).get("error") or outer.get("fail_reason")
 
                 if status.upper() in ("COMPLETED", "SUCCEEDED", "SUCCESS"):
-                    if videos and len(videos) > 0:
-                        local_path = await _async_download_video(videos[0])
-                        if local_path:
-                            videos = [local_path]
-                    elif images and len(images) > 0:
-                        local_path = await _async_download_image(images[0].get("url") if isinstance(images[0], dict) else images[0])
-                        if local_path:
-                            images = [local_path]
+                    if _is_img:
+                        # 圖片模型：優先下載 images，若 API 誤放在 videos 則也抓過來
+                        img_url = None
+                        if images:
+                            img_url = images[0].get("url") if isinstance(images[0], dict) else images[0]
+                        elif videos:
+                            img_url = videos[0]
+                            videos = []
+                        if img_url:
+                            local_path = await _async_download_image(img_url)
+                            images = [local_path if local_path else img_url]
+                    else:
+                        if videos:
+                            local_path = await _async_download_video(videos[0])
+                            if local_path:
+                                videos = [local_path]
+                        elif images:
+                            img_url = images[0].get("url") if isinstance(images[0], dict) else images[0]
+                            local_path = await _async_download_image(img_url)
+                            if local_path:
+                                images = [local_path]
                 return {"success": True, "status": status, "videos": videos, "images": images, "error_message": err}
 
             else:
