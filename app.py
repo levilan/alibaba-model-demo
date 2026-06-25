@@ -798,43 +798,53 @@ def _apply_resolution(kwargs: dict, model: str, resolution: str, ratio: str = ""
         kwargs["size"] = _SIZE_MAP.get(resolution, "1280*720")
 
 # ─── API: Video T2V ───────────────────────────────────────────────
-class VideoT2VRequest(BaseModel):
-    model: str = "wan2.6-t2v"
-    prompt: str = ""
-    negative_prompt: str = ""
-    resolution: str = "720P"
-    ratio: str = "16:9"
-    duration: int = 5
-    audio: bool = False
-    prompt_extend: bool = False
-    watermark: bool = False
-    seed: Optional[int] = None
-
 @app.post("/api/video/t2v")
-async def video_t2v(data: VideoT2VRequest, api_key: str = Depends(get_api_key)):
-    if not data.prompt:
+async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
+    form = await request.form()
+    model          = form.get("model", "wan2.6-t2v")
+    prompt         = form.get("prompt", "")
+    negative_prompt= form.get("negative_prompt", "")
+    resolution     = form.get("resolution", "720P")
+    ratio          = form.get("ratio", "16:9")
+    duration       = int(form.get("duration", 5))
+    audio          = str(form.get("audio", "false")).lower() in ("true", "1", "yes")
+    prompt_extend  = str(form.get("prompt_extend", "false")).lower() in ("true", "1", "yes")
+    watermark      = str(form.get("watermark", "false")).lower() in ("true", "1", "yes")
+    seed_str       = str(form.get("seed", ""))
+    seed           = int(seed_str) if seed_str.strip() else None
+    audio_file     = form.get("audio_file")
+
+    if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
 
     kwargs = dict(
-        model=data.model,
-        prompt=data.prompt,
-        duration=data.duration,
-        prompt_extend=data.prompt_extend,
-        watermark=data.watermark,
+        model=model,
+        prompt=prompt,
+        duration=duration,
+        prompt_extend=prompt_extend,
+        watermark=watermark,
         api_key=api_key,
         headers=CUSTOM_HEADERS,
     )
-    _apply_resolution(kwargs, data.model, data.resolution, data.ratio)
-    if data.negative_prompt:
-        kwargs["negative_prompt"] = data.negative_prompt
-    if data.audio:
+    _apply_resolution(kwargs, model, resolution, ratio)
+    if negative_prompt:
+        kwargs["negative_prompt"] = negative_prompt
+    if seed is not None:
+        kwargs["seed"] = seed
+
+    # 音訊處理：有上傳檔案 → audio_url；只開啟開關 → audio=True（平台自動配音）
+    if audio_file and hasattr(audio_file, "filename") and audio_file.filename:
+        ext = Path(audio_file.filename).suffix or ".mp3"
+        fp = UPLOAD_DIR / f"{uuid.uuid4().hex}{ext}"
+        with open(fp, "wb") as out_f:
+            shutil.copyfileobj(audio_file.file, out_f)
+        kwargs["audio_url"] = f"file://{fp.resolve()}"
+    elif audio:
         kwargs["audio"] = True
-    if data.seed is not None:
-        kwargs["seed"] = data.seed
 
     try:
         rsp = VideoSynthesis.async_call(**kwargs)
-        return _handle_video_async_response(rsp, data.model)
+        return _handle_video_async_response(rsp, model)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
