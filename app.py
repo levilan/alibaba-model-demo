@@ -176,15 +176,15 @@ MODELS = {
     "video": [
         # ── 文生影片 ──────────────────────────────────────────────
         {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭、自動配音", "type": "t2v",   "audio": True,  "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片",     "type": "t2v",   "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片",     "type": "t2v",   "audio": True, "min_dur": 2, "max_dur": 15},
         # ── 圖生影片 ──────────────────────────────────────────────
-        {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀/首尾幀/配音/影片延伸", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片",       "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀/首尾幀/配音/影片延伸", "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片",       "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版", "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15},
         # ── 參考生影片 ────────────────────────────────────────────
-        {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片", "desc": "角色形象參考",       "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片",     "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片", "desc": "角色形象參考",       "type": "r2v", "audio": True, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片",     "type": "r2v", "audio": True, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版", "type": "r2v", "audio": True, "min_dur": 2, "max_dur": 15},
         # ── HappyHorse ────────────────────────────────────────────
         {"id": "happyhorse-1.1-t2v",        "name": "HappyHorse 1.1 T2V",        "group": "HappyHorse", "desc": "高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},    
         {"id": "happyhorse-1.0-t2v",        "name": "HappyHorse 1.0 T2V",        "group": "HappyHorse", "desc": "前一代高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},
@@ -863,6 +863,8 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
     watermark = str(form.get("watermark", "false")).lower() in ("true", "1", "yes")
     seed_str = str(form.get("seed", ""))
     seed = int(seed_str) if seed_str.strip() else None
+    audio_bgm     = str(form.get("audio", "false")).lower() in ("true", "1", "yes")
+    audio_bgm_file = form.get("audio_file")
 
     import subprocess
 
@@ -958,6 +960,15 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
             kwargs["negative_prompt"] = negative_prompt
         if seed is not None:
             kwargs["seed"] = seed
+        # BGM 音訊（與 driving_audio lip-sync 無關）
+        if audio_bgm_file and hasattr(audio_bgm_file, "filename") and audio_bgm_file.filename:
+            ext = Path(audio_bgm_file.filename).suffix or ".mp3"
+            fp = UPLOAD_DIR / f"{uuid.uuid4().hex}{ext}"
+            with open(fp, "wb") as out_f:
+                shutil.copyfileobj(audio_bgm_file.file, out_f)
+            kwargs["audio_url"] = f"file://{fp.resolve()}"
+        elif audio_bgm:
+            kwargs["audio"] = True
         rsp = VideoSynthesis.async_call(**kwargs)
         return _handle_video_async_response(rsp, model)
     except Exception as e:
@@ -1035,6 +1046,8 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
     watermark = str(form.get("watermark", "false")).lower() in ("true", "1", "yes")
     seed_str = str(form.get("seed", ""))
     seed = int(seed_str) if seed_str.strip() else None
+    audio_bgm      = str(form.get("audio", "false")).lower() in ("true", "1", "yes")
+    audio_bgm_file = form.get("audio_file")
 
     files = form.getlist("reference_files")
     if not files or (len(files) > 0 and not hasattr(files[0], "filename")):
@@ -1068,6 +1081,15 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
         _apply_resolution(r2v_kwargs, model, resolution, ratio)
         if seed is not None:
             r2v_kwargs["seed"] = seed
+        # BGM 音訊
+        if audio_bgm_file and hasattr(audio_bgm_file, "filename") and audio_bgm_file.filename:
+            ext = Path(audio_bgm_file.filename).suffix or ".mp3"
+            fp = UPLOAD_DIR / f"{uuid.uuid4().hex}{ext}"
+            with open(fp, "wb") as out_f:
+                shutil.copyfileobj(audio_bgm_file.file, out_f)
+            r2v_kwargs["audio_url"] = f"file://{fp.resolve()}"
+        elif audio_bgm:
+            r2v_kwargs["audio"] = True
         rsp = VideoSynthesis.async_call(**r2v_kwargs)
         return _handle_video_async_response(rsp, model)
     except Exception as e:

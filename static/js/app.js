@@ -1390,6 +1390,11 @@ async function sendVideo() {
             fd.append('prompt_extend', vidExtend); fd.append('watermark', vidWatermark);
             if (vidSeed !== null) fd.append('seed', vidSeed);
 
+            fd.append('audio', audio);
+            if (audio) {
+                const bgmFile = document.getElementById('vidT2VAudioInput')?.files[0];
+                if (bgmFile) fd.append('audio_file', bgmFile);
+            }
             if (i2vMode === 'first_clip' || i2vMode === 'first_clip_last_frame') {
                 const clipFile = document.getElementById('vidClipInput').files[0];
                 if (!clipFile) { toast('請上傳首段影片片段', 'error'); btn.disabled = false; btn.innerHTML = _vidBtnHTML(); return; }
@@ -1436,7 +1441,12 @@ async function sendVideo() {
             fd.append('model', model); fd.append('prompt', prompt);
             fd.append('resolution', resolution); fd.append('duration', duration);
             fd.append('prompt_extend', vidExtend); fd.append('watermark', vidWatermark);
+            fd.append('audio', audio);
             if (vidSeed !== null) fd.append('seed', vidSeed);
+            if (audio) {
+                const bgmFile = document.getElementById('vidT2VAudioInput')?.files[0];
+                if (bgmFile) fd.append('audio_file', bgmFile);
+            }
             refFiles.forEach(f => fd.append('reference_files', f));
             res = await apiPostForm('/api/video/r2v', fd);
         }
