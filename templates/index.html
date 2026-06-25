@@ -515,13 +515,24 @@
             </div>
             
             <div class="sidebar-section" id="muleaiImgUploadSection">
-                <div class="sidebar-section-title">首幀圖片 (影片必填)</div>
+                <div class="sidebar-section-title" id="muleaiImgUploadTitle">首幀圖片 (影片必填)</div>
                 <div class="upload-zone" id="muleaiFirstFrameUpZone">
                     <input type="file" id="muleaiFirstFrameInput" accept="image/jpeg, image/png, image/webp"
                            onchange="previewImg(event,'muleaiFirstFramePreview','muleaiFirstFrameUpZone')">
                     <div class="upload-zone-icon">🖼</div>
-                    <p>上傳參考圖片<br><span style="font-size:11px;color:var(--text-muted)">支援 JPG, PNG, WEBP</span></p>
+                    <p>上傳圖片<br><span style="font-size:11px;color:var(--text-muted)">支援 JPG, PNG, WEBP</span></p>
                     <img id="muleaiFirstFramePreview" class="upload-preview hidden" alt="preview">
+                </div>
+            </div>
+
+            <div class="sidebar-section" id="muleaiFaceImgSection" style="display:none">
+                <div class="sidebar-section-title">換臉參考圖 (必填)</div>
+                <div class="upload-zone" id="muleaiFaceImgUpZone">
+                    <input type="file" id="muleaiFaceImgInput" accept="image/jpeg, image/png, image/webp"
+                           onchange="previewImg(event,'muleaiFaceImgPreview','muleaiFaceImgUpZone')">
+                    <div class="upload-zone-icon">👤</div>
+                    <p>上傳換臉參考圖<br><span style="font-size:11px;color:var(--text-muted)">支援 JPG, PNG, WEBP</span></p>
+                    <img id="muleaiFaceImgPreview" class="upload-preview hidden" alt="preview">
                 </div>
             </div>
 
@@ -559,13 +570,15 @@
             <div class="prompt-panel">
                 <div class="prompt-row">
                     <div class="prompt-col">
-                        <div class="form-group" style="margin-bottom:8px">
-                            <label class="form-label">Prompt</label>
-                            <textarea id="muleaiVidPrompt" class="textarea-input" rows="2" placeholder="描述影片動作與細節..." onkeydown="if((event.ctrlKey || event.metaKey) && event.key==='Enter'){event.preventDefault();sendMuleAIVideo();}"></textarea>
-                        </div>
-                        <div class="form-group" style="margin-bottom:0">
-                            <label class="form-label">Negative Prompt</label>
-                            <textarea id="muleaiVidNegPrompt" class="textarea-input" rows="2" placeholder="不想出現的元素（可選）"></textarea>
+                        <div id="muleaiPromptSection">
+                            <div class="form-group" style="margin-bottom:8px">
+                                <label class="form-label">Prompt</label>
+                                <textarea id="muleaiVidPrompt" class="textarea-input" rows="2" placeholder="描述影片動作與細節..." onkeydown="if((event.ctrlKey || event.metaKey) && event.key==='Enter'){event.preventDefault();sendMuleAIVideo();}"></textarea>
+                            </div>
+                            <div class="form-group" style="margin-bottom:0">
+                                <label class="form-label">Negative Prompt</label>
+                                <textarea id="muleaiVidNegPrompt" class="textarea-input" rows="2" placeholder="不想出現的元素（可選）"></textarea>
+                            </div>
                         </div>
                     </div>
                     <div style="display:flex;flex-direction:column;justify-content:flex-end">

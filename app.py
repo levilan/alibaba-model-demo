@@ -157,8 +157,10 @@ MODELS = {
          "desc": "文字/參考圖驅動編輯", "type": "vedit", "audio": False, "min_dur": 2, "max_dur": 15},
     ],
     "muleai": [
-        {"id": "wan2.7-i2v-spicy", "name": "Wan 2.7 I2V Spicy", "group": "影片生成", "desc": "Spicy 模型 (支援文字/圖片)"},
-        {"id": "z-image-spicy", "name": "Z-Image Spicy", "group": "圖片生成", "desc": "Spicy 圖片生成模型"},
+        {"id": "wan2.7-i2v-spicy",       "name": "Wan 2.7 I2V Spicy",  "group": "影片生成", "desc": "Spicy 模型 (支援文字/圖片)"},
+        {"id": "z-image-spicy",           "name": "Z-Image Spicy",      "group": "圖片生成", "desc": "Spicy 圖片生成模型"},
+        {"id": "qwen-image-edit-spicy",   "name": "圖像編輯 Spicy",     "group": "圖像編輯", "desc": "Spicy 圖像編輯模型 (prompt + 來源圖)"},
+        {"id": "face-swap",               "name": "圖像換臉",            "group": "圖像換臉", "desc": "換臉模型 (來源圖 + 換臉參考圖)"},
     ],
 }
 
@@ -343,60 +345,90 @@ async def muleai_generate(
     seed: Optional[int] = Form(None),
     enable_audio: bool = Form(False),
     image: Optional[UploadFile] = File(None),
+    face_image: Optional[UploadFile] = File(None),
     audio: Optional[UploadFile] = File(None),
     api_key: str = Depends(get_api_key)
 ):
-    if not prompt:
+    is_face_swap    = model == "face-swap"
+    is_img_edit     = model == "qwen-image-edit-spicy"
+    is_image_model  = "z-image" in model or is_img_edit or is_face_swap
+
+    if not prompt and not is_face_swap:
         raise HTTPException(status_code=400, detail="Prompt is required")
 
-    is_image_model = "z-image" in model
-    if is_image_model:
-        MULEAI_URL = "https://nen.com.tw/v1/image/generations"
-    else:
-        MULEAI_URL = "https://nen.com.tw/v1/video/generations"
+    MULEAI_URL = (
+        "https://nen.com.tw/v1/image/generations"
+        if is_image_model
+        else "https://nen.com.tw/v1/video/generations"
+    )
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
+    async def _to_data_uri(f: UploadFile) -> str:
+        raw = await f.read()
+        mime = f.content_type or "image/jpeg"
+        return f"data:{mime};base64,{base64.b64encode(raw).decode()}"
 
-    payload = {
-        "model": model,
-        "prompt": prompt,
-    }
+    # ── face-swap ──────────────────────────────────────────────
+    if is_face_swap:
+        if not image or not image.filename:
+            raise HTTPException(status_code=400, detail="來源圖片為必填")
+        if not face_image or not face_image.filename:
+            raise HTTPException(status_code=400, detail="換臉參考圖為必填")
+        payload = {
+            "model": model,
+            "image": await _to_data_uri(image),
+            "face_image": await _to_data_uri(face_image),
+        }
 
-    if not is_image_model:
-        payload["size"] = resolution
-        payload["duration"] = duration
-        if image:
-            image_bytes = await image.read()
-            b64_img = base64.b64encode(image_bytes).decode('utf-8')
-            mime_type = image.content_type or 'image/jpeg'
-            data_uri = f"data:{mime_type};base64,{b64_img}"
-            payload["image"] = data_uri
-        else:
-            raise HTTPException(status_code=400, detail="Image is required for video generation")
-        if enable_audio:
-            if audio and audio.filename:
-                # 使用上傳的音頻檔案
-                audio_bytes = await audio.read()
-                audio_mime = audio.content_type or 'audio/mpeg'
-                payload["audio"] = f"data:{audio_mime};base64,{base64.b64encode(audio_bytes).decode()}"
-            else:
-                # 讓平台自動配音
-                payload["audio"] = True
-    else:
-        payload["prompt_extend"] = prompt_extend
+    # ── qwen-image-edit-spicy ──────────────────────────────────
+    elif is_img_edit:
+        if not image or not image.filename:
+            raise HTTPException(status_code=400, detail="來源圖片為必填")
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "image": await _to_data_uri(image),
+        }
+        if negative_prompt:
+            payload["negative_prompt"] = negative_prompt
+        if seed is not None:
+            payload["seed"] = seed
+
+    # ── z-image-spicy ──────────────────────────────────────────
+    elif "z-image" in model:
+        payload = {"model": model, "prompt": prompt, "prompt_extend": prompt_extend}
         if img_resolution:
             parts = img_resolution.split("*")
             if len(parts) == 2:
                 payload["width"] = int(parts[0])
                 payload["height"] = int(parts[1])
+        if negative_prompt:
+            payload["negative_prompt"] = negative_prompt
+        if seed is not None:
+            payload["seed"] = seed
 
-    if negative_prompt:
-        payload["negative_prompt"] = negative_prompt
-    if seed is not None:
-        payload["seed"] = seed
+    # ── wan2.7-i2v-spicy（影片）────────────────────────────────
+    else:
+        if not image or not image.filename:
+            raise HTTPException(status_code=400, detail="Image is required for video generation")
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "size": resolution,
+            "duration": duration,
+            "image": await _to_data_uri(image),
+        }
+        if enable_audio:
+            if audio and audio.filename:
+                audio_bytes = await audio.read()
+                audio_mime = audio.content_type or "audio/mpeg"
+                payload["audio"] = f"data:{audio_mime};base64,{base64.b64encode(audio_bytes).decode()}"
+            else:
+                payload["audio"] = True
+        if negative_prompt:
+            payload["negative_prompt"] = negative_prompt
+        if seed is not None:
+            payload["seed"] = seed
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -416,10 +448,8 @@ async def muleai_generate(
 @app.get("/api/muleai/status/{model}/{task_id}")
 async def muleai_task_status(model: str, task_id: str, api_key: str = Depends(get_api_key)):
 
-    if "z-image" in model:
-        MULEAI_STATUS_URL = f"https://nen.com.tw/v1/image/generations/{task_id}"
-    else:
-        MULEAI_STATUS_URL = f"https://nen.com.tw/v1/video/generations/{task_id}"
+    _is_img = "z-image" in model or model in ("qwen-image-edit-spicy", "face-swap")
+    MULEAI_STATUS_URL = f"https://nen.com.tw/v1/{'image' if _is_img else 'video'}/generations/{task_id}"
     headers = {
         "Authorization": f"Bearer {api_key}"
     }
@@ -466,10 +496,8 @@ async def muleai_task_status(model: str, task_id: str, api_key: str = Depends(ge
 @app.get("/api/muleai/debug/{model}/{task_id}")
 async def muleai_debug(model: str, task_id: str, api_key: str = Depends(get_api_key)):
     """回傳平台原始 JSON，診斷 status 欄位位置。"""
-    if "z-image" in model:
-        url = f"https://nen.com.tw/v1/image/generations/{task_id}"
-    else:
-        url = f"https://nen.com.tw/v1/video/generations/{task_id}"
+    _is_img = "z-image" in model or model in ("qwen-image-edit-spicy", "face-swap")
+    url = f"https://nen.com.tw/v1/{'image' if _is_img else 'video'}/generations/{task_id}"
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(url, headers={"Authorization": f"Bearer {api_key}"})
         return {"http_status": resp.status_code, "url": url, "raw": resp.json()}

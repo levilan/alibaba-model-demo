@@ -145,14 +145,36 @@ function authHeader() {
 // ── Selectors ─────────────────────────────────────────────────
 function onMuleaiModelChange() {
     const model = document.getElementById('muleaiModel').value;
-    const isImage = model.includes('z-image');
-    const supportsAudio = !isImage; // 所有影片模型都可選填音頻
-    document.getElementById('muleaiVidResGroup').style.display = isImage ? 'none' : '';
-    document.getElementById('muleaiImgResGroup').style.display = isImage ? '' : 'none';
-    document.getElementById('muleaiVidDurGroup').style.display = isImage ? 'none' : '';
-    document.getElementById('muleaiImgUploadSection').style.display = isImage ? 'none' : '';
-    document.getElementById('muleaiAudioSection').style.display = supportsAudio ? '' : 'none';
-    if (!supportsAudio) {
+    const isZImage   = model.includes('z-image');
+    const isImgEdit  = model === 'qwen-image-edit-spicy';
+    const isFaceSwap = model === 'face-swap';
+    const isImageModel = isZImage || isImgEdit || isFaceSwap;
+    const isVideoModel = !isImageModel;
+
+    // 解析度 / 時長 / 圖片尺寸
+    document.getElementById('muleaiVidResGroup').style.display  = isVideoModel ? '' : 'none';
+    document.getElementById('muleaiImgResGroup').style.display  = isZImage     ? '' : 'none';
+    document.getElementById('muleaiVidDurGroup').style.display  = isVideoModel ? '' : 'none';
+
+    // 首幀 / 來源圖上傳區
+    document.getElementById('muleaiImgUploadSection').style.display = (isVideoModel || isImgEdit || isFaceSwap) ? '' : 'none';
+    const uploadTitle = document.getElementById('muleaiImgUploadTitle');
+    if (uploadTitle) {
+        if (isFaceSwap)     uploadTitle.textContent = '來源圖片 (必填)';
+        else if (isImgEdit) uploadTitle.textContent = '來源圖片 (必填)';
+        else                uploadTitle.textContent = '首幀圖片 (影片必填)';
+    }
+
+    // 換臉參考圖
+    document.getElementById('muleaiFaceImgSection').style.display = isFaceSwap ? '' : 'none';
+
+    // Prompt 區（face-swap 不需要）
+    const promptSection = document.getElementById('muleaiPromptSection');
+    if (promptSection) promptSection.style.display = isFaceSwap ? 'none' : '';
+
+    // 配音（僅影片）
+    document.getElementById('muleaiAudioSection').style.display = isVideoModel ? '' : 'none';
+    if (!isVideoModel) {
         const cb = document.getElementById('muleaiAudioEnable');
         if (cb) cb.checked = false;
         document.getElementById('muleaiAudioUploadSection').style.display = 'none';
@@ -160,12 +182,15 @@ function onMuleaiModelChange() {
 
     const promptInput = document.getElementById('muleaiVidPrompt');
     if (promptInput) {
-        promptInput.placeholder = isImage ? "描述圖片畫面與細節..." : "描述影片動作與細節...";
+        if (isImgEdit)       promptInput.placeholder = '描述編輯效果（例：將人物改為紅髮）...';
+        else if (isImageModel) promptInput.placeholder = '描述圖片畫面與細節...';
+        else                   promptInput.placeholder = '描述影片動作與細節...';
     }
 
     const sendBtn = document.getElementById('muleaiVidSendBtn');
     if (sendBtn) {
-        sendBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>\n' + (isImage ? '生成圖片' : '生成影片');
+        const label = isVideoModel ? '生成影片' : '生成圖片';
+        sendBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> ' + label;
     }
 }
 
@@ -1141,37 +1166,66 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbo
 // ── MuleAI Generation ───────────────────────────────────────────
 
 async function sendMuleAIVideo() {
-    const prompt = document.getElementById('muleaiVidPrompt').value.trim();
-    if (!prompt) { toast('請輸入 Prompt', 'error'); return; }
-    
-    const negPrompt = document.getElementById('muleaiVidNegPrompt').value.trim();
+    const model      = document.getElementById('muleaiModel').value || 'wan2.7-i2v-spicy';
+    const isZImage   = model.includes('z-image');
+    const isImgEdit  = model === 'qwen-image-edit-spicy';
+    const isFaceSwap = model === 'face-swap';
+    const isVideoModel = !isZImage && !isImgEdit && !isFaceSwap;
+
+    const prompt    = document.getElementById('muleaiVidPrompt').value.trim();
+    if (!prompt && !isFaceSwap) { toast('請輸入 Prompt', 'error'); return; }
+
+    const negPrompt  = document.getElementById('muleaiVidNegPrompt').value.trim();
     const resolution = document.getElementById('muleaiVidResolution').value;
-    const duration = parseInt(document.getElementById('muleaiVidDuration').value);
-    const extend = document.getElementById('muleaiVidPromptExtend').checked;
-    const seedRaw = document.getElementById('muleaiVidSeed').value.trim();
-    const seed = seedRaw !== '' ? parseInt(seedRaw) : null;
-    const model = document.getElementById('muleaiModel').value || 'wan2.7-i2v-spicy';
-    const isImage = model.includes('z-image');
-    
+    const duration   = parseInt(document.getElementById('muleaiVidDuration').value);
+    const extend     = document.getElementById('muleaiVidPromptExtend').checked;
+    const seedRaw    = document.getElementById('muleaiVidSeed').value.trim();
+    const seed       = seedRaw !== '' ? parseInt(seedRaw) : null;
+
     const fd = new FormData();
-    if (!isImage) {
-        const fileInput = document.getElementById('muleaiFirstFrameInput');
-        const firstFrameFile = fileInput.files[0];
+    fd.append('model', model);
+
+    if (isFaceSwap) {
+        const srcFile  = document.getElementById('muleaiFirstFrameInput').files[0];
+        const faceFile = document.getElementById('muleaiFaceImgInput').files[0];
+        if (!srcFile)  { toast('請上傳來源圖片', 'error'); return; }
+        if (!faceFile) { toast('請上傳換臉參考圖', 'error'); return; }
+        fd.append('image', srcFile);
+        fd.append('face_image', faceFile);
+
+    } else if (isImgEdit) {
+        const srcFile = document.getElementById('muleaiFirstFrameInput').files[0];
+        if (!srcFile) { toast('請上傳來源圖片', 'error'); return; }
+        fd.append('image', srcFile);
+        fd.append('prompt', prompt);
+        fd.append('negative_prompt', negPrompt);
+        if (seed !== null) fd.append('seed', seed);
+
+    } else if (isZImage) {
+        const imgRes = document.getElementById('muleaiImgResolution').value;
+        fd.append('img_resolution', imgRes);
+        fd.append('prompt', prompt);
+        fd.append('negative_prompt', negPrompt);
+        fd.append('prompt_extend', extend);
+        if (seed !== null) fd.append('seed', seed);
+
+    } else {
+        // 影片模型
+        const firstFrameFile = document.getElementById('muleaiFirstFrameInput').files[0];
         if (!firstFrameFile) { toast('請上傳首幀圖片', 'error'); return; }
         fd.append('image', firstFrameFile);
+        fd.append('prompt', prompt);
+        fd.append('negative_prompt', negPrompt);
         fd.append('resolution', resolution);
         fd.append('duration', duration);
+        fd.append('prompt_extend', extend);
+        if (seed !== null) fd.append('seed', seed);
         const audioEnabled = document.getElementById('muleaiAudioEnable')?.checked;
         if (audioEnabled) {
             fd.append('enable_audio', 'true');
             const audioInput = document.getElementById('muleaiAudioInput');
-            if (audioInput && audioInput.files[0]) {
-                fd.append('audio', audioInput.files[0]);
-            }
+            if (audioInput && audioInput.files[0]) fd.append('audio', audioInput.files[0]);
         }
-    } else {
-        const imgRes = document.getElementById('muleaiImgResolution').value;
-        fd.append('img_resolution', imgRes);
     }
 
     const btn = document.getElementById('muleaiVidSendBtn');
@@ -1179,16 +1233,10 @@ async function sendMuleAIVideo() {
     btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg> 提交中...';
 
     try {
-        fd.append('model', model);
-        fd.append('prompt', prompt);
-        fd.append('negative_prompt', negPrompt);
-        fd.append('prompt_extend', extend);
-        if (seed !== null) fd.append('seed', seed);
-        
         const res = await apiPostForm('/api/muleai/generate', fd);
-        
         if (res.success && res.task_id) {
-            addMuleAIVideoTask(res.task_id, model, prompt, res.status);
+            const displayPrompt = isFaceSwap ? '換臉任務' : prompt;
+            addMuleAIVideoTask(res.task_id, model, displayPrompt, res.status);
             toast('任務已提交，輪詢中...', 'info');
         } else {
             toast(res.error || '提交失敗', 'error');
@@ -1197,7 +1245,8 @@ async function sendMuleAIVideo() {
         toast('錯誤：' + e.message, 'error');
     }
     btn.disabled = false;
-    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> ' + (isImage ? '生成圖片' : '生成影片');
+    const label = isVideoModel ? '生成影片' : '生成圖片';
+    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> ' + label;
 }
 
 function addMuleAIVideoTask(taskId, model, prompt, status) {
