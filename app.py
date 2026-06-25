@@ -341,7 +341,9 @@ async def muleai_generate(
     img_resolution: Optional[str] = Form("1024*1536"),
     prompt_extend: bool = Form(True),
     seed: Optional[int] = Form(None),
+    enable_audio: bool = Form(False),
     image: Optional[UploadFile] = File(None),
+    audio: Optional[UploadFile] = File(None),
     api_key: str = Depends(get_api_key)
 ):
     if not prompt:
@@ -374,6 +376,15 @@ async def muleai_generate(
             payload["image"] = data_uri
         else:
             raise HTTPException(status_code=400, detail="Image is required for video generation")
+        if enable_audio:
+            if audio and audio.filename:
+                # 使用上傳的音頻檔案
+                audio_bytes = await audio.read()
+                audio_mime = audio.content_type or 'audio/mpeg'
+                payload["audio"] = f"data:{audio_mime};base64,{base64.b64encode(audio_bytes).decode()}"
+            else:
+                # 讓平台自動配音
+                payload["audio"] = True
     else:
         payload["prompt_extend"] = prompt_extend
         if img_resolution:
@@ -417,15 +428,26 @@ async def muleai_task_status(model: str, task_id: str, api_key: str = Depends(ge
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(MULEAI_STATUS_URL, headers=headers)
             if resp.status_code == 200:
-                data = resp.json()
-                status = data.get("task_info", {}).get("status", "pending")
-                videos = data.get("videos", [])
-                images = data.get("images", [])
-                if not images and data.get("image_url"):
-                    images = [data.get("image_url")]
-                err = data.get("task_info", {}).get("error")
+                rj = resp.json()
+                # 實際結構：rj["data"] = outer（含 status/result_url）
+                #           rj["data"]["data"] = inner（含 task_info/videos）
+                outer = rj.get("data") if isinstance(rj.get("data"), dict) else rj
+                inner = outer.get("data") if isinstance(outer.get("data"), dict) else {}
+                status = (
+                    inner.get("task_info", {}).get("status")
+                    or outer.get("status")
+                    or rj.get("status")
+                    or "pending"
+                )
+                videos = inner.get("videos") or outer.get("videos") or rj.get("videos") or []
+                images = inner.get("images") or outer.get("images") or rj.get("images") or []
+                if not images and (inner.get("image_url") or outer.get("image_url")):
+                    images = [inner.get("image_url") or outer.get("image_url")]
+                if not videos and outer.get("result_url"):
+                    videos = [outer.get("result_url")]
+                err = inner.get("task_info", {}).get("error") or outer.get("fail_reason")
 
-                if status.upper() in ("COMPLETED", "SUCCEEDED"):
+                if status.upper() in ("COMPLETED", "SUCCEEDED", "SUCCESS"):
                     if videos and len(videos) > 0:
                         local_path = await _async_download_video(videos[0])
                         if local_path:
@@ -440,6 +462,17 @@ async def muleai_task_status(model: str, task_id: str, api_key: str = Depends(ge
                 return JSONResponse(status_code=resp.status_code, content={"success": False, "error": resp.text})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/muleai/debug/{model}/{task_id}")
+async def muleai_debug(model: str, task_id: str, api_key: str = Depends(get_api_key)):
+    """回傳平台原始 JSON，診斷 status 欄位位置。"""
+    if "z-image" in model:
+        url = f"https://nen.com.tw/v1/image/generations/{task_id}"
+    else:
+        url = f"https://nen.com.tw/v1/video/generations/{task_id}"
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(url, headers={"Authorization": f"Bearer {api_key}"})
+        return {"http_status": resp.status_code, "url": url, "raw": resp.json()}
 
 
 # ─── API: Image Generate (T2I) ────────────────────────────────────
@@ -846,20 +879,35 @@ async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
                 raise HTTPException(status_code=resp.status_code, detail=resp.text)
             rj = resp.json()
 
-        status = rj.get("status", "pending").upper()
-        # 平台可能回傳 completed/success，統一成前端認得的 SUCCEEDED
-        if status in ("COMPLETED", "SUCCESS"):
+        # status 可能在頂層或 task_info 裡
+        raw_status = (
+            rj.get("status")
+            or rj.get("task_info", {}).get("status")
+            or "pending"
+        )
+        status = raw_status.upper()
+        if status in ("COMPLETED", "SUCCESS", "SUCCEED", "DONE", "FINISHED"):
             status = "SUCCEEDED"
-        result: dict = {"task_id": task_id, "status": status}
+        elif status in ("RUNNING", "PROCESSING", "SUBMITTED", "QUEUED", "IN_PROGRESS"):
+            status = "PENDING"
+        result: dict = {"task_id": task_id, "status": status, "_raw_status": raw_status}
 
         if status == "SUCCEEDED":
-            # New-api may put the video URL in several places
-            video_url = rj.get("url")
+            # video URL 可能散落在多個地方
+            video_url = (
+                rj.get("url")
+                or rj.get("video_url")
+                or rj.get("task_info", {}).get("video_url")
+                or rj.get("output", {}).get("url")
+                or rj.get("output", {}).get("video_url")
+            )
             if not video_url and isinstance(rj.get("data"), list) and rj["data"]:
                 video_url = (rj["data"][0] or {}).get("url")
             if not video_url:
                 md = rj.get("metadata") or {}
                 video_url = md.get("video_url") or md.get("url")
+            if not video_url and isinstance(rj.get("videos"), list) and rj["videos"]:
+                video_url = rj["videos"][0]
             if video_url:
                 local = await _async_download_video(video_url)
                 result["local_path"] = local if local else video_url
@@ -875,13 +923,22 @@ async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
                         result["local_path"] = local if local else loc
                         result["video_url"] = loc
         elif status == "FAILED":
-            result["error_message"] = rj.get("error", {}).get("message", "Unknown error")
+            err = rj.get("error") or rj.get("task_info", {}).get("error") or {}
+            result["error_message"] = (err.get("message") if isinstance(err, dict) else str(err)) or "Unknown error"
 
         return result
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/video/debug/{task_id}")
+async def video_status_debug(task_id: str, api_key: str = Depends(get_api_key)):
+    """回傳平台原始 JSON，用於診斷 status 欄位位置。"""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(f"{NENAI_V1}/videos/{task_id}",
+                                headers={"Authorization": f"Bearer {api_key}"})
+        return {"http_status": resp.status_code, "raw": resp.json()}
 
 # ─── Helpers ──────────────────────────────────────────────────────
 def _handle_video_create_response(resp: httpx.Response, model: str) -> dict:

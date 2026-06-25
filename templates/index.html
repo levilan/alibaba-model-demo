@@ -524,6 +524,23 @@
                     <img id="muleaiFirstFramePreview" class="upload-preview hidden" alt="preview">
                 </div>
             </div>
+
+            <div class="sidebar-section" id="muleaiAudioSection" style="display:none">
+                <div class="sidebar-section-title">配音設定</div>
+                <div class="toggle-row">
+                    <label>啟用配音</label>
+                    <label class="toggle"><input type="checkbox" id="muleaiAudioEnable" onchange="onMuleaiAudioToggle()"><span class="toggle-slider"></span></label>
+                </div>
+                <div id="muleaiAudioUploadSection" style="display:none;margin-top:10px">
+                    <div class="upload-zone" id="muleaiAudioUpZone" onclick="document.getElementById('muleaiAudioInput').click()">
+                        <input type="file" id="muleaiAudioInput" accept="audio/wav,audio/mpeg,audio/mp3,audio/ogg,audio/*"
+                               style="display:none" onchange="onMuleaiAudioChange(event)">
+                        <div class="upload-zone-icon" id="muleaiAudioIcon">🎵</div>
+                        <p id="muleaiAudioLabel">上傳音頻（選填）<br><span style="font-size:11px;color:var(--text-muted)">不上傳則由平台自動配音</span></p>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" id="muleaiAudioClearBtn" style="display:none;margin-top:6px;width:100%" onclick="clearMuleaiAudio()">清除音頻</button>
+                </div>
+            </div>
             
             <div class="sidebar-section">
                 <div class="sidebar-section-title">進階參數</div>

@@ -146,20 +146,48 @@ function authHeader() {
 function onMuleaiModelChange() {
     const model = document.getElementById('muleaiModel').value;
     const isImage = model.includes('z-image');
+    const supportsAudio = !isImage; // 所有影片模型都可選填音頻
     document.getElementById('muleaiVidResGroup').style.display = isImage ? 'none' : '';
     document.getElementById('muleaiImgResGroup').style.display = isImage ? '' : 'none';
     document.getElementById('muleaiVidDurGroup').style.display = isImage ? 'none' : '';
     document.getElementById('muleaiImgUploadSection').style.display = isImage ? 'none' : '';
-    
+    document.getElementById('muleaiAudioSection').style.display = supportsAudio ? '' : 'none';
+    if (!supportsAudio) {
+        const cb = document.getElementById('muleaiAudioEnable');
+        if (cb) cb.checked = false;
+        document.getElementById('muleaiAudioUploadSection').style.display = 'none';
+    }
+
     const promptInput = document.getElementById('muleaiVidPrompt');
     if (promptInput) {
         promptInput.placeholder = isImage ? "描述圖片畫面與細節..." : "描述影片動作與細節...";
     }
-    
+
     const sendBtn = document.getElementById('muleaiVidSendBtn');
     if (sendBtn) {
         sendBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>\n' + (isImage ? '生成圖片' : '生成影片');
     }
+}
+
+function onMuleaiAudioToggle() {
+    const enabled = document.getElementById('muleaiAudioEnable').checked;
+    document.getElementById('muleaiAudioUploadSection').style.display = enabled ? '' : 'none';
+    if (!enabled) clearMuleaiAudio();
+}
+
+function onMuleaiAudioChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    document.getElementById('muleaiAudioLabel').innerHTML = `<strong>${file.name}</strong><br><span style="font-size:11px;color:var(--text-muted)">${(file.size/1024).toFixed(0)} KB</span>`;
+    document.getElementById('muleaiAudioIcon').textContent = '🎵';
+    document.getElementById('muleaiAudioClearBtn').style.display = '';
+}
+
+function clearMuleaiAudio() {
+    document.getElementById('muleaiAudioInput').value = '';
+    document.getElementById('muleaiAudioLabel').innerHTML = '上傳音頻（選填）<br><span style="font-size:11px;color:var(--text-muted)">支援 WAV, MP3, OGG</span>';
+    document.getElementById('muleaiAudioIcon').textContent = '🎵';
+    document.getElementById('muleaiAudioClearBtn').style.display = 'none';
 }
 
 function populateSelectors() {
@@ -847,7 +875,9 @@ async function pollVideo(taskId, startTime) {
             const pbEl = document.getElementById(`pb-${taskId}`);
             const rvEl = document.getElementById(`rv-${taskId}`);
 
-            if (st === 'SUCCEEDED') {
+            const isDone = st && ['SUCCEEDED','COMPLETED','SUCCESS','SUCCEED','DONE','FINISHED','completed','success'].includes(st);
+            const isFailed = st && ['FAILED','FAIL','FAILURE','ERROR','failed','error'].includes(st);
+            if (isDone) {
                 if (stEl) { stEl.textContent = 'SUCCEEDED'; stEl.className = 'vtc-status succeeded'; }
                 if (pbEl) pbEl.style.width = '100%';
                 if (rvEl && data.local_path) {
@@ -856,9 +886,15 @@ async function pollVideo(taskId, startTime) {
                             <a href="${data.local_path}" download class="img-dl">下載影片</a>
                             <button class="btn btn-ghost btn-sm" onclick="openLightbox('${data.local_path}', 'video')">展開預覽</button>
                         </div>`;
+                } else if (rvEl && data.video_url) {
+                    rvEl.innerHTML = `<video class="video-player" controls src="${data.video_url}"></video>
+                        <div class="video-card-actions">
+                            <a href="${data.video_url}" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a>
+                            <button class="btn btn-ghost btn-sm" onclick="openLightbox('${data.video_url}', 'video')">展開預覽</button>
+                        </div>`;
                 }
                 toast('影片生成完成！', 'success');
-            } else if (st === 'FAILED') {
+            } else if (isFailed) {
                 const errMsg = data.error_message || 'Unknown';
                 const isSchedulerErr = errMsg.toLowerCase().includes('scheduler');
                 if (stEl) { stEl.textContent = 'FAILED'; stEl.className = 'vtc-status failed'; }
@@ -1125,6 +1161,14 @@ async function sendMuleAIVideo() {
         fd.append('image', firstFrameFile);
         fd.append('resolution', resolution);
         fd.append('duration', duration);
+        const audioEnabled = document.getElementById('muleaiAudioEnable')?.checked;
+        if (audioEnabled) {
+            fd.append('enable_audio', 'true');
+            const audioInput = document.getElementById('muleaiAudioInput');
+            if (audioInput && audioInput.files[0]) {
+                fd.append('audio', audioInput.files[0]);
+            }
+        }
     } else {
         const imgRes = document.getElementById('muleaiImgResolution').value;
         fd.append('img_resolution', imgRes);
