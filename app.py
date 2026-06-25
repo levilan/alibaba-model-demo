@@ -186,13 +186,13 @@ MODELS = {
         {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片",     "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
         # ── HappyHorse ────────────────────────────────────────────
-        {"id": "happyhorse-1.1-t2v",        "name": "HappyHorse T2V",        "group": "HappyHorse", "desc": "高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},    
-        {"id": "happyhorse-1.0-t2v",        "name": "HappyHorse T2V",        "group": "HappyHorse", "desc": "前一代高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},
-        {"id": "happyhorse-1.1-i2v",        "name": "HappyHorse I2V",        "group": "HappyHorse", "desc": "高還原度圖生影片（首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15},
-        {"id": "happyhorse-1.0-i2v",        "name": "HappyHorse I2V",        "group": "HappyHorse", "desc": "前一代高還原度圖生影片（首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15},
-        {"id": "happyhorse-1.1-r2v",        "name": "HappyHorse R2V",        "group": "HappyHorse", "desc": "多圖參考生影片（最多 9 張）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15},
-        {"id": "happyhorse-1.0-r2v",        "name": "HappyHorse R2V",        "group": "HappyHorse", "desc": "前一代多圖參考生影片（最多 9 張）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15},
-        {"id": "happyhorse-1.0-video-edit", "name": "HappyHorse Video Edit", "group": "HappyHorse", "desc": "視頻編輯（最多 5 張參考圖）", "type": "vedit", "audio": False, "min_dur": 3, "max_dur": 15},
+        {"id": "happyhorse-1.1-t2v",        "name": "HappyHorse 1.1 T2V",        "group": "HappyHorse", "desc": "高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},    
+        {"id": "happyhorse-1.0-t2v",        "name": "HappyHorse 1.0 T2V",        "group": "HappyHorse", "desc": "前一代高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},
+        {"id": "happyhorse-1.1-i2v",        "name": "HappyHorse 1.1 I2V",        "group": "HappyHorse", "desc": "高還原度圖生影片（首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15},
+        {"id": "happyhorse-1.0-i2v",        "name": "HappyHorse 1.0 I2V",        "group": "HappyHorse", "desc": "前一代高還原度圖生影片（首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15},
+        {"id": "happyhorse-1.1-r2v",        "name": "HappyHorse 1.1 R2V",        "group": "HappyHorse", "desc": "多圖參考生影片（最多 9 張）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15},
+        {"id": "happyhorse-1.0-r2v",        "name": "HappyHorse 1.0 R2V",        "group": "HappyHorse", "desc": "前一代多圖參考生影片（最多 9 張）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15},
+        {"id": "happyhorse-1.0-video-edit", "name": "HappyHorse Video Edit 1.0", "group": "HappyHorse", "desc": "視頻編輯（最多 5 張參考圖）", "type": "vedit", "audio": False, "min_dur": 3, "max_dur": 15},
         # ── 視頻編輯 ──────────────────────────────────────────────
         {"id": "wan2.7-videoedit", "name": "萬相 2.7 視頻編輯", "group": "萬相視頻編輯",
          "desc": "文字/參考圖驅動編輯", "type": "vedit", "audio": False, "min_dur": 2, "max_dur": 15},
@@ -511,7 +511,9 @@ async def muleai_generate(
     img_resolution: Optional[str] = Form("1024*1536"),
     prompt_extend: bool = Form(True),
     seed: Optional[int] = Form(None),
+    enable_audio: bool = Form(False),
     image: Optional[UploadFile] = File(None),
+    audio: Optional[UploadFile] = File(None),
     face_image: Optional[UploadFile] = File(None),
     muleai_key: Optional[str] = Depends(get_muleai_api_key)
 ):
@@ -586,6 +588,13 @@ async def muleai_generate(
             "duration": duration,
             "image": await _file_to_data_uri(image),
         }
+        if enable_audio:
+            if audio and audio.filename:
+                audio_bytes = await audio.read()
+                audio_mime = audio.content_type or "audio/mpeg"
+                payload["audio"] = f"data:{audio_mime};base64,{base64.b64encode(audio_bytes).decode()}"
+            else:
+                payload["audio"] = True
         if negative_prompt:
             payload["negative_prompt"] = negative_prompt
         if seed is not None:
@@ -635,9 +644,9 @@ async def muleai_task_status(model: str, task_id: str, muleai_key: Optional[str]
                 outer = raw.get("data", raw)   # 脫 code/message/data 外殼
                 inner = outer.get("data") or {}
 
-                # status：outer.status → inner.task_info.status
+                # status：inner.task_info.status → outer.status → fallback
                 task_info = inner.get("task_info") or {}
-                status = outer.get("status") or task_info.get("status") or raw.get("status") or "pending"
+                status = task_info.get("status") or outer.get("status") or raw.get("status") or "pending"
 
                 err = outer.get("fail_reason") or task_info.get("error") or raw.get("message") or None
                 if err == "":
@@ -672,6 +681,19 @@ async def muleai_task_status(model: str, task_id: str, muleai_key: Optional[str]
                 return JSONResponse(status_code=resp.status_code, content={"success": False, "error": resp.text})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/muleai/debug/{model}/{task_id}")
+async def muleai_debug(model: str, task_id: str, muleai_key: Optional[str] = Depends(get_muleai_api_key)):
+    """回傳 MuleAI 原始 JSON，診斷 status 欄位位置。"""
+    if not muleai_key:
+        raise HTTPException(status_code=401, detail="NenAI API Key is missing.")
+    if "z-image" in model or model in ("qwen-image-edit-spicy", "face-swap"):
+        url = f"https://nen.com.tw/v1/image/generations/{task_id}"
+    else:
+        url = f"https://nen.com.tw/v1/video/generations/{task_id}"
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(url, headers={"Authorization": f"Bearer {muleai_key}"})
+        return {"http_status": resp.status_code, "url": url, "raw": resp.json()}
 
 
 # ─── API: Image Generate (T2I) ────────────────────────────────────
@@ -1047,7 +1069,12 @@ async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
     try:
         dashscope.api_key = api_key
         rsp = VideoSynthesis.fetch(task_id)
-        status = getattr(rsp.output, "task_status", "UNKNOWN")
+        raw_status = getattr(rsp.output, "task_status", "UNKNOWN")
+        status = raw_status.upper() if raw_status else "UNKNOWN"
+        if status in ("COMPLETED", "SUCCESS", "SUCCEED", "DONE", "FINISHED"):
+            status = "SUCCEEDED"
+        elif status in ("RUNNING", "PROCESSING", "SUBMITTED", "QUEUED", "IN_PROGRESS"):
+            status = "PENDING"
         result = {"task_id": task_id, "status": status}
         if status == "SUCCEEDED":
 
@@ -1062,6 +1089,16 @@ async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/video/debug/{task_id}")
+async def video_status_debug(task_id: str, api_key: str = Depends(get_api_key)):
+    """回傳 DashScope 任務原始 JSON，診斷 status 欄位位置。"""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{DASHSCOPE_HTTP_URL}/tasks/{task_id}",
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        return {"http_status": resp.status_code, "url": f"{DASHSCOPE_HTTP_URL}/tasks/{task_id}", "raw": resp.json()}
 
 # ─── Helpers ──────────────────────────────────────────────────────
 def _handle_image_response(rsp, model):
