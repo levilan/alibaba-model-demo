@@ -290,6 +290,24 @@ function authHeader() {
 }
 
 // ── Selectors ─────────────────────────────────────────────────
+function onMuleaiAudioToggle(cb) {
+    document.getElementById('muleaiAudioUploadArea').style.display = cb.checked ? '' : 'none';
+    if (!cb.checked) {
+        document.getElementById('muleaiAudioInput').value = '';
+        document.getElementById('muleaiAudioUpHint').innerHTML = '上傳音訊（可選）<br><span style="font-size:11px;color:var(--text-muted)">留空由平台自動配音</span>';
+    }
+}
+
+function onMuleaiAudioFileChange(event) {
+    const file = event.target.files[0];
+    const hint = document.getElementById('muleaiAudioUpHint');
+    if (file) {
+        hint.innerHTML = `<strong>${file.name}</strong><br><span style="font-size:11px;color:var(--text-muted)">${(file.size/1024).toFixed(0)} KB</span>`;
+    } else {
+        hint.innerHTML = '上傳音訊（可選）<br><span style="font-size:11px;color:var(--text-muted)">留空由平台自動配音</span>';
+    }
+}
+
 function onMuleaiModelChange() {
     const model = document.getElementById('muleaiModel').value;
     const isZImage   = model.includes('z-image');
@@ -307,6 +325,13 @@ function onMuleaiModelChange() {
 
     // 換臉參考圖：僅 face-swap 顯示
     document.getElementById('muleaiFaceImgSection').style.display = isFaceSwap ? '' : 'none';
+
+    // 配音設定：僅影片模型顯示
+    document.getElementById('muleaiAudioSection').style.display = (!isImageModel) ? '' : 'none';
+    if (isImageModel) {
+        const cb = document.getElementById('muleaiEnableAudio');
+        if (cb) { cb.checked = false; document.getElementById('muleaiAudioUploadArea').style.display = 'none'; }
+    }
 
     // Prompt 區：face-swap 不需要
     document.getElementById('muleaiPromptSection').style.display = isFaceSwap ? 'none' : '';
@@ -1738,6 +1763,12 @@ async function sendMuleAIVideo() {
         fd.append('resolution', document.getElementById('muleaiVidResolution').value);
         fd.append('duration', parseInt(document.getElementById('muleaiVidDuration').value));
         if (seed !== null) fd.append('seed', seed);
+        const enableAudio = document.getElementById('muleaiEnableAudio')?.checked || false;
+        fd.append('enable_audio', enableAudio);
+        if (enableAudio) {
+            const audioFile = document.getElementById('muleaiAudioInput').files[0];
+            if (audioFile) fd.append('audio', audioFile);
+        }
     }
 
     const btn = document.getElementById('muleaiVidSendBtn');

@@ -774,7 +774,23 @@
                     <img id="muleaiFaceImgPreview" class="upload-preview hidden" alt="preview">
                 </div>
             </div>
-            
+
+            <div class="sidebar-section" id="muleaiAudioSection" style="display:none">
+                <div class="sidebar-section-title">配音設定</div>
+                <div class="toggle-row">
+                    <label>啟用配音</label>
+                    <label class="toggle"><input type="checkbox" id="muleaiEnableAudio" onchange="onMuleaiAudioToggle(this)"><span class="toggle-slider"></span></label>
+                </div>
+                <div id="muleaiAudioUploadArea" style="display:none;margin-top:10px">
+                    <div class="upload-zone" id="muleaiAudioUpZone">
+                        <input type="file" id="muleaiAudioInput" accept="audio/wav,audio/mp3,audio/mpeg,audio/m4a,audio/*"
+                               onchange="onMuleaiAudioFileChange(event)">
+                        <div class="upload-zone-icon">🎵</div>
+                        <p id="muleaiAudioUpHint">上傳音訊（可選）<br><span style="font-size:11px;color:var(--text-muted)">留空由平台自動配音</span></p>
+                    </div>
+                </div>
+            </div>
+
             <div class="sidebar-section">
                 <div class="sidebar-section-title">進階參數</div>
                 <div class="toggle-row">
