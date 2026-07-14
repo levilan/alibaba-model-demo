@@ -175,12 +175,12 @@ MODELS = {
         # ── 千問圖像 2.0（生成與編輯融合模型，同一模型 ID 兼具 T2I 與 I2I）──
         {
             "id": "qwen-image-2.0-pro", "name": "千問圖像 2.0 Pro（編輯）", "group": "千問圖像編輯",
-            "desc": "生成與編輯融合模型 Pro 系列，最多 3 張參考圖，可輸出 1-6 張", "type": "i2i", "max_n": 6, "max_ref": 3, "no_ref_strength": True,
+            "desc": "生成與編輯融合模型 Pro 系列", "type": "i2i", "max_n": 6, "max_ref": 3, "no_ref_strength": True,
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
         {
             "id": "qwen-image-2.0", "name": "千問圖像 2.0（編輯）", "group": "千問圖像編輯",
-            "desc": "生成與編輯融合模型加速版，最多 3 張參考圖，可輸出 1-6 張", "type": "i2i", "max_n": 6, "max_ref": 3, "no_ref_strength": True,
+            "desc": "生成與編輯融合模型加速版", "type": "i2i", "max_n": 6, "max_ref": 3, "no_ref_strength": True,
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
     ],
