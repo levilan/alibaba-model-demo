@@ -367,9 +367,9 @@
                     <input type="range" id="videoDuration" min="2" max="15" step="1" value="5"
                            oninput="document.getElementById('durVal').textContent=this.value">
                 </div>
-                <!-- 自動配音（僅 wan2.7-t2v 支援） -->
+                <!-- 自動配音（萬相 2.6/2.7 的 T2V/I2V/R2V 皆支援） -->
                 <div class="toggle-row" id="vidAudioRow" style="display:none">
-                    <label data-tip="為生成的影片自動添加背景音效與環境音（萬相 2.7 T2V 專屬功能）。根據影片內容智能匹配音效">自動配音</label>
+                    <label data-tip="為生成的影片自動添加背景音效與環境音（萬相 2.6/2.7 系列 T2V/I2V/R2V 支援）。根據影片內容智能匹配音效">自動配音</label>
                     <label class="toggle"><input type="checkbox" id="vidAudio" onchange="onVidAudioToggle(this)"><span class="toggle-slider"></span></label>
                 </div>
                 <!-- T2V 自訂音訊上傳（audio 開啟後顯示） -->
