@@ -1207,7 +1207,7 @@ async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
         result = {"task_id": task_id, "status": status}
         if status == "SUCCEEDED":
 
-            video_url = getattr(rsp.output, "video_url", "")
+            video_url = getattr(rsp.output, "video_url", "") or rsp.output.get("results", {}).get("video_url", "")
             if video_url:
                 local = await _async_download_video(video_url)
                 result["local_path"] = local if local else video_url
