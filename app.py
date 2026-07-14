@@ -196,6 +196,11 @@ MODELS = {
         # ── 視頻編輯 ──────────────────────────────────────────────
         {"id": "wan2.7-videoedit", "name": "萬相 2.7 視頻編輯", "group": "萬相視頻編輯",
          "desc": "文字/參考圖驅動編輯", "type": "vedit", "audio": False, "min_dur": 2, "max_dur": 15},
+        # ── 動作動畫（視頻換人 / 圖生動作）──────────────────────────
+        {"id": "wan2.2-animate-mix", "name": "萬相 2.2 視頻換人", "group": "萬相動作動畫",
+         "desc": "將參考影片中的角色替換為人物圖片，保留原場景與動作", "type": "animate", "audio": False},
+        {"id": "wan2.2-animate-move", "name": "萬相 2.2 圖生動作", "group": "萬相動作動畫",
+         "desc": "將參考影片的動作與表情遷移到人物圖片", "type": "animate", "audio": False},
     ],
     "voice": {
         "asr": [
@@ -1092,6 +1097,73 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
             r2v_kwargs["audio"] = True
         rsp = VideoSynthesis.async_call(**r2v_kwargs)
         return _handle_video_async_response(rsp, model)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ─── API: Video Animate（視頻換人 wan2.2-animate-mix / 圖生動作 wan2.2-animate-move）──
+@app.post("/api/video/animate")
+async def video_animate(request: Request, api_key: str = Depends(get_api_key)):
+    form = await request.form()
+    model       = form.get("model", "wan2.2-animate-mix")
+    mode        = form.get("mode", "wan-std")
+    watermark   = str(form.get("watermark", "false")).lower() in ("true", "1", "yes")
+    check_image = str(form.get("check_image", "true")).lower() in ("true", "1", "yes")
+
+    image_file = form.get("image")
+    video_file = form.get("video")
+    if not image_file or not hasattr(image_file, "filename") or not image_file.filename:
+        return JSONResponse(status_code=400, content={"error": "請上傳人物圖片"})
+    if not video_file or not hasattr(video_file, "filename") or not video_file.filename:
+        return JSONResponse(status_code=400, content={"error": "請上傳參考影片"})
+
+    img_ext = Path(image_file.filename).suffix or ".png"
+    img_fp = UPLOAD_DIR / f"{uuid.uuid4().hex}{img_ext}"
+    with open(img_fp, "wb") as out_f:
+        shutil.copyfileobj(image_file.file, out_f)
+
+    vid_ext = Path(video_file.filename).suffix or ".mp4"
+    vid_fp = UPLOAD_DIR / f"{uuid.uuid4().hex}{vid_ext}"
+    with open(vid_fp, "wb") as out_f:
+        shutil.copyfileobj(video_file.file, out_f)
+
+    try:
+        image_url = _dashscope_upload_file(model, f"file://{img_fp.resolve()}", api_key)
+        video_url = _dashscope_upload_file(model, f"file://{vid_fp.resolve()}", api_key)
+
+        payload = {
+            "model": model,
+            "input": {
+                "image_url": image_url,
+                "video_url": video_url,
+                "watermark": watermark,
+            },
+            "parameters": {
+                "mode": mode,
+                "check_image": check_image,
+            },
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "X-DashScope-Async": "enable",
+            "X-DashScope-OssResourceResolve": "enable",
+            **CUSTOM_HEADERS,
+        }
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{DASHSCOPE_HTTP_URL}/services/aigc/image2video/video-synthesis",
+                headers=headers,
+                json=payload,
+            )
+        data = resp.json()
+        output = data.get("output", {})
+        if resp.status_code == 200 and output.get("task_id"):
+            return {"success": True, "task_id": output["task_id"],
+                    "status": output.get("task_status", "PENDING"), "model": model}
+        return JSONResponse(status_code=500, content={
+            "error": data.get("message", f"Generation failed ({resp.status_code})"),
+            "code": data.get("code"),
+        })
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

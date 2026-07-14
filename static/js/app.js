@@ -646,6 +646,7 @@ function onVidTaskChange() {
     document.getElementById('vidI2VUpload').classList.toggle('hidden', t !== 'i2v');
     document.getElementById('vidR2VUpload').classList.toggle('hidden', t !== 'r2v');
     document.getElementById('vidEditUpload').classList.toggle('hidden', t !== 'vedit');
+    document.getElementById('vidAnimateUpload').classList.toggle('hidden', t !== 'animate');
 
     // vedit-specific controls
     document.getElementById('vidRatioGroup').style.display = (t === 'vedit') ? '' : 'none';
@@ -653,6 +654,13 @@ function onVidTaskChange() {
 
     // i2v-specific controls
     document.getElementById('vidI2VModeGroup').style.display = (t === 'i2v') ? '' : 'none';
+
+    // animate-specific controls（無 prompt / 解析度 / 時長，改用 mode + check_image）
+    document.getElementById('vidAnimateModeGroup').style.display = (t === 'animate') ? '' : 'none';
+    document.getElementById('vidAnimateCheckImgRow').style.display = (t === 'animate') ? '' : 'none';
+    document.getElementById('vidResolutionGroup').style.display = (t === 'animate') ? 'none' : '';
+    document.getElementById('vidDurationGroup').style.display = (t === 'animate') ? 'none' : '';
+    document.getElementById('vidPromptCol').style.display = (t === 'animate') ? 'none' : '';
 
     // vedit duration hint（僅 Wan 的 min_dur=0 才顯示）
     const _veditModel = document.getElementById('videoModel').value;
@@ -733,6 +741,10 @@ function onT2VAudioUpload(e) {
     const f = e.target.files[0];
     const hint = document.getElementById('vidT2VAudioHint');
     if (f && hint) hint.innerHTML = `<strong>${f.name}</strong><br><span style="font-size:11px;color:var(--text-muted)">${(f.size/1024).toFixed(0)} KB</span>`;
+}
+function onAnimateVideoUpload(e) {
+    const f = e.target.files[0];
+    if (f) document.getElementById('vidAnimateVideoName').textContent = f.name;
 }
 function onClipUpload(e) {
     const f = e.target.files[0];
@@ -1360,7 +1372,7 @@ async function sendVideo() {
     const vidSeedRaw    = document.getElementById('vidSeed').value.trim();
     const vidSeed       = vidSeedRaw !== '' ? parseInt(vidSeedRaw) : null;
 
-    if (!prompt && taskType !== 'vedit') { toast('請輸入 Prompt', 'error'); return; }
+    if (!prompt && taskType !== 'vedit' && taskType !== 'animate') { toast('請輸入 Prompt', 'error'); return; }
 
     const btn = document.getElementById('videoSendBtn');
     btn.disabled = true;
@@ -1433,6 +1445,19 @@ async function sendVideo() {
             fd.append('video', editVideoFile);
             editRefFiles.forEach((f, i) => fd.append(`reference_image_${i + 1}`, f));
             res = await apiPostForm('/api/video/vedit', fd);
+
+        } else if (taskType === 'animate') {
+            const imgFile = document.getElementById('vidAnimateImgInput').files[0];
+            const vidFile = document.getElementById('vidAnimateVideoInput').files[0];
+            if (!imgFile) { toast('請上傳人物圖片', 'error'); btn.disabled = false; btn.innerHTML = _vidBtnHTML(); return; }
+            if (!vidFile) { toast('請上傳參考影片', 'error'); btn.disabled = false; btn.innerHTML = _vidBtnHTML(); return; }
+            const animateMode  = document.getElementById('videoAnimateMode').value;
+            const checkImage   = document.getElementById('vidAnimateCheckImage').checked;
+            const fd = new FormData();
+            fd.append('model', model); fd.append('mode', animateMode);
+            fd.append('watermark', vidWatermark); fd.append('check_image', checkImage);
+            fd.append('image', imgFile); fd.append('video', vidFile);
+            res = await apiPostForm('/api/video/animate', fd);
 
         } else {
             // r2v
