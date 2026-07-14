@@ -298,19 +298,32 @@
                         <option value="i2v">圖生影片 (I2V)</option>
                         <option value="r2v">參考生影片 (R2V)</option>
                         <option value="vedit">視頻編輯 (VideoEdit)</option>
+                        <option value="animate">動作動畫 (Animate)</option>
                     </select>
                 </div>
                 <div class="form-group">
                     <label class="form-label" data-tip="選擇影片生成模型。2.7 系列為最新版本，品質更佳且支援更多功能；2.6 系列為前代穩定版本">模型</label>
                     <select id="videoModel" class="select-input" onchange="onVidModelChange()"></select>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="vidResolutionGroup">
                     <label class="form-label" data-tip="生成影片的畫面分辨率。480P 速度最快，720P 品質與速度平衡（建議），1080P 畫質最佳但生成時間較長">解析度</label>
                     <select id="videoResolution" class="select-input">
                         <option value="720P">720P</option>
                         <option value="1080P">1080P</option>
                         <option value="480P">480P</option>
                     </select>
+                </div>
+                <!-- 服務模式（animate 專用） -->
+                <div class="form-group" id="vidAnimateModeGroup" style="display:none">
+                    <label class="form-label" data-tip="wan-std：標準模式，速度快、性價比高，適合快速預覽；wan-pro：專業模式，動畫更流暢、畫質更優，但處理時間與費用增加">服務模式</label>
+                    <select id="videoAnimateMode" class="select-input">
+                        <option value="wan-std">wan-std（標準模式）</option>
+                        <option value="wan-pro">wan-pro（專業模式）</option>
+                    </select>
+                </div>
+                <div class="toggle-row" id="vidAnimateCheckImgRow" style="display:none">
+                    <label data-tip="是否在處理前檢查輸入圖片是否符合規範。關閉可跳過檢查直接處理（animate 專用）">圖片預檢查</label>
+                    <label class="toggle"><input type="checkbox" id="vidAnimateCheckImage" checked><span class="toggle-slider"></span></label>
                 </div>
                 <!-- 畫面比例（vedit 專用） -->
                 <div class="form-group" id="vidRatioGroup" style="display:none">
@@ -345,7 +358,7 @@
                         <option value="first_clip_last_frame">影片延伸 + 尾幀</option>
                     </select>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="vidDurationGroup">
                     <label class="form-label" data-tip="生成影片的長度（秒）。範圍因模型而異，視頻編輯模式中設為 0 可保留來源影片的原始長度">時長（秒）<span class="param-val" id="durVal">5</span>
                         <span class="param-hint" id="durRange">（2 ~ 15 秒）</span>
                         <span class="param-hint" id="durHintZero" style="display:none">（0 = 保留來源）</span>
@@ -353,9 +366,9 @@
                     <input type="range" id="videoDuration" min="2" max="15" step="1" value="5"
                            oninput="document.getElementById('durVal').textContent=this.value">
                 </div>
-                <!-- 自動配音（僅 wan2.7-t2v 支援） -->
+                <!-- 自動配音（萬相 2.6/2.7 的 T2V/I2V/R2V 皆支援） -->
                 <div class="toggle-row" id="vidAudioRow" style="display:none">
-                    <label data-tip="為生成的影片自動添加背景音效與環境音（萬相 2.7 T2V 專屬功能）。根據影片內容智能匹配音效">自動配音</label>
+                    <label data-tip="為生成的影片自動添加背景音效與環境音（萬相 2.6/2.7 系列 T2V/I2V/R2V 支援）。根據影片內容智能匹配音效">自動配音</label>
                     <label class="toggle"><input type="checkbox" id="vidAudio" onchange="onVidAudioToggle(this)"><span class="toggle-slider"></span></label>
                 </div>
                 <!-- T2V 自訂音訊上傳（audio 開啟後顯示） -->
@@ -460,12 +473,30 @@
                 </div>
                 <div id="refList" class="ref-list"></div>
             </div>
+            <!-- 動作動畫上傳區（wan2.2-animate-mix / wan2.2-animate-move） -->
+            <div id="vidAnimateUpload" class="sidebar-section hidden">
+                <div class="sidebar-section-title">人物圖片 <span style="color:var(--red)">*</span></div>
+                <div class="upload-zone" id="vidAnimateImgZone">
+                    <input type="file" id="vidAnimateImgInput" accept="image/jpeg,image/png,image/bmp,image/webp"
+                           onchange="previewImg(event,'vidAnimateImgPreview','vidAnimateImgZone')">
+                    <div class="upload-zone-icon">🖼</div>
+                    <p>上傳人物圖片（JPG/PNG/BMP/WEBP，最大 5MB）</p>
+                    <img id="vidAnimateImgPreview" class="upload-preview hidden" alt="preview">
+                </div>
+                <div class="sidebar-section-title" style="margin-top:10px">參考影片 <span style="color:var(--red)">*</span></div>
+                <div class="upload-zone" id="vidAnimateVideoZone">
+                    <input type="file" id="vidAnimateVideoInput" accept="video/mp4,video/avi,video/quicktime"
+                           onchange="onAnimateVideoUpload(event)">
+                    <div class="upload-zone-icon">🎬</div>
+                    <p id="vidAnimateVideoName">上傳 MP4/AVI/MOV（2–30 秒，最大 200MB）</p>
+                </div>
+            </div>
         </aside>
 
         <div class="panel-main">
             <div class="prompt-panel">
                 <div class="prompt-row">
-                    <div class="prompt-col">
+                    <div class="prompt-col" id="vidPromptCol">
                         <div class="form-group" style="margin-bottom:8px">
                             <label class="form-label">Prompt</label>
                             <textarea id="videoPrompt" class="textarea-input" rows="2" placeholder="描述您想要生成的影片..."></textarea>
@@ -631,6 +662,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=9"></script>
+<script src="/static/js/app.js?v=10"></script>
 </body>
 </html>

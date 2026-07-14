@@ -3,6 +3,26 @@
  * Frontend JS — API Key auth, SSE streaming, polling
  */
 
+// ── Lightbox ──────────────────────────────────────────────────
+function openLightbox(src, type) {
+    const img = document.getElementById('lightboxImg');
+    const vid = document.getElementById('lightboxVid');
+    if (type === 'video') {
+        img.style.display = 'none';
+        vid.src = src; vid.style.display = '';
+    } else {
+        vid.pause(); vid.src = ''; vid.style.display = 'none';
+        img.src = src; img.style.display = '';
+    }
+    document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+    const vid = document.getElementById('lightboxVid');
+    if (vid) { vid.pause(); vid.src = ''; }
+    document.getElementById('lightbox')?.classList.remove('open');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
 // ── State ─────────────────────────────────────────────────────
 let apiKey = sessionStorage.getItem('nenai_api_key') || '';
 let models = { text: [], image: [], video: [], muleai: [] };
@@ -59,9 +79,113 @@ function addMuleAIImageResult(model, prompt, src, isHistory = false) {
     }
 }
 
+// ── Omni Voice Map ────────────────────────────────────────────
+const OMNI_VOICE_MAP = {
+    'qwen3.5-omni': {
+        default: 'Tina',
+        groups: [
+            { label: '通用普通話', voices: [
+                ['Tina',       'Tina 甜甜 — 甜美暖心'],
+                ['Cindy',      'Cindy 林欣宜 — 台灣嗲嗲'],
+                ['Liora Mira', 'Liora Mira 清歡 — 烟火溫柔'],
+                ['Sunnybobi',  'Sunnybobi 知芝 — 大咧咧'],
+                ['Raymond',    'Raymond 林川野 — 宅男清亮'],
+                ['Ethan',      'Ethan 晨煦 — 陽光活力'],
+                ['Theo Calm',  'Theo Calm 予安 — 療癒靜默'],
+                ['Serena',     'Serena 蘇瑤 — 溫柔小姐姐'],
+                ['Harvey',     'Harvey 厚 — 低沉歲月感'],
+                ['Maia',       'Maia 四月 — 知性溫柔'],
+                ['Evan',       'Evan 江晨 — 年下奶狗'],
+                ['Qiao',       'Qiao 小喬妹 — 台灣甜妹個性'],
+                ['Momo',       'Momo 茉兔 — 撒嬌搞怪'],
+                ['Wil',        'Wil 偉倫 — 港台腔小哥'],
+                ['Angel',      'Angel 安琪 — 台式口音甜美'],
+                ['Li Cassian', 'Li Cassian 李公公 — 察言觀色'],
+                ['Mia',        'Mia 舒然 — 慢生活博主'],
+                ['Joyner',     'Joyner 阿逗 — 搞笑接地氣'],
+                ['Gold',       'Gold 金爺 — Rapper'],
+                ['Katerina',   'Katerina 卡捷琳娜 — 御姐韻律'],
+                ['Ryan',       'Ryan 甜茶 — 戲感張力'],
+                ['Jennifer',   'Jennifer 詹妮弗 — 電影質感美語'],
+                ['Aiden',      'Aiden 艾登 — 廚藝大男孩'],
+                ['Mione',      'Mione 敏兒 — 英式知性'],
+                ['Roya',       'Roya 蘿雅 — 熱愛運動'],
+            ]},
+            { label: '方言', voices: [
+                ['Sunny',        'Sunny 四川晴兒 — 甜川妹'],
+                ['Dylan',        'Dylan 北京曉東 — 北京少年'],
+                ['Eric',         'Eric 四川程川 — 成都男子'],
+                ['Peter',        'Peter 天津李彼得 — 相聲捧哏'],
+                ['Joseph Chen',  'Joseph Chen 阿樸伯 — 閩南老華僑'],
+                ['Marcus',       'Marcus 陝西秦川 — 老陝沉聲'],
+                ['Li',           'Li 南京老李 — 罵罵咧咧'],
+                ['Kiki',         'Kiki 粵語阿清 — 港妹閨蜜'],
+                ['Rocky',        'Rocky 粵語阿強 — 幽默在線陪聊'],
+            ]},
+            { label: '國際', voices: [
+                ['Sohee',      'Sohee 素熙 — 韓國歐尼'],
+                ['Lenn',       'Lenn 萊恩 — 德國叛逆青年'],
+                ['Ono Anna',   'Ono Anna 小野杏 — 日本鬼靈精'],
+                ['Sonrisa',    'Sonrisa 索尼莎 — 拉美熱情大姐'],
+                ['Bodega',     'Bodega 博德加 — 西班牙大叔'],
+                ['Emilien',    'Emilien 埃米爾安 — 法國浪漫'],
+                ['Andre',      'Andre 安德雷 — 磁性沉穩'],
+                ['Radio Gol',  'Radio Gol — 葡語足球詩人'],
+                ['Alek',       'Alek 阿列克 — 俄羅斯冷暖'],
+                ['Rizky',      'Rizky 阿力 — 印尼個性青年'],
+                ['Arda',       'Arda 阿爾達 — 土耳其溫潤'],
+                ['Hana',       'Hana 阿幸 — 越南成熟姐姐'],
+                ['Dolce',      'Dolce 多爾切 — 義大利慵懶'],
+                ['Jakub',      'Jakub 雅克 — 波蘭磁性'],
+                ['Griet',      'Griet 海娜 — 荷蘭文藝'],
+                ['Eliška',     'Eliška 艾莉卡 — 捷克匠心'],
+                ['Marina',     'Marina 瑪麗娜 — 多元文化'],
+                ['Siiri',      'Siiri 西芮 — 芬蘭舒緩'],
+                ['Ingrid',     'Ingrid 林恩 — 挪威鄉村'],
+                ['Sigga',      'Sigga 海娜 — 冰島知性'],
+                ['Bea',        'Bea 雅娜 — 菲律賓甜甜'],
+                ['Chloe',      'Chloe 思怡 — 馬來西亞白領'],
+            ]},
+        ]
+    },
+    'qwen2.5-omni': {
+        default: 'Ethan',
+        groups: [
+            { label: '音色', voices: [
+                ['Ethan',   'Ethan 晨煦 — 男・陽光'],
+                ['Chelsie', 'Chelsie 千雪 — 女・二次元'],
+            ]}
+        ]
+    }
+};
+
+function updateOmniVoices(model) {
+    const sel = document.getElementById('omniVoice');
+    if (!sel) return;
+    const key = model.includes('qwen2.5-omni') ? 'qwen2.5-omni' : 'qwen3.5-omni';
+    const data = OMNI_VOICE_MAP[key];
+    const prev = sel.value;
+    sel.innerHTML = '';
+    data.groups.forEach(g => {
+        const og = document.createElement('optgroup');
+        og.label = g.label;
+        g.voices.forEach(([v, label]) => {
+            const opt = document.createElement('option');
+            opt.value = v;
+            opt.textContent = label;
+            og.appendChild(opt);
+        });
+        sel.appendChild(og);
+    });
+    // 保留原選擇，否則用預設
+    const exists = [...sel.options].some(o => o.value === prev);
+    sel.value = exists ? prev : data.default;
+}
+
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     if (apiKey) attemptAutoLogin();
+    updateOmniVoices(document.getElementById('omniModel')?.value || 'qwen3.5-omni-flash-realtime');
 
     document.getElementById('apiKeyInput').addEventListener('keydown', e => {
         if (e.key === 'Enter') handleLogin();
@@ -240,19 +364,21 @@ function populateSelect(id, list, filterFn = null) {
 }
 
 // ── Image 任務/模型切換 ────────────────────────────────────────
+let imgMaxRef = 9; // 參考圖上限，依模型動態調整（qwen-image-2.0 系列為 3，其餘為 9）
+
 function onImgTaskChange() {
     const t = document.getElementById('imageTaskType').value;
     populateSelect('imageModel', models.image, m => m.type === t);
     document.getElementById('imgUploadSection').classList.toggle('hidden', t !== 'i2i');
-    document.getElementById('imgNGroup').style.display = (t === 't2i') ? '' : 'none';
-    document.getElementById('imgRefStrengthGroup').style.display = (t === 'i2i') ? '' : 'none';
     if (t !== 'i2i') { imgRefFiles = []; renderImgThumbs(); }
     onImgModelChange();
 }
 
 function onImgModelChange() {
+    const t = document.getElementById('imageTaskType').value;
     const modelId = document.getElementById('imageModel').value;
-    const modelInfo = models.image.find(m => m.id === modelId) || {};
+    // 同一 model id 可能同時存在 t2i 與 i2i 兩筆資料（如 qwen-image-2.0），需依 type 一併比對避免混淆
+    const modelInfo = models.image.find(m => m.id === modelId && m.type === t) || {};
 
     // 更新尺寸選單
     const sizeEl = document.getElementById('imageSize');
@@ -268,7 +394,7 @@ function onImgModelChange() {
         `<option value="${s}"${s === currentSize ? ' selected' : ''}>${sizeLabels[s] || s}</option>`
     ).join('');
 
-    // 更新張數上限
+    // 更新張數上限（i2i 模式下，僅 max_n > 1 的模型如 qwen-image-2.0 系列才顯示張數選擇）
     const maxN = modelInfo.max_n || 4;
     const nSlider = document.getElementById('imgN');
     nSlider.max = maxN;
@@ -276,6 +402,16 @@ function onImgModelChange() {
         nSlider.value = maxN;
         document.getElementById('imgNVal').textContent = maxN;
     }
+    document.getElementById('imgNGroup').style.display = (maxN > 1) ? '' : 'none';
+
+    // ref_strength 僅 Wan 圖像編輯系列支援，qwen-image-2.0 系列無此參數
+    document.getElementById('imgRefStrengthGroup').style.display =
+        (t === 'i2i' && !modelInfo.no_ref_strength) ? '' : 'none';
+
+    // 參考圖張數上限（qwen-image-2.0 系列最多 3 張，其餘模型最多 9 張）
+    imgMaxRef = modelInfo.max_ref || 9;
+    if (imgRefFiles.length > imgMaxRef) imgRefFiles = imgRefFiles.slice(0, imgMaxRef);
+    renderImgThumbs();
 }
 
 // ── Video 任務/模型切換 ────────────────────────────────────────
@@ -286,6 +422,7 @@ function onVidTaskChange() {
     document.getElementById('vidI2VUpload').classList.toggle('hidden', t !== 'i2v');
     document.getElementById('vidR2VUpload').classList.toggle('hidden', t !== 'r2v');
     document.getElementById('vidEditUpload').classList.toggle('hidden', t !== 'vedit');
+    document.getElementById('vidAnimateUpload').classList.toggle('hidden', t !== 'animate');
 
     // vedit-specific controls
     document.getElementById('vidRatioGroup').style.display = (t === 'vedit') ? '' : 'none';
@@ -293,6 +430,13 @@ function onVidTaskChange() {
 
     // i2v-specific controls
     document.getElementById('vidI2VModeGroup').style.display = (t === 'i2v') ? '' : 'none';
+
+    // animate-specific controls（無 prompt / 解析度 / 時長，改用 mode + check_image）
+    document.getElementById('vidAnimateModeGroup').style.display = (t === 'animate') ? '' : 'none';
+    document.getElementById('vidAnimateCheckImgRow').style.display = (t === 'animate') ? '' : 'none';
+    document.getElementById('vidResolutionGroup').style.display = (t === 'animate') ? 'none' : '';
+    document.getElementById('vidDurationGroup').style.display = (t === 'animate') ? 'none' : '';
+    document.getElementById('vidPromptCol').style.display = (t === 'animate') ? 'none' : '';
 
     // vedit duration hint（僅 Wan 的 min_dur=0 才顯示）
     const _veditModel = document.getElementById('videoModel').value;
@@ -376,6 +520,25 @@ function onAudioUpload(e) {
     const f = e.target.files[0];
     if (f) document.getElementById('vidAudioFileName').textContent = f.name;
 }
+function onVidAudioToggle(cb) {
+    const zone = document.getElementById('vidT2VAudioZone');
+    if (zone) zone.style.display = cb.checked ? '' : 'none';
+    if (!cb.checked) {
+        const inp = document.getElementById('vidT2VAudioInput');
+        if (inp) inp.value = '';
+        const hint = document.getElementById('vidT2VAudioHint');
+        if (hint) hint.innerHTML = '上傳音訊（可選）<br><span style="font-size:11px;color:var(--text-muted)">留空由模型自動配音</span>';
+    }
+}
+function onT2VAudioUpload(e) {
+    const f = e.target.files[0];
+    const hint = document.getElementById('vidT2VAudioHint');
+    if (f && hint) hint.innerHTML = `<strong>${f.name}</strong><br><span style="font-size:11px;color:var(--text-muted)">${(f.size/1024).toFixed(0)} KB</span>`;
+}
+function onAnimateVideoUpload(e) {
+    const f = e.target.files[0];
+    if (f) document.getElementById('vidAnimateVideoName').textContent = f.name;
+}
 function onClipUpload(e) {
     const f = e.target.files[0];
     if (f) document.getElementById('vidClipFileName').textContent = f.name;
@@ -409,13 +572,136 @@ function switchTab(tab) {
 }
 
 
-// ── Omni Realtime ─────────────────────────────────────────────
+// ── Omni ──────────────────────────────────────────────────────
 let omniAudioContext;
 let omniMicrophone;
 let omniProcessor;
 let omniWebSocket;
 let outAudioCtx;
 let nextPlayTime = 0;
+let omniChatHistory = [];   // for non-realtime models
+
+function onOmniModelChange() {
+    const model = document.getElementById('omniModel').value;
+    const isRealtime = model.includes('realtime');
+    document.getElementById('omniRealtimeControls').style.display = isRealtime ? '' : 'none';
+    document.getElementById('omniChatInputArea').style.display   = isRealtime ? 'none' : '';
+    // 切換模型時清空歷史
+    omniChatHistory = [];
+    const area = document.getElementById('omniTranscriptionArea');
+    area.innerHTML = '';
+    const hint = isRealtime
+        ? '點擊「開始通話」並允許麥克風權限，即可與 AI 即時對話'
+        : '在下方輸入訊息，AI 將以文字＋語音回覆（Ctrl+Enter 發送）';
+    area.innerHTML = `<div class="empty-state" style="width:100%"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg><p>${hint}</p></div>`;
+    updateOmniVoices(model);
+}
+
+async function sendOmniChat() {
+    const text = document.getElementById('omniChatInput').value.trim();
+    if (!text) return;
+    if (!apiKey) { toast('請先設定 API Key', 'error'); return; }
+
+    const model = document.getElementById('omniModel').value;
+    const voice = document.getElementById('omniVoice').value;
+    const instructions = document.getElementById('omniInstructions').value.trim();
+
+    omniChatHistory.push({ role: 'user', content: text });
+
+    const area = document.getElementById('omniTranscriptionArea');
+    const empty = area.querySelector('.empty-state');
+    if (empty) empty.remove();
+    area.innerHTML += `<div style="margin-bottom:8px"><strong style="color:var(--primary-color)">[User]</strong> ${text}</div>`;
+    area.scrollTop = area.scrollHeight;
+
+    document.getElementById('omniChatInput').value = '';
+    const sendBtn = document.getElementById('omniChatSendBtn');
+    sendBtn.disabled = true;
+
+    // 建立 AI 回覆容器
+    const replyId = 'omni-reply-' + Date.now();
+    area.innerHTML += `<div id="${replyId}" style="margin-bottom:12px"><strong style="color:#00c853">[AI]</strong> <span id="${replyId}-text"></span></div>`;
+    area.scrollTop = area.scrollHeight;
+
+    // 收集 PCM16 音訊 chunks
+    const audioChunks = [];
+    let textContent = '';
+
+    try {
+        const resp = await fetch('/api/omni/chat', {
+            method: 'POST',
+            headers: { ...authHeader(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model, messages: omniChatHistory, voice, instructions }),
+        });
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop();
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const msg = JSON.parse(line.slice(6));
+                if (msg.type === 'text') {
+                    textContent += msg.content;
+                    document.getElementById(replyId + '-text').textContent = textContent;
+                    area.scrollTop = area.scrollHeight;
+                } else if (msg.type === 'transcript') {
+                    textContent += msg.content;
+                    document.getElementById(replyId + '-text').textContent = textContent;
+                    area.scrollTop = area.scrollHeight;
+                } else if (msg.type === 'audio') {
+                    audioChunks.push(msg.data);
+                } else if (msg.type === 'error') {
+                    logOmniMessage('Error', msg.content);
+                }
+            }
+        }
+
+        // 更新對話歷史
+        omniChatHistory.push({ role: 'assistant', content: textContent || '（語音回覆）' });
+
+        // 播放音訊
+        if (audioChunks.length > 0) {
+            _playOmniPCM(audioChunks);
+        }
+    } catch (e) {
+        logOmniMessage('Error', e.message);
+    }
+    sendBtn.disabled = false;
+}
+
+function _playOmniPCM(chunks) {
+    // 每個 chunk 是獨立的 base64，需分開 decode 再合併 binary
+    const decoded = chunks.map(b64 => {
+        const bin = atob(b64);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        return arr;
+    });
+    const totalLen = decoded.reduce((s, a) => s + a.length, 0);
+    const combined = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const arr of decoded) { combined.set(arr, offset); offset += arr.length; }
+
+    const int16 = new Int16Array(combined.buffer);
+    const float32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768.0;
+
+    const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+    const buf = ctx.createBuffer(1, float32.length, 24000);
+    buf.getChannelData(0).set(float32);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+    src.onended = () => ctx.close();
+}
 
 async function startOmniConversation() {
     if(!apiKey) { alert('請先設定 API Key'); return; }
@@ -437,14 +723,11 @@ async function startOmniConversation() {
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
                 "instructions": document.getElementById('omniInstructions').value,
-                "input_audio_transcription": {
-                    "model": null
-                },
                 "turn_detection": {
                     "type": "server_vad",
-                    "threshold": 0.2,
+                    "threshold": 0.5,
                     "prefix_padding_ms": 300,
-                    "silence_duration_ms": 800
+                    "silence_duration_ms": 600
                 }
             }
         };
@@ -563,8 +846,10 @@ function stopOmniConversation() {
 
 function logOmniMessage(role, text) {
     const area = document.getElementById('omniTranscriptionArea');
+    const empty = area.querySelector('.empty-state');
+    if (empty) empty.remove();
     const roleColor = role === 'User' ? 'var(--primary-color)' : role === 'LLM' ? '#00c853' : '#757575';
-    area.innerHTML += `<div style="margin-bottom: 5px;"><strong style="color:${roleColor}">[${role}]</strong> ${text}</div>`;
+    area.innerHTML += `<div style="margin-bottom:5px"><strong style="color:${roleColor}">[${role}]</strong> ${text}</div>`;
     area.scrollTop = area.scrollHeight;
 }
 
@@ -722,6 +1007,7 @@ async function sendImage() {
             fd.append('model', model); fd.append('prompt', prompt);
             fd.append('negative_prompt', negPrompt); fd.append('size', size);
             fd.append('watermark', watermark); fd.append('ref_strength', refStrength);
+            fd.append('n', n); fd.append('prompt_extend', extend);
             if (imgSeed !== null) fd.append('seed', imgSeed);
             imgRefFiles.forEach((f, i) => fd.append(`image_${i + 1}`, f));
             res = await apiPostForm('/api/image/edit', fd);
@@ -769,7 +1055,7 @@ async function sendVideo() {
     const vidSeedRaw    = document.getElementById('vidSeed').value.trim();
     const vidSeed       = vidSeedRaw !== '' ? parseInt(vidSeedRaw) : null;
 
-    if (!prompt && taskType !== 'vedit') { toast('請輸入 Prompt', 'error'); return; }
+    if (!prompt && taskType !== 'vedit' && taskType !== 'animate') { toast('請輸入 Prompt', 'error'); return; }
 
     const btn = document.getElementById('videoSendBtn');
     btn.disabled = true;
@@ -799,6 +1085,11 @@ async function sendVideo() {
             fd.append('prompt_extend', vidExtend); fd.append('watermark', vidWatermark);
             if (vidSeed !== null) fd.append('seed', vidSeed);
 
+            fd.append('audio', audio);
+            if (audio) {
+                const bgmFile = document.getElementById('vidT2VAudioInput')?.files[0];
+                if (bgmFile) fd.append('audio_file', bgmFile);
+            }
             if (i2vMode === 'first_clip' || i2vMode === 'first_clip_last_frame') {
                 const clipFile = document.getElementById('vidClipInput').files[0];
                 if (!clipFile) { toast('請上傳首段影片片段', 'error'); btn.disabled = false; btn.innerHTML = _vidBtnHTML(); return; }
@@ -838,6 +1129,19 @@ async function sendVideo() {
             editRefFiles.forEach((f, i) => fd.append(`reference_image_${i + 1}`, f));
             res = await apiPostForm('/api/video/vedit', fd);
 
+        } else if (taskType === 'animate') {
+            const imgFile = document.getElementById('vidAnimateImgInput').files[0];
+            const vidFile = document.getElementById('vidAnimateVideoInput').files[0];
+            if (!imgFile) { toast('請上傳人物圖片', 'error'); btn.disabled = false; btn.innerHTML = _vidBtnHTML(); return; }
+            if (!vidFile) { toast('請上傳參考影片', 'error'); btn.disabled = false; btn.innerHTML = _vidBtnHTML(); return; }
+            const animateMode  = document.getElementById('videoAnimateMode').value;
+            const checkImage   = document.getElementById('vidAnimateCheckImage').checked;
+            const fd = new FormData();
+            fd.append('model', model); fd.append('mode', animateMode);
+            fd.append('watermark', vidWatermark); fd.append('check_image', checkImage);
+            fd.append('image', imgFile); fd.append('video', vidFile);
+            res = await apiPostForm('/api/video/animate', fd);
+
         } else {
             // r2v
             if (!refFiles.length) { toast('請上傳參考文件', 'error'); btn.disabled = false; btn.innerHTML = _vidBtnHTML(); return; }
@@ -845,7 +1149,12 @@ async function sendVideo() {
             fd.append('model', model); fd.append('prompt', prompt);
             fd.append('resolution', resolution); fd.append('duration', duration);
             fd.append('prompt_extend', vidExtend); fd.append('watermark', vidWatermark);
+            fd.append('audio', audio);
             if (vidSeed !== null) fd.append('seed', vidSeed);
+            if (audio) {
+                const bgmFile = document.getElementById('vidT2VAudioInput')?.files[0];
+                if (bgmFile) fd.append('audio_file', bgmFile);
+            }
             refFiles.forEach(f => fd.append('reference_files', f));
             res = await apiPostForm('/api/video/r2v', fd);
         }
@@ -972,7 +1281,7 @@ async function pollVideo(taskId, startTime) {
 // ── Upload helpers ────────────────────────────────────────────
 // ── Image Edit 多圖管理 ────────────────────────────────────────
 function onImgFilesAdd(files) {
-    const remaining = 9 - imgRefFiles.length;
+    const remaining = imgMaxRef - imgRefFiles.length;
     const toAdd = Array.from(files).slice(0, remaining);
     imgRefFiles = [...imgRefFiles, ...toAdd];
     renderImgThumbs();
@@ -994,8 +1303,8 @@ function renderImgThumbs() {
             <img src="${URL.createObjectURL(f)}" alt="${f.name}">
             <button class="img-thumb-remove" onclick="removeImgFile(${i})">✕</button>
         </div>`).join('');
-    if (countEl) countEl.textContent = `${imgRefFiles.length} / 9 張`;
-    if (addBtn) addBtn.style.display = imgRefFiles.length >= 9 ? 'none' : '';
+    if (countEl) countEl.textContent = `${imgRefFiles.length} / ${imgMaxRef} 張`;
+    if (addBtn) addBtn.style.display = imgRefFiles.length >= imgMaxRef ? 'none' : '';
 }
 
 function previewImg(e, previewId, zoneId) {
@@ -1307,7 +1616,7 @@ async function pollMuleAIVideo(taskId, startTime, model, promptText) {
             const pbEl = document.getElementById('mpb-' + taskId);
             const rvEl = document.getElementById('mrv-' + taskId);
 
-            if (st === 'SUCCEEDED' || st === 'completed') {
+            if (st && ['SUCCEEDED', 'SUCCESS', 'completed', 'COMPLETED'].includes(st.toUpperCase ? st.toUpperCase() : st)) {
                 if (stEl) { stEl.textContent = 'SUCCEEDED'; stEl.className = 'vtc-status succeeded'; }
                 if (pbEl) pbEl.style.width = '100%';
                 if (rvEl) {

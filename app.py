@@ -2,7 +2,7 @@
 NenAI Testing Platform
 FastAPI Backend - NenAI API Key per-user authentication
 """
-import os, sys, json, time, uuid, mimetypes, shutil, base64, subprocess
+import os, sys, json, time, uuid, mimetypes, base64, subprocess
 from io import BytesIO
 from PIL import Image as PILImage
 from datetime import datetime
@@ -19,6 +19,32 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from openai import AsyncOpenAI, OpenAI
+
+# ─── OSS Storage ─────────────────────────────────────────────
+import oss2
+_OSS_BUCKET_NAME = "aimodel-oss"
+_OSS_ENDPOINT    = "https://oss-ap-southeast-1.aliyuncs.com"
+_OSS_URL_EXPIRE  = 7 * 24 * 3600  # 7 天預簽名 URL
+
+def _oss_bucket() -> Optional[oss2.Bucket]:
+    ak = os.environ.get("OSS_ACCESS_KEY_ID", "")
+    sk = os.environ.get("OSS_ACCESS_KEY_SECRET", "")
+    if not ak or not sk:
+        return None
+    auth = oss2.Auth(ak, sk)
+    return oss2.Bucket(auth, _OSS_ENDPOINT, _OSS_BUCKET_NAME)
+
+def _oss_put(data: bytes, key: str) -> Optional[str]:
+    """上傳至 OSS，回傳預簽名 URL；失敗回傳 None。"""
+    try:
+        bkt = _oss_bucket()
+        if bkt is None:
+            return None
+        bkt.put_object(key, data)
+        return bkt.sign_url("GET", key, _OSS_URL_EXPIRE)
+    except Exception as e:
+        print(f"OSS upload error [{key}]: {e}")
+        return None
 
 # ─── App Setup ────────────────────────────────────────────────
 app = FastAPI(title="NenAI Testing Platform")
@@ -90,7 +116,7 @@ MODELS = {
         {
             "id": "qwen-image-plus", "name": "千問圖像 Plus", "group": "千問文生圖",
             "desc": "均衡品質與速度", "type": "t2i", "max_n": 4,
-            "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
+            "sizes": ["1328*1328","1664*928","928*1664","1472*1104","1104*1472"],
         },
         # ── 萬相文生圖 ────────────────────────────────────────────
         {
@@ -131,19 +157,30 @@ MODELS = {
             "desc": "輕量圖文編輯", "type": "i2i", "max_n": 1,
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
+        # ── 千問圖像 2.0（生成與編輯融合模型，同一模型 ID 兼具 T2I 與 I2I）──
+        {
+            "id": "qwen-image-2.0-pro", "name": "千問圖像 2.0 Pro（編輯）", "group": "千問圖像編輯",
+            "desc": "生成與編輯融合模型 Pro 系列", "type": "i2i", "max_n": 6, "max_ref": 3, "no_ref_strength": True,
+            "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
+        },
+        {
+            "id": "qwen-image-2.0", "name": "千問圖像 2.0（編輯）", "group": "千問圖像編輯",
+            "desc": "生成與編輯融合模型加速版", "type": "i2i", "max_n": 6, "max_ref": 3, "no_ref_strength": True,
+            "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
+        },
     ],
     "video": [
         # ── 文生影片 ──────────────────────────────────────────────
         {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭、自動配音", "type": "t2v",   "audio": True,  "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片",     "type": "t2v",   "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片",     "type": "t2v",   "audio": True, "min_dur": 2, "max_dur": 15},
         # ── 圖生影片 ──────────────────────────────────────────────
-        {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀/首尾幀/配音/影片延伸", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片",       "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀/首尾幀/配音/影片延伸", "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片",       "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版", "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15},
         # ── 參考生影片 ────────────────────────────────────────────
-        {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片", "desc": "角色形象參考",       "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片",     "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片", "desc": "角色形象參考",       "type": "r2v", "audio": True, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片",     "type": "r2v", "audio": True, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版", "type": "r2v", "audio": True, "min_dur": 2, "max_dur": 15},
         # ── HappyHorse ────────────────────────────────────────────
          {"id": "happyhorse-1.1-t2v",        "name": "HappyHorse 1.1 T2V",        "group": "HappyHorse", "desc": "高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},    
         {"id": "happyhorse-1.0-t2v",        "name": "HappyHorse 1.0 T2V",        "group": "HappyHorse", "desc": "前一代高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},
@@ -155,6 +192,11 @@ MODELS = {
         # ── 視頻編輯 ──────────────────────────────────────────────
         {"id": "wan2.7-videoedit", "name": "萬相 2.7 視頻編輯", "group": "萬相視頻編輯",
          "desc": "文字/參考圖驅動編輯", "type": "vedit", "audio": False, "min_dur": 2, "max_dur": 15},
+        # ── 動作動畫（視頻換人 / 圖生動作）──────────────────────────
+        {"id": "wan2.2-animate-mix", "name": "萬相 2.2 視頻換人", "group": "萬相動作動畫",
+         "desc": "將參考影片中的角色替換為人物圖片，保留原場景與動作", "type": "animate", "audio": False},
+        {"id": "wan2.2-animate-move", "name": "萬相 2.2 圖生動作", "group": "萬相動作動畫",
+         "desc": "將參考影片的動作與表情遷移到人物圖片", "type": "animate", "audio": False},
     ],
     "muleai": [
         {"id": "wan2.7-i2v-spicy",       "name": "Wan 2.7 I2V Spicy",  "group": "影片生成", "desc": "Spicy 模型 (支援文字/圖片)"},
@@ -231,6 +273,65 @@ class TextGenerateRequest(BaseModel):
     stop: List[str] = []
     stream: bool = True
     enable_thinking: bool = False
+
+
+class OmniChatRequest(BaseModel):
+    model: str = "qwen3.5-omni-flash"
+    messages: list = []
+    voice: str = "Ethan"
+    instructions: Optional[str] = None
+
+@app.post("/api/omni/chat")
+async def omni_chat(data: OmniChatRequest, api_key: str = Depends(get_api_key)):
+    msgs = []
+    if data.instructions:
+        msgs.append({"role": "system", "content": data.instructions})
+    msgs.extend(data.messages)
+
+    async def generate() -> AsyncGenerator[str, None]:
+        try:
+            user_client = AsyncOpenAI(api_key=api_key, base_url=BASE_URL_COMPATIBLE)
+            stream = await user_client.chat.completions.create(
+                model=data.model,
+                messages=msgs,
+                modalities=["text", "audio"],
+                audio={"voice": data.voice, "format": "pcm16"},
+                stream=True,
+            )
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+
+                # text content
+                text_content = getattr(delta, "content", None)
+                if text_content:
+                    yield f"data: {json.dumps({'type': 'text', 'content': text_content})}\n\n"
+
+                # audio — may be attribute or in model_extra (depends on SDK version)
+                audio = getattr(delta, "audio", None)
+                if audio is None:
+                    extra = getattr(delta, "model_extra", None) or {}
+                    audio = extra.get("audio")
+
+                if audio:
+                    # handle both object-style and dict-style
+                    audio_data   = audio.get("data")     if isinstance(audio, dict) else getattr(audio, "data", None)
+                    audio_trans  = audio.get("transcript") if isinstance(audio, dict) else getattr(audio, "transcript", None)
+                    if audio_data:
+                        yield f"data: {json.dumps({'type': 'audio', 'data': audio_data})}\n\n"
+                    if audio_trans:
+                        yield f"data: {json.dumps({'type': 'transcript', 'content': audio_trans})}\n\n"
+
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.websocket("/ws/omni")
@@ -331,7 +432,7 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
 
 
 
-# ─── API: MuleAI Video Generation (I2V) ───────────────────────────────────────
+# ─── API: MuleAI Video/Image Generation ───────────────────────────────────────
 @app.post("/api/muleai/generate")
 async def muleai_generate(
     request: Request,
@@ -568,28 +669,40 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# qwen-image-2.0 系列為「生成與編輯融合模型」：最多 3 張參考圖、可輸出 1-6 張，且不支援 ref_strength 參數
+_QWEN2_EDIT_MODELS = {"qwen-image-2.0-pro", "qwen-image-2.0"}
+
 # ─── API: Image Edit (I2I) ────────────────────────────────────────
 @app.post("/api/image/edit")
 async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
     form = await request.form()
     model       = form.get("model", "wan2.6-image")
+    is_qwen2_edit = model in _QWEN2_EDIT_MODELS
     prompt      = form.get("prompt", "")
     neg_prompt  = form.get("negative_prompt", "")
     size        = form.get("size", "1024*1024")
     watermark   = str(form.get("watermark", "false")).lower() in ("true", "1", "yes")
+    prompt_extend = str(form.get("prompt_extend", "true")).lower() in ("true", "1", "yes")
     seed_str    = str(form.get("seed", ""))
     seed        = int(seed_str) if seed_str.strip() else None
     try:
         ref_strength = float(form.get("ref_strength", "0.5"))
     except ValueError:
         ref_strength = 0.5
+    try:
+        n = int(form.get("n", "1"))
+    except ValueError:
+        n = 1
+    n = max(1, min(6, n)) if is_qwen2_edit else 1
 
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
 
     # Read and optionally resize reference images in memory
+    # qwen-image-2.0 系列（生成與編輯融合模型）最多 3 張參考圖，其餘模型最多 9 張
+    max_refs = 3 if is_qwen2_edit else 9
     image_files: list[tuple[str, bytes, str]] = []
-    for i in range(1, 10):
+    for i in range(1, max_refs + 1):
         f = form.get(f"image_{i}")
         if not f or not hasattr(f, "filename") or not f.filename:
             break
@@ -609,8 +722,11 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
         return JSONResponse(status_code=400, content={"error": "至少需要一張參考圖片"})
 
     try:
-        form_data = {"model": model, "prompt": prompt, "size": size, "n": "1",
-                     "ref_strength": str(ref_strength)}
+        form_data = {"model": model, "prompt": prompt, "size": size, "n": str(n)}
+        if is_qwen2_edit:
+            form_data["prompt_extend"] = "true" if prompt_extend else "false"
+        else:
+            form_data["ref_strength"] = str(ref_strength)
         if neg_prompt:
             form_data["negative_prompt"] = neg_prompt
         if watermark:
@@ -719,6 +835,8 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
     watermark     = str(form.get("watermark", "false")).lower() in ("true", "1", "yes")
     seed_str      = str(form.get("seed", ""))
     seed          = int(seed_str) if seed_str.strip() else None
+    audio_bgm      = str(form.get("audio", "false")).lower() in ("true", "1", "yes")
+    audio_bgm_file = form.get("audio_file")
 
     async def _read_image_bytes(file_obj) -> Optional[bytes]:
         if not file_obj or not hasattr(file_obj, "filename") or not file_obj.filename:
@@ -750,6 +868,12 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
     if watermark:     meta["watermark"] = True
     if seed is not None: meta["seed"] = seed
     if ratio:         meta["ratio"] = ratio
+    if audio_bgm_file and hasattr(audio_bgm_file, "filename") and audio_bgm_file.filename:
+        ab = await audio_bgm_file.read()
+        audio_mime = audio_bgm_file.content_type or "audio/mpeg"
+        meta["audio"] = f"data:{audio_mime};base64,{base64.b64encode(ab).decode()}"
+    elif audio_bgm:
+        meta["audio"] = True
 
     media_arr: list = []
 
@@ -879,6 +1003,8 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
     watermark     = str(form.get("watermark", "false")).lower() in ("true", "1", "yes")
     seed_str      = str(form.get("seed", ""))
     seed          = int(seed_str) if seed_str.strip() else None
+    audio_bgm      = str(form.get("audio", "false")).lower() in ("true", "1", "yes")
+    audio_bgm_file = form.get("audio_file")
 
     ref_files = form.getlist("reference_files")
     if not ref_files or not hasattr(ref_files[0], "filename"):
@@ -904,6 +1030,12 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
     if watermark:     meta["watermark"] = True
     if seed is not None: meta["seed"] = seed
     if ratio:         meta["ratio"] = ratio
+    if audio_bgm_file and hasattr(audio_bgm_file, "filename") and audio_bgm_file.filename:
+        ab = await audio_bgm_file.read()
+        audio_mime = audio_bgm_file.content_type or "audio/mpeg"
+        meta["audio"] = f"data:{audio_mime};base64,{base64.b64encode(ab).decode()}"
+    elif audio_bgm:
+        meta["audio"] = True
 
     payload: dict = {"model": model, "prompt": prompt,
                      "duration": duration, "width": w, "height": h,
@@ -911,6 +1043,45 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
                      "image": media_arr[0]["url"],
                      "images": [m["url"] for m in media_arr]}
     if meta: payload["metadata"] = meta
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(f"{NENAI_V1}/videos",
+                                     headers={"Authorization": f"Bearer {api_key}",
+                                              "Content-Type": "application/json"},
+                                     json=payload)
+            return _handle_video_create_response(resp, model)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ─── API: Video Animate（視頻換人 wan2.2-animate-mix / 圖生動作 wan2.2-animate-move）──
+@app.post("/api/video/animate")
+async def video_animate(request: Request, api_key: str = Depends(get_api_key)):
+    form = await request.form()
+    model       = form.get("model", "wan2.2-animate-mix")
+    mode        = form.get("mode", "wan-std")
+    watermark   = str(form.get("watermark", "false")).lower() in ("true", "1", "yes")
+    check_image = str(form.get("check_image", "true")).lower() in ("true", "1", "yes")
+
+    image_file = form.get("image")
+    video_file = form.get("video")
+    if not image_file or not hasattr(image_file, "filename") or not image_file.filename:
+        return JSONResponse(status_code=400, content={"error": "請上傳人物圖片"})
+    if not video_file or not hasattr(video_file, "filename") or not video_file.filename:
+        return JSONResponse(status_code=400, content={"error": "請上傳參考影片"})
+
+    img_bytes = await image_file.read()
+    img_mime = image_file.content_type or "image/png"
+    vid_bytes = await video_file.read()
+
+    payload = {
+        "model": model,
+        "media": [
+            {"url": f"data:{img_mime};base64,{base64.b64encode(img_bytes).decode()}", "type": "image"},
+            {"url": f"data:video/mp4;base64,{base64.b64encode(vid_bytes).decode()}", "type": "video"},
+        ],
+        "metadata": {"mode": mode, "check_image": check_image, "watermark": watermark},
+    }
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -1008,10 +1179,14 @@ def _handle_video_create_response(resp: httpx.Response, model: str) -> dict:
 async def _async_download_image(url: str) -> Optional[str]:
     try:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        fp = OUTPUT_IMG_DIR / f"img_{ts}_{uuid.uuid4().hex[:6]}.png"
+        name = f"img_{ts}_{uuid.uuid4().hex[:6]}.png"
         async with httpx.AsyncClient() as client:
             r = await client.get(url, timeout=30)
             if r.status_code == 200:
+                oss_url = _oss_put(r.content, f"images/{name}")
+                if oss_url:
+                    return oss_url
+                fp = OUTPUT_IMG_DIR / name
                 fp.write_bytes(r.content)
                 return f"/outputs/images/{fp.name}"
     except Exception as e:
@@ -1021,13 +1196,16 @@ async def _async_download_image(url: str) -> Optional[str]:
 async def _async_download_video(url: str) -> Optional[str]:
     try:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        fp = OUTPUT_VID_DIR / f"vid_{ts}_{uuid.uuid4().hex[:6]}.mp4"
+        name = f"vid_{ts}_{uuid.uuid4().hex[:6]}.mp4"
         async with httpx.AsyncClient() as client:
             async with client.stream('GET', url, timeout=120) as r:
                 if r.status_code == 200:
-                    with open(fp, "wb") as f:
-                        async for chunk in r.aiter_bytes(chunk_size=8192):
-                            f.write(chunk)
+                    data = b"".join([chunk async for chunk in r.aiter_bytes(8192)])
+                    oss_url = _oss_put(data, f"videos/{name}")
+                    if oss_url:
+                        return oss_url
+                    fp = OUTPUT_VID_DIR / name
+                    fp.write_bytes(data)
                     return f"/outputs/videos/{fp.name}"
     except Exception as e:
         print(f"Video download error: {e}")

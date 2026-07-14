@@ -413,6 +413,13 @@ input[type="range"]::-webkit-slider-thumb {
     text-decoration: none; transition: var(--t);
 }
 .img-dl:hover { background: var(--ali-orange); color: white; }
+.img-lb-btn {
+    font-size: 0.75rem; color: var(--ali-orange); font-weight: 500;
+    background: var(--ali-orange-soft); padding: 3px 10px;
+    border-radius: var(--radius-sm); border: 1px solid var(--ali-orange-mid);
+    cursor: pointer; transition: var(--t); margin-left: 8px;
+}
+.img-lb-btn:hover { background: var(--ali-orange); color: white; }
 
 /* Video results */
 .video-results-area {

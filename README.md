@@ -1,6 +1,8 @@
 # NenAI Testing Platform
 
-基於 FastAPI + 原生 JavaScript 的 AI 模型測試平台，整合 NenAI (nen.com.tw) 所提供的文字、圖片、影片與即時語音模型。
+基於 FastAPI + 原生 JavaScript 的 AI 模型測試平台，整合 NenAI (nen.com.tw) 所提供的文字、圖片、影片與 NenAI Spicy 擴充模型，統一使用一把 NenAI API Key。
+
+---
 
 ## 快速部署
 
@@ -28,7 +30,7 @@ docker logs -f alibaba-model-nenai-ai-model-tester-1
 # 停止服務
 docker compose down
 
-# 強制重新建置
+# 強制重新建置（更新程式碼後使用）
 docker compose build --no-cache && docker compose up -d
 ```
 
@@ -47,9 +49,8 @@ python app.py
 |------|----------|
 | 文字生成 | SSE 串流輸出、Thinking 模式、多模型切換 |
 | 圖片生成 | 文生圖 (T2I) 與圖像編輯 (I2I)，支援多張參考圖、點擊放大預覽 |
-| 影片生成 | 文生影片 / 圖生影片 / 參考生影片 / 視頻編輯，含即時輪詢進度 |
-| NenAI Spicy | Wan 2.7 I2V Spicy 圖生影片 + Z-Image Spicy 圖片生成 |
-| Omni 即時 | WebSocket 即時語音對話（realtime 模型） |
+| 影片生成 | 文生影片 / 圖生影片 / 參考生影片 / 視頻編輯 / 動作動畫，含即時輪詢進度與配音 |
+| NenAI Spicy | Wan 2.7 I2V Spicy、Z-Image Spicy、圖像編輯 Spicy、圖像換臉 |
 
 ---
 
@@ -96,19 +97,25 @@ python app.py
 | wan2.6-image | 萬相 2.6 Image | 萬相圖像編輯 |
 | qwen-image-edit-max | 千問圖像編輯 Max | 千問圖像編輯 |
 | qwen-image-edit-plus | 千問圖像編輯 Plus | 千問圖像編輯 |
+| qwen-image-2.0-pro（編輯） | 千問圖像 2.0 Pro | 千問圖像編輯 |
+| qwen-image-2.0（編輯） | 千問圖像 2.0 | 千問圖像編輯 |
+
+> qwen-image-2.0 系列為生成與編輯融合模型：最多 3 張參考圖、可一次輸出 1–6 張，並以 `prompt_extend` 取代 `ref_strength` 參數。
+
+圖片輸出支援點擊放大預覽（lightbox）。
 
 ### 影片生成
 
 | 模型 ID | 名稱 | 分類 | 配音 |
 |---|---|---|---|
 | wan2.7-t2v | 萬相 2.7 T2V | 文生影片 | ✓ |
-| wan2.6-t2v | 萬相 2.6 T2V | 文生影片 | — |
-| wan2.7-i2v | 萬相 2.7 I2V | 圖生影片 | — |
-| wan2.6-i2v | 萬相 2.6 I2V | 圖生影片 | — |
-| wan2.6-i2v-flash | 萬相 2.6 I2V Flash | 圖生影片 | — |
-| wan2.7-r2v | 萬相 2.7 R2V | 參考生影片 | — |
-| wan2.6-r2v | 萬相 2.6 R2V | 參考生影片 | — |
-| wan2.6-r2v-flash | 萬相 2.6 R2V Flash | 參考生影片 | — |
+| wan2.6-t2v | 萬相 2.6 T2V | 文生影片 | ✓ |
+| wan2.7-i2v | 萬相 2.7 I2V | 圖生影片 | ✓ |
+| wan2.6-i2v | 萬相 2.6 I2V | 圖生影片 | ✓ |
+| wan2.6-i2v-flash | 萬相 2.6 I2V Flash | 圖生影片 | ✓ |
+| wan2.7-r2v | 萬相 2.7 R2V | 參考生影片 | ✓ |
+| wan2.6-r2v | 萬相 2.6 R2V | 參考生影片 | ✓ |
+| wan2.6-r2v-flash | 萬相 2.6 R2V Flash | 參考生影片 | ✓ |
 | happyhorse-1.1-t2v | HappyHorse 1.1 T2V | HappyHorse | — |
 | happyhorse-1.0-t2v | HappyHorse 1.0 T2V | HappyHorse | — |
 | happyhorse-1.1-i2v | HappyHorse 1.1 I2V | HappyHorse | — |
@@ -117,10 +124,32 @@ python app.py
 | happyhorse-1.0-r2v | HappyHorse 1.0 R2V | HappyHorse | — |
 | happyhorse-1.0-video-edit | HappyHorse Video Edit | HappyHorse | — |
 | wan2.7-videoedit | 萬相 2.7 視頻編輯 | 萬相視頻編輯 | — |
+| wan2.2-animate-mix | 萬相 2.2 視頻換人 | 萬相動作動畫 | — |
+| wan2.2-animate-move | 萬相 2.2 圖生動作 | 萬相動作動畫 | — |
 
-### NenAI Spicy（nen.com.tw 專屬）
+> 萬相 2.6/2.7 系列 T2V/I2V/R2V 皆支援自動配音（BGM 自動生成或自訂音訊上傳）。
+> 動作動畫模型：視頻換人（將參考影片角色替換為人物圖片）、圖生動作（將參考影片動作遷移到人物圖片）。
 
-| 模型 ID | 名稱 | 類型 |
-|---|---|---|
-| wan2.7-i2v-spicy | Wan 2.7 I2V Spicy | 圖生影片 |
-| z-image-spicy | Z-Image Spicy | 圖片生成 |
+### NenAI Spicy（需 NenAI API Key）
+
+| 模型 ID | 名稱 | 分類 | 輸入 |
+|---|---|---|---|
+| wan2.7-i2v-spicy | Wan 2.7 I2V Spicy | 影片生成 | 文字 / 圖片 |
+| z-image-spicy | Z-Image Spicy | 圖片生成 | 文字 prompt |
+| qwen-image-edit-spicy | 圖像編輯 Spicy | 圖像編輯 | prompt + 來源圖 |
+| face-swap | 圖像換臉 | 圖像換臉 | 來源圖 + 換臉參考圖（無需 prompt）|
+
+---
+
+## 主要依賴套件
+
+| 套件 | 版本 |
+|---|---|
+| fastapi | 0.136.3 |
+| uvicorn[standard] | 0.48.0 |
+| openai | 2.38.0 |
+| httpx | 0.28.1 |
+| Pillow | 12.2.0 |
+| websockets | 16.0 |
+| oss2 | 2.19.1 |
+| pydantic | 2.13.4 |
