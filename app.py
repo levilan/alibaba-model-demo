@@ -172,6 +172,17 @@ MODELS = {
             "desc": "輕量圖文編輯", "type": "i2i", "max_n": 1,
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
+        # ── 千問圖像 2.0（生成與編輯融合模型，同一模型 ID 兼具 T2I 與 I2I）──
+        {
+            "id": "qwen-image-2.0-pro", "name": "千問圖像 2.0 Pro（編輯）", "group": "千問圖像編輯",
+            "desc": "生成與編輯融合模型 Pro 系列，最多 3 張參考圖，可輸出 1-6 張", "type": "i2i", "max_n": 6, "max_ref": 3, "no_ref_strength": True,
+            "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
+        },
+        {
+            "id": "qwen-image-2.0", "name": "千問圖像 2.0（編輯）", "group": "千問圖像編輯",
+            "desc": "生成與編輯融合模型加速版，最多 3 張參考圖，可輸出 1-6 張", "type": "i2i", "max_n": 6, "max_ref": 3, "no_ref_strength": True,
+            "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
+        },
     ],
     "video": [
         # ── 文生影片 ──────────────────────────────────────────────
@@ -736,27 +747,38 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# qwen-image-2.0 系列為「生成與編輯融合模型」：最多 3 張參考圖、可輸出 1-6 張，且不支援 ref_strength 參數
+_QWEN2_EDIT_MODELS = {"qwen-image-2.0-pro", "qwen-image-2.0"}
+
 # ─── API: Image Edit (I2I) ────────────────────────────────────────
 @app.post("/api/image/edit")
 async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
     form = await request.form()
     model = form.get("model", "wan2.6-image")
+    is_qwen2_edit = model in _QWEN2_EDIT_MODELS
     prompt = form.get("prompt", "")
     negative_prompt = form.get("negative_prompt", "")
     size = form.get("size", "1024*1024")
     watermark = str(form.get("watermark", "false")).lower() in ("true", "1", "yes")
+    prompt_extend = str(form.get("prompt_extend", "true")).lower() in ("true", "1", "yes")
     try:
         ref_strength = float(form.get("ref_strength", "0.5"))
     except ValueError:
         ref_strength = 0.5
+    try:
+        n = int(form.get("n", "1"))
+    except ValueError:
+        n = 1
+    n = max(1, min(6, n)) if is_qwen2_edit else 1
     seed_str = str(form.get("seed", ""))
     seed = int(seed_str) if seed_str.strip() else None
 
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
 
+    max_refs = 3 if is_qwen2_edit else 9
     image_urls = []
-    for i in range(1, 10):
+    for i in range(1, max_refs + 1):
         f = form.get(f"image_{i}")
         if not f or not hasattr(f, "filename") or not f.filename:
             break
@@ -778,13 +800,16 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
             messages=[Message(role="user", content=content)],
             negative_prompt=negative_prompt or None,
             watermark=watermark,
-            n=1,
+            n=n,
             size=size,
             headers=CUSTOM_HEADERS,
         )
         if seed is not None:
             call_kwargs["seed"] = seed
-        call_kwargs["ref_strength"] = ref_strength
+        if is_qwen2_edit:
+            call_kwargs["prompt_extend"] = prompt_extend
+        else:
+            call_kwargs["ref_strength"] = ref_strength
         rsp = ImageGeneration.call(**call_kwargs)
         return _handle_image_response(rsp, model)
     except Exception as e:

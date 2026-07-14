@@ -600,19 +600,21 @@ function populateSelect(id, list, filterFn = null) {
 }
 
 // ── Image 任務/模型切換 ────────────────────────────────────────
+let imgMaxRef = 9; // 參考圖上限，依模型動態調整（qwen-image-2.0 系列為 3，其餘為 9）
+
 function onImgTaskChange() {
     const t = document.getElementById('imageTaskType').value;
     populateSelect('imageModel', models.image, m => m.type === t);
     document.getElementById('imgUploadSection').classList.toggle('hidden', t !== 'i2i');
-    document.getElementById('imgNGroup').style.display = (t === 't2i') ? '' : 'none';
-    document.getElementById('imgRefStrengthGroup').style.display = (t === 'i2i') ? '' : 'none';
     if (t !== 'i2i') { imgRefFiles = []; renderImgThumbs(); }
     onImgModelChange();
 }
 
 function onImgModelChange() {
+    const t = document.getElementById('imageTaskType').value;
     const modelId = document.getElementById('imageModel').value;
-    const modelInfo = models.image.find(m => m.id === modelId) || {};
+    // 同一 model id 可能同時存在 t2i 與 i2i 兩筆資料（如 qwen-image-2.0），需依 type 一併比對避免混淆
+    const modelInfo = models.image.find(m => m.id === modelId && m.type === t) || {};
 
     // 更新尺寸選單
     const sizeEl = document.getElementById('imageSize');
@@ -628,7 +630,7 @@ function onImgModelChange() {
         `<option value="${s}"${s === currentSize ? ' selected' : ''}>${sizeLabels[s] || s}</option>`
     ).join('');
 
-    // 更新張數上限
+    // 更新張數上限（i2i 模式下，僅 max_n > 1 的模型如 qwen-image-2.0 系列才顯示張數選擇）
     const maxN = modelInfo.max_n || 4;
     const nSlider = document.getElementById('imgN');
     nSlider.max = maxN;
@@ -636,6 +638,16 @@ function onImgModelChange() {
         nSlider.value = maxN;
         document.getElementById('imgNVal').textContent = maxN;
     }
+    document.getElementById('imgNGroup').style.display = (maxN > 1) ? '' : 'none';
+
+    // ref_strength 僅 Wan 圖像編輯系列支援，qwen-image-2.0 系列無此參數
+    document.getElementById('imgRefStrengthGroup').style.display =
+        (t === 'i2i' && !modelInfo.no_ref_strength) ? '' : 'none';
+
+    // 參考圖張數上限（qwen-image-2.0 系列最多 3 張，其餘模型最多 9 張）
+    imgMaxRef = modelInfo.max_ref || 9;
+    if (imgRefFiles.length > imgMaxRef) imgRefFiles = imgRefFiles.slice(0, imgMaxRef);
+    renderImgThumbs();
 }
 
 // ── Video 任務/模型切換 ────────────────────────────────────────
@@ -1325,6 +1337,7 @@ async function sendImage() {
             fd.append('model', model); fd.append('prompt', prompt);
             fd.append('negative_prompt', negPrompt); fd.append('size', size);
             fd.append('watermark', watermark); fd.append('ref_strength', refStrength);
+            fd.append('n', n); fd.append('prompt_extend', extend);
             if (imgSeed !== null) fd.append('seed', imgSeed);
             imgRefFiles.forEach((f, i) => fd.append(`image_${i + 1}`, f));
             res = await apiPostForm('/api/image/edit', fd);
@@ -1584,7 +1597,7 @@ async function pollVideo(taskId, startTime) {
 // ── Upload helpers ────────────────────────────────────────────
 // ── Image Edit 多圖管理 ────────────────────────────────────────
 function onImgFilesAdd(files) {
-    const remaining = 9 - imgRefFiles.length;
+    const remaining = imgMaxRef - imgRefFiles.length;
     const toAdd = Array.from(files).slice(0, remaining);
     imgRefFiles = [...imgRefFiles, ...toAdd];
     renderImgThumbs();
@@ -1606,8 +1619,8 @@ function renderImgThumbs() {
             <img src="${URL.createObjectURL(f)}" alt="${f.name}">
             <button class="img-thumb-remove" onclick="removeImgFile(${i})">✕</button>
         </div>`).join('');
-    if (countEl) countEl.textContent = `${imgRefFiles.length} / 9 張`;
-    if (addBtn) addBtn.style.display = imgRefFiles.length >= 9 ? 'none' : '';
+    if (countEl) countEl.textContent = `${imgRefFiles.length} / ${imgMaxRef} 張`;
+    if (addBtn) addBtn.style.display = imgRefFiles.length >= imgMaxRef ? 'none' : '';
 }
 
 function previewImg(e, previewId, zoneId) {
