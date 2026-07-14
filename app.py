@@ -1118,13 +1118,14 @@ async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
         result: dict = {"task_id": task_id, "status": status, "_raw_status": raw_status}
 
         if status == "SUCCEEDED":
-            # video URL 可能散落在多個地方
+            # video URL 可能散落在多個地方（wan2.2-animate 系列位於 output.results.video_url）
             video_url = (
                 rj.get("url")
                 or rj.get("video_url")
                 or rj.get("task_info", {}).get("video_url")
                 or rj.get("output", {}).get("url")
                 or rj.get("output", {}).get("video_url")
+                or rj.get("output", {}).get("results", {}).get("video_url")
             )
             if not video_url and isinstance(rj.get("data"), list) and rj["data"]:
                 video_url = (rj["data"][0] or {}).get("url")

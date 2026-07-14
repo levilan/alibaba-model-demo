@@ -452,9 +452,10 @@ input[type="range"]::-webkit-slider-thumb {
     transition: width 0.5s ease; animation: pulse 2s ease-in-out infinite;
 }
 .video-player {
-    width: 100%; border-radius: var(--radius);
+    width: 100%; height: auto; max-height: 480px;
+    border-radius: var(--radius); object-fit: contain;
     border: 1px solid var(--border); margin-top: 8px;
-    display: block;
+    display: block; background: var(--bg);
 }
 
 .video-card-actions {
