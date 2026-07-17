@@ -50,8 +50,6 @@ const TaskHistory = {
             const hist = JSON.parse(localStorage.getItem('ai_tester_history') || '[]');
             hist.reverse().forEach(item => {
                 if (item.type === 'video') addVideoResult(item.model, item.prompt, item.url, true);
-                else if (item.type === 'muleai_video') addMuleAIVideoResult(item.model, item.prompt, item.url, true);
-                else if (item.type === 'muleai_image') addMuleAIImageResult(item.model, item.prompt, item.url, true);
             });
         } catch(e) { console.error('History load error', e); }
     }
@@ -65,7 +63,6 @@ function addMuleAIVideoResult(model, prompt, src, isHistory = false) {
         const card = el('div', { className: 'video-task-card' });
         card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status succeeded">SUCCEEDED</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><video class="video-player" controls src="' + src + '"></video><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a><button class="img-lb-btn" onclick="openLightbox(\'' + src + '\',\'video\')">⛶ 放大</button></div>';
         cont.insertBefore(card, cont.firstChild);
-        if (!isHistory) TaskHistory.save('muleai_video', model, prompt, src);
     }
 }
 
@@ -77,7 +74,6 @@ function addMuleAIImageResult(model, prompt, src, isHistory = false) {
         const card = el('div', { className: 'video-task-card' });
         card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status succeeded">SUCCEEDED</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><img src="' + src + '" alt="Generated Image" style="max-width:100%;height:auto;border-radius:8px;cursor:zoom-in" onclick="openLightbox(\'' + src + '\')"><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載圖片</a></div>';
         cont.insertBefore(card, cont.firstChild);
-        if (!isHistory) TaskHistory.save('muleai_image', model, prompt, src);
     }
 }
 
@@ -1903,11 +1899,9 @@ async function pollMuleAIVideo(taskId, startTime, model, promptText) {
                     if (data.videos && data.videos.length > 0) {
                         const src = data.videos[0];
                         rvEl.innerHTML = '<video class="video-player" controls src="' + src + '"></video><div style="margin-top:8px"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a><button class="img-lb-btn" onclick="openLightbox(\'' + src + '\',\'video\')">⛶ 放大</button></div>';
-                        TaskHistory.save('muleai_video', model, promptText || 'MuleAI Video', src);
                     } else if (data.images && data.images.length > 0) {
                         const src = data.images[0];
                         rvEl.innerHTML = `<img src="${src}" alt="Generated Image" style="max-width:100%;height:auto;border-radius:8px;cursor:zoom-in" onclick="openLightbox('${src}')"><div style="margin-top:8px"><a href="${src}" download target="_blank" rel="noopener noreferrer" class="img-dl">下載圖片</a></div>`;
-                        TaskHistory.save('muleai_image', model, promptText || 'MuleAI Image', src);
                     }
                 }
                 toast('任務完成！', 'success');
