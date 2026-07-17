@@ -1811,6 +1811,7 @@ async function sendMuleAIVideo() {
         fd.append('image', srcFile);
         fd.append('prompt', prompt);
         fd.append('negative_prompt', negPrompt);
+        fd.append('prompt_extend', extend);
         if (seed !== null) fd.append('seed', seed);
     } else if (isZImage) {
         const imgRes = document.getElementById('muleaiImgResolution').value;
@@ -1828,6 +1829,7 @@ async function sendMuleAIVideo() {
         fd.append('negative_prompt', negPrompt);
         fd.append('resolution', document.getElementById('muleaiVidResolution').value);
         fd.append('duration', parseInt(document.getElementById('muleaiVidDuration').value));
+        fd.append('prompt_extend', extend);
         if (seed !== null) fd.append('seed', seed);
         const enableAudio = document.getElementById('muleaiEnableAudio')?.checked || false;
         fd.append('enable_audio', enableAudio);

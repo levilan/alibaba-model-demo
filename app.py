@@ -583,6 +583,7 @@ async def muleai_generate(
             "model": model,
             "prompt": prompt,
             "image": await _file_to_data_uri(image),
+            "prompt_extend": prompt_extend,
         }
         if negative_prompt:
             payload["negative_prompt"] = negative_prompt
@@ -613,6 +614,7 @@ async def muleai_generate(
             "size": resolution,
             "duration": duration,
             "image": await _file_to_data_uri(image),
+            "prompt_extend": prompt_extend,
         }
         if enable_audio:
             if audio and audio.filename:
