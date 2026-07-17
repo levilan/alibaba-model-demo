@@ -331,6 +331,7 @@ function onMuleaiModelChange() {
 
     // Prompt 區：face-swap 不需要
     document.getElementById('muleaiPromptSection').style.display = isFaceSwap ? 'none' : '';
+    document.getElementById('muleaiPromptExtendGroup').style.display = isFaceSwap ? 'none' : '';
 
     // 更新上傳區標題
     const uploadTitle = document.getElementById('muleaiImgUploadTitle');
@@ -640,6 +641,10 @@ function onImgModelChange() {
     document.getElementById('imgRefStrengthGroup').style.display =
         (t === 'i2i' && !modelInfo.no_ref_strength) ? '' : 'none';
 
+    // prompt_extend 僅 T2I 與 qwen-image-2.0 系列（i2i 融合模型）支援，其餘 I2I 圖像編輯模型後端不支援此參數
+    document.getElementById('imgPromptExtendGroup').style.display =
+        (t === 't2i' || modelInfo.no_ref_strength) ? '' : 'none';
+
     // 參考圖張數上限（qwen-image-2.0 系列最多 3 張，其餘模型最多 9 張）
     imgMaxRef = modelInfo.max_ref || 9;
     if (imgRefFiles.length > imgMaxRef) imgRefFiles = imgRefFiles.slice(0, imgMaxRef);
@@ -669,6 +674,7 @@ function onVidTaskChange() {
     document.getElementById('vidResolutionGroup').style.display = (t === 'animate') ? 'none' : '';
     document.getElementById('vidDurationGroup').style.display = (t === 'animate') ? 'none' : '';
     document.getElementById('vidPromptCol').style.display = (t === 'animate') ? 'none' : '';
+    document.getElementById('vidPromptExtendGroup').style.display = (t === 'animate') ? 'none' : '';
 
     // vedit duration hint（僅 Wan 的 min_dur=0 才顯示）
     const _veditModel = document.getElementById('videoModel').value;

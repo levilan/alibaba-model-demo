@@ -231,7 +231,7 @@
                     <input type="range" id="imgN" min="1" max="4" step="1" value="1"
                            oninput="document.getElementById('imgNVal').textContent=this.value">
                 </div>
-                <div class="toggle-row">
+                <div class="toggle-row" id="imgPromptExtendGroup">
                     <label data-tip="啟用後模型自動擴充提示詞，補充更多場景、光線、風格等細節描述，通常能顯著提升圖片品質和豐富度">Prompt Extend</label>
                     <label class="toggle"><input type="checkbox" id="imgPromptExtend"><span class="toggle-slider"></span></label>
                 </div>
@@ -394,7 +394,7 @@
                         <p id="vidT2VAudioHint" style="font-size:12px">上傳音訊（可選）<br><span style="font-size:11px;color:var(--text-muted)">留空由模型自動配音</span></p>
                     </div>
                 </div>
-                <div class="toggle-row">
+                <div class="toggle-row" id="vidPromptExtendGroup">
                     <label data-tip="啟用後模型自動擴充提示詞，補充動作細節、場景描述、鏡頭語言等，通常能提升影片連貫性與畫面品質">Prompt Extend</label>
                     <label class="toggle"><input type="checkbox" id="vidPromptExtend"><span class="toggle-slider"></span></label>
                 </div>
@@ -833,7 +833,7 @@
 
             <div class="sidebar-section">
                 <div class="sidebar-section-title">進階參數</div>
-                <div class="toggle-row">
+                <div class="toggle-row" id="muleaiPromptExtendGroup">
                     <label>Prompt Extend</label>
                     <label class="toggle"><input type="checkbox" id="muleaiVidPromptExtend" checked><span class="toggle-slider"></span></label>
                 </div>
@@ -898,6 +898,6 @@
     <video id="lightboxVid" class="lightbox-media" controls style="display:none" onclick="event.stopPropagation()"></video>
 </div>
 
-<script src="/static/js/app.js?v=22"></script>
+<script src="/static/js/app.js?v=23"></script>
 </body>
 </html>
