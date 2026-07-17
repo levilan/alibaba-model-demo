@@ -1357,6 +1357,11 @@ async function sendImage() {
                         <span class="img-model-tag">${res.model}</span>
                         <a href="${src}" download class="img-dl">下載</a>
                     </div>`;
+                if (img.actual_prompt) {
+                    const extEl = el('div', { className: 'img-actual-prompt' });
+                    extEl.textContent = 'Prompt Extend 擴充後：' + img.actual_prompt;
+                    card.appendChild(extEl);
+                }
                 gallery.insertBefore(card, gallery.firstChild);
             });
             toast(`圖片生成完成！共 ${res.images.length} 張`, 'success');
@@ -1568,6 +1573,11 @@ async function pollVideo(taskId, startTime) {
                 if (rvEl && data.local_path) {
                     rvEl.innerHTML = `<video class="video-player" controls src="${data.local_path}"></video>
                         <div style="margin-top:8px"><a href="${data.local_path}" download class="img-dl">下載影片</a><button class="img-lb-btn" onclick="openLightbox('${data.local_path}','video')">⛶ 放大</button></div>`;
+                    if (data.actual_prompt) {
+                        const extEl = el('div', { className: 'img-actual-prompt' });
+                        extEl.textContent = 'Prompt Extend 擴充後：' + data.actual_prompt;
+                        rvEl.appendChild(extEl);
+                    }
                 }
                 toast('影片生成完成！', 'success');
             } else if (st === 'FAILED') {

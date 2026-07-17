@@ -1224,6 +1224,9 @@ async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
                 local = await _async_download_video(video_url)
                 result["local_path"] = local if local else video_url
                 result["video_url"] = video_url
+            actual_prompt = getattr(rsp.output, "actual_prompt", None) or rsp.output.get("results", {}).get("actual_prompt")
+            if actual_prompt:
+                result["actual_prompt"] = actual_prompt
 
         elif status == "FAILED":
             result["error_message"] = getattr(rsp.output, "message", "Unknown")
@@ -1251,23 +1254,30 @@ def _handle_image_response(rsp, model):
                 if hasattr(choice, "message") and hasattr(choice.message, "content"):
                     for item in choice.message.content:
                         url = None
+                        actual_prompt = None
                         if isinstance(item, dict):
                             url = item.get("image") or item.get("url")
+                            actual_prompt = item.get("actual_prompt")
                         elif hasattr(item, "image"):
                             url = item.image
+                            actual_prompt = getattr(item, "actual_prompt", None)
                         elif hasattr(item, "url"):
                             url = item.url
+                            actual_prompt = getattr(item, "actual_prompt", None)
                         if url:
-                            images.append({"url": url, "local_path": _download_image(url)})
+                            images.append({"url": url, "local_path": _download_image(url), "actual_prompt": actual_prompt})
         elif hasattr(output, "results") and output.results:
             for r in output.results:
                 url = None
+                actual_prompt = None
                 if isinstance(r, dict):
                     url = r.get("url")
+                    actual_prompt = r.get("actual_prompt")
                 elif hasattr(r, "url"):
                     url = r.url
+                    actual_prompt = getattr(r, "actual_prompt", None)
                 if url:
-                    images.append({"url": url, "local_path": _download_image(url)})
+                    images.append({"url": url, "local_path": _download_image(url), "actual_prompt": actual_prompt})
         if not images:
             return JSONResponse(status_code=500, content={"error": f"No images in response. output={output}"})
         return {"success": True, "images": images, "model": model}
