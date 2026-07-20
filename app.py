@@ -439,7 +439,7 @@ async def muleai_generate(
     model: str = Form("wan2.7-i2v-spicy"),
     prompt: str = Form(""),
     negative_prompt: Optional[str] = Form(None),
-    resolution: str = Form("1080p"),
+    resolution: str = Form("1080P"),
     duration: Optional[int] = Form(5),
     img_resolution: Optional[str] = Form("1024*1536"),
     prompt_extend: bool = Form(True),
