@@ -462,7 +462,10 @@ function onVidModelChange() {
     audioRow.style.display = modelInfo.audio ? '' : 'none';
     if (!modelInfo.audio) document.getElementById('vidAudio').checked = false;
 
-    // 調整時長範圍
+    // 調整時長範圍（gemini-omni-flash-preview 等模型自行決定長度與解析度，不支援 duration/resolution 參數）
+    document.getElementById('vidDurationGroup').style.display = modelInfo.no_duration ? 'none' : '';
+    document.getElementById('vidResolutionGroup').style.display =
+        (modelInfo.no_duration || taskType === 'animate') ? 'none' : '';
     const dur    = document.getElementById('videoDuration');
     const minD   = modelInfo.min_dur ?? 3;
     const maxD   = modelInfo.max_dur || 10;

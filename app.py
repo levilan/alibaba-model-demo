@@ -237,6 +237,9 @@ MODELS = {
          "desc": "Google 極速文生影片，含原生配音", "type": "t2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
         {"id": "veo-3.1-lite-generate-001", "name": "Veo 3.1 Lite", "group": "Veo",
          "desc": "Google 輕量文生影片，含原生配音", "type": "t2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+        # ── Gemini Omni（走 /v1beta/interactions，模型自行決定長度/解析度，固定含原生配音）──
+        {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview", "group": "Gemini",
+         "desc": "Google 多模態影片生成（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "t2v", "audio": False, "no_duration": True},
     ],
     "muleai": [
         {"id": "wan2.7-i2v-spicy",       "name": "Wan 2.7 I2V Spicy",  "group": "影片生成", "desc": "Spicy 模型 (支援文字/圖片)"},
@@ -867,6 +870,53 @@ def _res_to_wh(resolution: str) -> tuple[int, int]:
             return int(w), int(h)
     return 1280, 720
 
+# Gemini Omni 不走 /v1/videos 的非同步任務模式，而是同步呼叫 /v1beta/interactions 直接拿到完成的影片
+_INTERACTIONS_VIDEO_MODELS = {"gemini-omni-flash-preview"}
+_OMNI_TASK_CACHE: Dict[str, dict] = {}
+
+async def _save_video_bytes(data: bytes) -> Optional[str]:
+    try:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        name = f"vid_{ts}_{uuid.uuid4().hex[:6]}.mp4"
+        oss_url = _oss_put(data, f"videos/{name}")
+        if oss_url:
+            return oss_url
+        fp = OUTPUT_VID_DIR / name
+        fp.write_bytes(data)
+        return f"/outputs/videos/{fp.name}"
+    except Exception as e:
+        print(f"Video save error: {e}")
+        return None
+
+async def _generate_omni_video(model: str, prompt: str, api_key: str) -> dict:
+    payload = {"model": model, "input": [{"type": "user_input", "content": [{"type": "text", "text": prompt}]}]}
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        resp = await client.post(
+            f"{NENAI_BASE}/v1beta/interactions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json; charset=utf-8"},
+            json=payload,
+        )
+        rj = resp.json()
+        if resp.status_code != 200:
+            return JSONResponse(status_code=resp.status_code,
+                                content={"error": rj.get("error", {}).get("message", resp.text)})
+        video_bytes = None
+        for step in rj.get("steps", []):
+            if step.get("type") != "model_output":
+                continue
+            for c in step.get("content", []):
+                if c.get("type") == "video" and c.get("data"):
+                    video_bytes = base64.b64decode(c["data"])
+                    break
+            if video_bytes:
+                break
+        if not video_bytes:
+            return JSONResponse(status_code=500, content={"error": f"No video in response: {rj}"})
+        local_path = await _save_video_bytes(video_bytes)
+        task_id = f"omni_{uuid.uuid4().hex}"
+        _OMNI_TASK_CACHE[task_id] = {"status": "SUCCEEDED", "local_path": local_path, "video_url": local_path}
+        return {"success": True, "task_id": task_id, "status": "queued", "model": model}
+
 # ─── API: Video T2V ───────────────────────────────────────────────
 @app.post("/api/video/t2v")
 async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
@@ -886,6 +936,12 @@ async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
 
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
+
+    if model in _INTERACTIONS_VIDEO_MODELS:
+        try:
+            return await _generate_omni_video(model, prompt, api_key)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
     w, h = _res_to_wh(resolution)
     payload: dict = {"model": model, "prompt": prompt,
@@ -1192,6 +1248,10 @@ async def video_animate(request: Request, api_key: str = Depends(get_api_key)):
 # ─── API: Video Status ────────────────────────────────────────────
 @app.get("/api/video/status/{task_id}")
 async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
+    if task_id in _OMNI_TASK_CACHE:
+        cached = _OMNI_TASK_CACHE[task_id]
+        return {"task_id": task_id, **cached}
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(f"{NENAI_V1}/videos/{task_id}",
