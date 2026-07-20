@@ -120,6 +120,16 @@ MODELS = {
         },
         # ── 萬相文生圖 ────────────────────────────────────────────
         {
+            "id": "wan2.7-image-pro", "name": "萬相 2.7 Image Pro", "group": "萬相文生圖",
+            "desc": "旗艦文生圖，細節與畫質更佳", "type": "t2i", "max_n": 4,
+            "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960","960*1696","1696*960"],
+        },
+        {
+            "id": "wan2.7-image", "name": "萬相 2.7 Image", "group": "萬相文生圖",
+            "desc": "標準文生圖", "type": "t2i", "max_n": 4,
+            "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960","960*1696","1696*960"],
+        },
+        {
             "id": "wan2.6-t2i", "name": "萬相 2.6 T2I", "group": "萬相文生圖",
             "desc": "自由選尺寸", "type": "t2i", "max_n": 4,
             "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960","960*1696","1696*960"],
@@ -132,12 +142,12 @@ MODELS = {
         },
         # ── 萬相圖像編輯 ──────────────────────────────────────────
         {
-            "id": "wan2.7-image-pro", "name": "萬相 2.7 Image Pro", "group": "萬相圖像編輯",
+            "id": "wan2.7-image-pro", "name": "萬相 2.7 Image Pro（編輯）", "group": "萬相圖像編輯",
             "desc": "多圖融合、風格遷移", "type": "i2i", "max_n": 1,
             "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960"],
         },
         {
-            "id": "wan2.7-image", "name": "萬相 2.7 Image", "group": "萬相圖像編輯",
+            "id": "wan2.7-image", "name": "萬相 2.7 Image（編輯）", "group": "萬相圖像編輯",
             "desc": "標準圖像編輯", "type": "i2i", "max_n": 1,
             "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960"],
         },
@@ -489,6 +499,7 @@ async def muleai_generate(
             "model": model,
             "prompt": prompt,
             "image": await _to_data_uri(image),
+            "prompt_extend": prompt_extend,
         }
         if negative_prompt:
             payload["negative_prompt"] = negative_prompt
@@ -518,6 +529,7 @@ async def muleai_generate(
             "size": resolution,
             "duration": duration,
             "image": await _to_data_uri(image),
+            "prompt_extend": prompt_extend,
         }
         if enable_audio:
             if audio and audio.filename:
@@ -662,7 +674,7 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
             for item in rj.get("data", []):
                 url = item.get("url")
                 if url:
-                    images.append({"url": url, "local_path": await _async_download_image(url)})
+                    images.append({"url": url, "local_path": await _async_download_image(url), "actual_prompt": item.get("actual_prompt")})
             if not images:
                 return JSONResponse(status_code=500, content={"error": f"No images in response: {rj}"})
             return {"success": True, "images": images, "model": data.model}
@@ -752,7 +764,7 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
             for item in rj.get("data", []):
                 url = item.get("url")
                 if url:
-                    images.append({"url": url, "local_path": await _async_download_image(url)})
+                    images.append({"url": url, "local_path": await _async_download_image(url), "actual_prompt": item.get("actual_prompt")})
             if not images:
                 return JSONResponse(status_code=500, content={"error": f"No images in response: {rj}"})
             return {"success": True, "images": images, "model": model}
@@ -1148,6 +1160,14 @@ async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
                         local = await _async_download_video(loc)
                         result["local_path"] = local if local else loc
                         result["video_url"] = loc
+            actual_prompt = (
+                rj.get("actual_prompt")
+                or rj.get("task_info", {}).get("actual_prompt")
+                or rj.get("output", {}).get("actual_prompt")
+                or rj.get("output", {}).get("results", {}).get("actual_prompt")
+            )
+            if actual_prompt:
+                result["actual_prompt"] = actual_prompt
         elif status == "FAILED":
             err = rj.get("error") or rj.get("task_info", {}).get("error") or {}
             result["error_message"] = (err.get("message") if isinstance(err, dict) else str(err)) or "Unknown error"

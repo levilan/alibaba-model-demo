@@ -48,8 +48,6 @@ const TaskHistory = {
             const hist = JSON.parse(localStorage.getItem('ai_tester_history') || '[]');
             hist.reverse().forEach(item => {
                 if (item.type === 'video') addVideoResult(item.model, item.prompt, item.url, true);
-                else if (item.type === 'muleai_video') addMuleAIVideoResult(item.model, item.prompt, item.url, true);
-                else if (item.type === 'muleai_image') addMuleAIImageResult(item.model, item.prompt, item.url, true);
             });
         } catch(e) { console.error('History load error', e); }
     }
@@ -63,7 +61,6 @@ function addMuleAIVideoResult(model, prompt, src, isHistory = false) {
         const card = el('div', { className: 'video-task-card' });
         card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status succeeded">SUCCEEDED</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><video class="video-player" controls src="' + src + '"></video><div class="video-card-actions"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a><button class="btn btn-ghost btn-sm" onclick="openLightbox(\'' + src + '\', \'video\')">展開預覽</button></div>';
         cont.insertBefore(card, cont.firstChild);
-        if (!isHistory) TaskHistory.save('muleai_video', model, prompt, src);
     }
 }
 
@@ -75,7 +72,6 @@ function addMuleAIImageResult(model, prompt, src, isHistory = false) {
         const card = el('div', { className: 'video-task-card' });
         card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status succeeded">SUCCEEDED</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><img src="' + src + '" alt="Generated Image" class="muleai-img-result" onclick="openLightbox(\'' + src + '\')"><div class="video-card-actions"><a href="' + src + '" download target="_blank" rel="noopener noreferrer" class="img-dl">下載圖片</a></div>';
         cont.insertBefore(card, cont.firstChild);
-        if (!isHistory) TaskHistory.save('muleai_image', model, prompt, src);
     }
 }
 
@@ -282,6 +278,7 @@ function onMuleaiModelChange() {
 
     // 首幀 / 來源圖上傳區
     document.getElementById('muleaiImgUploadSection').style.display = (isVideoModel || isImgEdit || isFaceSwap) ? '' : 'none';
+
     const uploadTitle = document.getElementById('muleaiImgUploadTitle');
     if (uploadTitle) {
         if (isFaceSwap)     uploadTitle.textContent = '來源圖片 (必填)';
@@ -295,6 +292,7 @@ function onMuleaiModelChange() {
     // Prompt 區（face-swap 不需要）
     const promptSection = document.getElementById('muleaiPromptSection');
     if (promptSection) promptSection.style.display = isFaceSwap ? 'none' : '';
+    document.getElementById('muleaiPromptExtendGroup').style.display = isFaceSwap ? 'none' : '';
 
     // 配音（僅影片）
     document.getElementById('muleaiAudioSection').style.display = isVideoModel ? '' : 'none';
@@ -408,6 +406,10 @@ function onImgModelChange() {
     document.getElementById('imgRefStrengthGroup').style.display =
         (t === 'i2i' && !modelInfo.no_ref_strength) ? '' : 'none';
 
+    // prompt_extend 僅 T2I 與 qwen-image-2.0 系列（i2i 融合模型）支援，其餘 I2I 圖像編輯模型後端不支援此參數
+    document.getElementById('imgPromptExtendGroup').style.display =
+        (t === 't2i' || modelInfo.no_ref_strength) ? '' : 'none';
+
     // 參考圖張數上限（qwen-image-2.0 系列最多 3 張，其餘模型最多 9 張）
     imgMaxRef = modelInfo.max_ref || 9;
     if (imgRefFiles.length > imgMaxRef) imgRefFiles = imgRefFiles.slice(0, imgMaxRef);
@@ -437,6 +439,7 @@ function onVidTaskChange() {
     document.getElementById('vidResolutionGroup').style.display = (t === 'animate') ? 'none' : '';
     document.getElementById('vidDurationGroup').style.display = (t === 'animate') ? 'none' : '';
     document.getElementById('vidPromptCol').style.display = (t === 'animate') ? 'none' : '';
+    document.getElementById('vidPromptExtendGroup').style.display = (t === 'animate') ? 'none' : '';
 
     // vedit duration hint（僅 Wan 的 min_dur=0 才顯示）
     const _veditModel = document.getElementById('videoModel').value;
@@ -1025,6 +1028,11 @@ async function sendImage() {
                         <span class="img-model-tag">${res.model}</span>
                         <a href="${src}" download class="img-dl">下載</a>
                     </div>`;
+                if (img.actual_prompt) {
+                    const extEl = el('div', { className: 'img-actual-prompt' });
+                    extEl.textContent = 'Prompt Extend 擴充後：' + img.actual_prompt;
+                    card.appendChild(extEl);
+                }
                 gallery.insertBefore(card, gallery.firstChild);
             });
             toast(`圖片生成完成！共 ${res.images.length} 張`, 'success');
@@ -1244,12 +1252,22 @@ async function pollVideo(taskId, startTime) {
                             <a href="${data.local_path}" download class="img-dl">下載影片</a>
                             <button class="btn btn-ghost btn-sm" onclick="openLightbox('${data.local_path}', 'video')">展開預覽</button>
                         </div>`;
+                    if (data.actual_prompt) {
+                        const extEl = el('div', { className: 'img-actual-prompt' });
+                        extEl.textContent = 'Prompt Extend 擴充後：' + data.actual_prompt;
+                        rvEl.appendChild(extEl);
+                    }
                 } else if (rvEl && data.video_url) {
                     rvEl.innerHTML = `<video class="video-player" controls src="${data.video_url}"></video>
                         <div class="video-card-actions">
                             <a href="${data.video_url}" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a>
                             <button class="btn btn-ghost btn-sm" onclick="openLightbox('${data.video_url}', 'video')">展開預覽</button>
                         </div>`;
+                    if (data.actual_prompt) {
+                        const extEl = el('div', { className: 'img-actual-prompt' });
+                        extEl.textContent = 'Prompt Extend 擴充後：' + data.actual_prompt;
+                        rvEl.appendChild(extEl);
+                    }
                 }
                 toast('影片生成完成！', 'success');
             } else if (isFailed) {
@@ -1532,6 +1550,7 @@ async function sendMuleAIVideo() {
         fd.append('image', srcFile);
         fd.append('prompt', prompt);
         fd.append('negative_prompt', negPrompt);
+        fd.append('prompt_extend', extend);
         if (seed !== null) fd.append('seed', seed);
 
     } else if (isZImage) {
