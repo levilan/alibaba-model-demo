@@ -465,12 +465,14 @@ function onVidModelChange() {
     const dur    = document.getElementById('videoDuration');
     const minD   = modelInfo.min_dur ?? 3;
     const maxD   = modelInfo.max_dur || 10;
+    const stepD  = modelInfo.dur_step || 1;
     dur.min  = minD;
     dur.max  = maxD;
-    dur.step = 1;
+    dur.step = stepD;
     let curVal = parseInt(dur.value);
     if (curVal < minD) { curVal = minD; }
     if (curVal > maxD) { curVal = maxD; }
+    curVal = minD + Math.round((curVal - minD) / stepD) * stepD;
     dur.value = curVal;
     document.getElementById('durVal').textContent = curVal;
     const rangeEl = document.getElementById('durRange');

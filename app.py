@@ -178,6 +178,12 @@ MODELS = {
             "desc": "生成與編輯融合模型加速版", "type": "i2i", "max_n": 6, "max_ref": 3, "no_ref_strength": True,
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
+        # ── GPT Image（尺寸格式為 WIDTHxHEIGHT，與其他模型的 WIDTH*HEIGHT 不同）──
+        {
+            "id": "gpt-image-2", "name": "GPT Image 2", "group": "GPT Image",
+            "desc": "OpenAI 旗艦圖像模型", "type": "t2i", "max_n": 4,
+            "sizes": ["1024x1024","1536x1024","1024x1536"],
+        },
     ],
     "video": [
         # ── 文生影片 ──────────────────────────────────────────────
@@ -207,6 +213,13 @@ MODELS = {
          "desc": "將參考影片中的角色替換為人物圖片，保留原場景與動作", "type": "animate", "audio": False},
         {"id": "wan2.2-animate-move", "name": "萬相 2.2 圖生動作", "group": "萬相動作動畫",
          "desc": "將參考影片的動作與表情遷移到人物圖片", "type": "animate", "audio": False},
+        # ── Veo（duration 僅接受 4/6/8 秒，dur_step 供前端滑桿對齊）──
+        {"id": "veo-3.1-generate-001", "name": "Veo 3.1", "group": "Veo",
+         "desc": "Google 旗艦文生影片，含原生配音", "type": "t2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+        {"id": "veo-3.1-fast-generate-001", "name": "Veo 3.1 Fast", "group": "Veo",
+         "desc": "Google 極速文生影片，含原生配音", "type": "t2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+        {"id": "veo-3.1-lite-generate-001", "name": "Veo 3.1 Lite", "group": "Veo",
+         "desc": "Google 輕量文生影片，含原生配音", "type": "t2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
     ],
     "muleai": [
         {"id": "wan2.7-i2v-spicy",       "name": "Wan 2.7 I2V Spicy",  "group": "影片生成", "desc": "Spicy 模型 (支援文字/圖片)"},
