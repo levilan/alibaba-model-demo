@@ -378,7 +378,8 @@ function onImgModelChange() {
     // 同一 model id 可能同時存在 t2i 與 i2i 兩筆資料（如 qwen-image-2.0），需依 type 一併比對避免混淆
     const modelInfo = models.image.find(m => m.id === modelId && m.type === t) || {};
 
-    // 更新尺寸選單
+    // 更新尺寸選單（Gemini 圖像模型走 chat/completions，不支援 size 參數，隱藏此選項）
+    document.getElementById('imgSizeGroup').style.display = modelInfo.no_size ? 'none' : '';
     const sizeEl = document.getElementById('imageSize');
     const currentSize = sizeEl.value;
     const sizes = modelInfo.sizes || ["1024*1024","1280*720","720*1280","1024*768","768*1024"];

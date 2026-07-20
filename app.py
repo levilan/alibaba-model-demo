@@ -2,7 +2,7 @@
 NenAI Testing Platform
 FastAPI Backend - NenAI API Key per-user authentication
 """
-import os, sys, json, time, uuid, mimetypes, base64, subprocess
+import os, sys, json, time, uuid, mimetypes, base64, subprocess, re
 from io import BytesIO
 from PIL import Image as PILImage
 from datetime import datetime
@@ -183,6 +183,23 @@ MODELS = {
             "id": "gpt-image-2", "name": "GPT Image 2", "group": "GPT Image",
             "desc": "OpenAI 旗艦圖像模型", "type": "t2i", "max_n": 4,
             "sizes": ["1024x1024","1536x1024","1024x1536"],
+        },
+        # ── Gemini Image（走 /v1/chat/completions + modalities，不支援 size 參數）──
+        {
+            "id": "gemini-3-pro-image", "name": "Gemini 3 Pro Image", "group": "Gemini Image",
+            "desc": "Google 旗艦圖像生成，畫質最佳", "type": "t2i", "max_n": 4, "no_size": True,
+        },
+        {
+            "id": "gemini-3.1-flash-image", "name": "Gemini 3.1 Flash Image", "group": "Gemini Image",
+            "desc": "速度與品質平衡，建議日常使用", "type": "t2i", "max_n": 4, "no_size": True,
+        },
+        {
+            "id": "gemini-2.5-flash-image", "name": "Gemini 2.5 Flash Image", "group": "Gemini Image",
+            "desc": "穩定版，較成熟的圖像模型", "type": "t2i", "max_n": 4, "no_size": True,
+        },
+        {
+            "id": "gemini-3.1-flash-lite-image", "name": "Gemini 3.1 Flash Lite Image", "group": "Gemini Image",
+            "desc": "輕量極速圖像生成", "type": "t2i", "max_n": 4, "no_size": True,
         },
     ],
     "video": [
@@ -646,6 +663,54 @@ async def muleai_debug(model: str, task_id: str, api_key: str = Depends(get_api_
         return {"http_status": resp.status_code, "url": url, "raw": resp.json()}
 
 
+# Gemini 圖像模型不走 /v1/images/generations，須改用 /v1/chat/completions + modalities
+_GEMINI_CHAT_IMAGE_MODELS = {
+    "gemini-3-pro-image", "gemini-3.1-flash-image",
+    "gemini-2.5-flash-image", "gemini-3.1-flash-lite-image",
+}
+_B64_IMAGE_RE = re.compile(r"data:image/(\w+);base64,([A-Za-z0-9+/=]+)")
+
+async def _save_image_bytes(data: bytes, ext: str) -> Optional[str]:
+    try:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        name = f"img_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
+        oss_url = _oss_put(data, f"images/{name}")
+        if oss_url:
+            return oss_url
+        fp = OUTPUT_IMG_DIR / name
+        fp.write_bytes(data)
+        return f"/outputs/images/{fp.name}"
+    except Exception as e:
+        print(f"Image save error: {e}")
+        return None
+
+async def _generate_gemini_chat_image(model: str, prompt: str, n: int, api_key: str) -> dict:
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "modalities": ["text", "image"],
+        "n": n,
+    }
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        resp = await client.post(
+            f"{NENAI_V1}/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+        )
+        rj = resp.json()
+        if resp.status_code != 200:
+            return JSONResponse(status_code=resp.status_code,
+                                content={"error": rj.get("error", {}).get("message", resp.text)})
+        images = []
+        for choice in rj.get("choices", []):
+            content = choice.get("message", {}).get("content", "") or ""
+            for ext, b64 in _B64_IMAGE_RE.findall(content):
+                raw = base64.b64decode(b64)
+                images.append({"url": None, "local_path": await _save_image_bytes(raw, ext), "actual_prompt": None})
+        if not images:
+            return JSONResponse(status_code=500, content={"error": f"No images in response: {rj}"})
+        return {"success": True, "images": images, "model": model}
+
 # ─── API: Image Generate (T2I) ────────────────────────────────────
 class ImageGenerateRequest(BaseModel):
     model: str = "z-image-turbo"
@@ -661,6 +726,12 @@ class ImageGenerateRequest(BaseModel):
 async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_api_key)):
     if not data.prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
+
+    if data.model in _GEMINI_CHAT_IMAGE_MODELS:
+        try:
+            return await _generate_gemini_chat_image(data.model, data.prompt, data.n, api_key)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
     payload: dict = {"model": data.model, "prompt": data.prompt, "n": data.n, "size": data.size}
     if data.negative_prompt:
