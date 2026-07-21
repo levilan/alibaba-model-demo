@@ -259,10 +259,31 @@
         node._previewBox.innerHTML = `<span class="cv-empty">${text}</span>`;
     }
 
+    // ── Lightbox：點擊預覽圖/影片放大顯示 ─────────────────────────
+    const lightboxEl = document.getElementById('cvLightbox');
+    const lightboxBody = lightboxEl.querySelector('.cv-lightbox-body');
+    function openLightbox(kind, url) {
+        lightboxBody.innerHTML = '';
+        const media = el(kind === 'video' ? 'video' : 'img');
+        media.src = url;
+        if (kind === 'video') { media.controls = true; media.autoplay = true; }
+        lightboxBody.appendChild(media);
+        lightboxEl.style.display = 'flex';
+    }
+    function closeLightbox() {
+        lightboxEl.style.display = 'none';
+        lightboxBody.innerHTML = '';
+    }
+    lightboxEl.querySelector('.cv-lightbox-close').addEventListener('click', closeLightbox);
+    lightboxEl.addEventListener('click', (e) => { if (e.target === lightboxEl) closeLightbox(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
+
     function setPreviewImage(node, url) {
         node._previewBox.innerHTML = '';
         const img = el('img');
         img.src = url;
+        img.addEventListener('mousedown', (e) => e.stopPropagation());
+        img.addEventListener('click', () => openLightbox('image', url));
         node._previewBox.appendChild(img);
         const dl = el('a', 'cv-dl-btn', '⬇ 下載');
         dl.href = url; dl.download = 'image.png'; dl.target = '_blank';
@@ -271,10 +292,18 @@
     }
 
     function setPreviewVideo(node, url) {
+        // 影片本身有原生播放控制列，不能整個蓋 click 監聽（會跟播放/拖曳衝突），
+        // 改用獨立的「⤢ 放大」按鈕開燈箱
         node._previewBox.innerHTML = '';
         const video = el('video');
         video.src = url; video.controls = true;
+        video.addEventListener('mousedown', (e) => e.stopPropagation());
         node._previewBox.appendChild(video);
+        const zoom = el('button', 'cv-zoom-btn', '⤢');
+        zoom.title = '放大預覽';
+        zoom.addEventListener('mousedown', (e) => e.stopPropagation());
+        zoom.addEventListener('click', () => openLightbox('video', url));
+        node._previewBox.appendChild(zoom);
         const dl = el('a', 'cv-dl-btn', '⬇ 下載');
         dl.href = url; dl.download = 'video.mp4'; dl.target = '_blank';
         dl.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -754,6 +783,11 @@
         } catch (e) {
             showToast('模型清單載入失敗：' + e.message);
         }
+        // litegraph.js 內建打包了約 200 個範例節點（basic/math/audio/graphics/
+        // network... 等），會出現在「新增節點」搜尋選單與拖線放空白處的選單裡，
+        // 跟這個平台的 AI 生成節點完全無關；先清空原生登記表，只留下我們自己
+        // 註冊的 5 種節點。
+        LiteGraph.registered_node_types = {};
         registerNodeTypes();
         // 依資料型別上色連線，方便一眼看出文字/圖片/影片/音訊的連線關係
         Object.assign(LGraphCanvas.link_type_colors, {
