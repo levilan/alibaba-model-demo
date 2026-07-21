@@ -131,6 +131,7 @@
         video: { type: 'nenai/video', label: '🎬　影片 Video' },
         edit: { type: 'nenai/edit', label: '✂️　圖像編輯 Editing' },
         audio: { type: 'nenai/audio', label: '🎵　語音 Audio（尚未支援）', disabled: true },
+        muleai: { type: 'nenai/muleai', label: '🌶️　MuleAI Spicy' },
     };
 
     function connectToFirstCompatibleInput(sourceNode, outSlot, targetNode) {
@@ -769,6 +770,194 @@
     };
     ImageEditNode.prototype.onRemoved = sharedOnRemoved;
 
+    // ── Node: MuleAI（wan2.7-i2v-spicy / z-image-spicy / qwen-image-edit-spicy /
+    //              face-swap 四個模型共用一個節點，走 /api/muleai/generate + 獨立的
+    //              /api/muleai/status/{model}/{task_id} 輪詢——參數與必填輸入差異很大，
+    //              靠 model select 動態切換要顯示的欄位、輸入插槽名稱與輸出型別） ──
+    const MULEAI_VIDEO_MODEL = 'wan2.7-i2v-spicy';
+    const MULEAI_T2I_MODEL = 'z-image-spicy';
+    const MULEAI_FACESWAP_MODEL = 'face-swap';
+
+    function buildMuleaiModelSelect(current, onChange) {
+        const models = getModelsFor('muleai');
+        const groups = {};
+        models.forEach(m => { (groups[m.group] = groups[m.group] || []).push(m); });
+        const sel = el('select');
+        sel.innerHTML = Object.keys(groups).map(g =>
+            `<optgroup label="${g}">` +
+            groups[g].map(m => `<option value="${m.id}"${m.id === current ? ' selected' : ''}>${m.name}</option>`).join('') +
+            `</optgroup>`
+        ).join('');
+        sel.addEventListener('mousedown', (e) => e.stopPropagation());
+        sel.addEventListener('change', () => onChange(sel.value));
+        return sel;
+    }
+
+    async function pollMuleaiTask(model, taskId, { intervalMs = 4000, maxTries = 300 } = {}) {
+        for (let i = 0; i < maxTries; i++) {
+            const res = await apiFetch(`/api/muleai/status/${model}/${taskId}`);
+            const data = await res.json();
+            const st = (data.status || '').toUpperCase();
+            if (['SUCCEEDED', 'COMPLETED', 'SUCCESS'].includes(st)) return data;
+            if (['FAILED', 'FAIL', 'FAILURE', 'ERROR'].includes(st)) throw new Error(data.error_message || '生成失敗');
+            await new Promise(r => setTimeout(r, intervalMs));
+        }
+        throw new Error('等待逾時');
+    }
+
+    function MuleAiGenNode() {
+        this.addInput('image', 'image');
+        this.addInput('換臉參考圖', 'image');
+        this.addInput('prompt', 'string');
+        this.addOutput('output', 'image');
+        const models = getModelsFor('muleai');
+        this.properties = {
+            model: (models[0] && models[0].id) || MULEAI_VIDEO_MODEL,
+            prompt: '', resolution: '1080P', imgResolution: '1024*1536', duration: 5, status: '',
+        };
+        this.resultUrl = null;
+        this._contentHeight = 560;
+        this.size = [320, 560];
+        this.color = '#4a1f2e'; this.bgcolor = '#2a2a2a';
+
+        const panel = el('div');
+        panel.innerHTML = `
+            <div class="cv-controls">
+                <label>模型 <span class="cv-hint cv-mode-hint"></span></label>
+                <div class="cv-select-slot"></div>
+                <div class="cv-mu-prompt-group">
+                    <label>Prompt<span class="cv-hint">（若連接文字節點會優先使用其輸出）</span></label>
+                    <textarea placeholder="輸入文字…"></textarea>
+                </div>
+                <div class="cv-mu-res-group">
+                    <label>解析度</label>
+                    <div class="cv-res-slot"></div>
+                </div>
+                <div class="cv-mu-imgres-group">
+                    <label>圖片尺寸</label>
+                    <div class="cv-imgres-slot"></div>
+                </div>
+                <div class="cv-mu-dur-group">
+                    <label>時長（秒）<span class="cv-dur-val">5</span></label>
+                    <input type="range" class="cv-dur-slider" min="2" max="15" step="1" value="5">
+                </div>
+                <button class="cv-generate">▶ 生成</button>
+                <div class="cv-status"></div>
+            </div>`;
+        attachDomPanel(this, panel);
+        this.promptGroup = panel.querySelector('.cv-mu-prompt-group');
+        this.resGroup = panel.querySelector('.cv-mu-res-group');
+        this.imgResGroup = panel.querySelector('.cv-mu-imgres-group');
+        this.durGroup = panel.querySelector('.cv-mu-dur-group');
+        this.textarea = panel.querySelector('textarea');
+        this.textarea.addEventListener('input', () => { this.properties.prompt = this.textarea.value; });
+        this.statusEl = panel.querySelector('.cv-status');
+        this.modeHintEl = panel.querySelector('.cv-mode-hint');
+        panel.querySelector('.cv-generate').addEventListener('click', () => this.generate());
+
+        this.modelSelect = buildMuleaiModelSelect(this.properties.model, (v) => {
+            this.properties.model = v;
+            this._syncUiForModel();
+        });
+        panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+
+        this.resSelect = buildSelect(['1080P', '720P'], this.properties.resolution, (v) => { this.properties.resolution = v; });
+        panel.querySelector('.cv-res-slot').appendChild(this.resSelect);
+
+        this.imgResSelect = buildSelect(['1024*1536', '1536*1024', '1024*1024'], this.properties.imgResolution, (v) => { this.properties.imgResolution = v; });
+        panel.querySelector('.cv-imgres-slot').appendChild(this.imgResSelect);
+
+        this.durSlider = panel.querySelector('.cv-dur-slider');
+        this.durValEl = panel.querySelector('.cv-dur-val');
+        this.durSlider.addEventListener('input', () => {
+            this.properties.duration = parseInt(this.durSlider.value);
+            this.durValEl.textContent = this.durSlider.value;
+        });
+
+        panel.appendChild(buildPreview(this));
+        wireConfigOverlay(this, panel);
+        attachNodeChrome(this);
+        this._syncUiForModel();
+    }
+    MuleAiGenNode.title = 'MuleAI Spicy';
+    MuleAiGenNode.prototype._isVideo = function () { return this.properties.model === MULEAI_VIDEO_MODEL; };
+    MuleAiGenNode.prototype._isFaceSwap = function () { return this.properties.model === MULEAI_FACESWAP_MODEL; };
+    MuleAiGenNode.prototype._isT2i = function () { return this.properties.model === MULEAI_T2I_MODEL; };
+    MuleAiGenNode.prototype._needsImage = function () { return this.properties.model !== MULEAI_T2I_MODEL; };
+    MuleAiGenNode.prototype._syncUiForModel = function () {
+        const isVideo = this._isVideo(), isFaceSwap = this._isFaceSwap(), isT2i = this._isT2i();
+        this.promptGroup.style.display = isFaceSwap ? 'none' : '';
+        this.resGroup.style.display = isVideo ? '' : 'none';
+        this.imgResGroup.style.display = isT2i ? '' : 'none';
+        this.durGroup.style.display = isVideo ? '' : 'none';
+        this.inputs[0].name = isVideo ? '首幀圖片' : '來源圖';
+        this.modeHintEl.textContent =
+            isVideo ? '（圖生影片 + 配音）' : isFaceSwap ? '（來源圖 + 換臉參考圖）' : isT2i ? '（純文生圖）' : '（來源圖 + Prompt）';
+        const outType = isVideo ? 'video' : 'image';
+        if (this.outputs[0].type !== outType) {
+            this.disconnectOutput(0);
+            this.outputs[0].type = outType;
+            this.outputs[0].name = outType;
+        }
+        this.resultUrl = null;
+        setPreviewEmpty(this, '尚未生成');
+        // LiteGraph 節點主體（插槽名稱等）畫在會被快取的背景層，直接改屬性不會自動
+        // 觸發重繪，要手動標記兩層都要重畫——這裡踩到跟選取狀態同一類的坑
+        lgCanvas.setDirty(true, true);
+    };
+    MuleAiGenNode.prototype.onExecute = function () {
+        this.setOutputData(0, this.resultUrl);
+    };
+    MuleAiGenNode.prototype.generate = async function () {
+        const model = this.properties.model;
+        const isVideo = this._isVideo(), isFaceSwap = this._isFaceSwap(), needsImage = this._needsImage();
+        const promptIn = this.getInputData(2);
+        const prompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
+        if (!isFaceSwap && !prompt) { showToast('請輸入 prompt'); return; }
+        let imageBlob = null, faceBlob = null;
+        if (needsImage) {
+            const imgUrl = this.getInputData(0);
+            if (!imgUrl) { showToast('請先連接一張來源圖片'); return; }
+            imageBlob = await fetchAsBlob(imgUrl);
+        }
+        if (isFaceSwap) {
+            const faceUrl = this.getInputData(1);
+            if (!faceUrl) { showToast('請先連接換臉參考圖'); return; }
+            faceBlob = await fetchAsBlob(faceUrl);
+        }
+        this.statusEl.textContent = '送出中…';
+        setPreviewEmpty(this, '送出中…');
+        try {
+            const fd = new FormData();
+            fd.append('model', model);
+            if (!isFaceSwap) fd.append('prompt', prompt);
+            if (isVideo) {
+                fd.append('resolution', this.properties.resolution);
+                fd.append('duration', String(this.properties.duration));
+            }
+            if (this._isT2i()) fd.append('img_resolution', this.properties.imgResolution);
+            if (imageBlob) fd.append('image', imageBlob, 'image.png');
+            if (faceBlob) fd.append('face_image', faceBlob, 'face.png');
+            const res = await apiFetch('/api/muleai/generate', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error((data.error && (data.error.message || data.error)) || '任務建立失敗');
+            this.statusEl.textContent = '生成中…';
+            setPreviewEmpty(this, '生成中…（可能需要 1～數分鐘）');
+            const result = await pollMuleaiTask(model, data.task_id);
+            const kind = isVideo ? 'video' : 'image';
+            const url = kind === 'video' ? (result.videos && result.videos[0]) : (result.images && result.images[0]);
+            if (!url) throw new Error('生成完成但沒有取得結果檔案');
+            this.resultUrl = url;
+            this.statusEl.textContent = '完成';
+            if (kind === 'video') setPreviewVideo(this, url); else setPreviewImage(this, url);
+        } catch (e) {
+            this.statusEl.textContent = '錯誤：' + e.message;
+            setPreviewEmpty(this, '生成失敗');
+            showToast('MuleAI 生成失敗：' + e.message);
+        }
+    };
+    MuleAiGenNode.prototype.onRemoved = sharedOnRemoved;
+
     // ── Node: Audio（尚未有可用的 TTS 後端，先提供停用佔位節點） ───
     function AudioPlaceholderNode() {
         this.addInput('text', 'string');
@@ -790,6 +979,7 @@
         LiteGraph.registerNodeType('nenai/video', VideoGenNode);
         LiteGraph.registerNodeType('nenai/edit', ImageEditNode);
         LiteGraph.registerNodeType('nenai/audio', AudioPlaceholderNode);
+        LiteGraph.registerNodeType('nenai/muleai', MuleAiGenNode);
     }
 
     // ── Canvas/graph bootstrap ───────────────────────────────────
@@ -867,7 +1057,7 @@
         updateZoomLabel();
     }
 
-    const NODE_MENU_TYPES = { text: 'nenai/text', image: 'nenai/image', video: 'nenai/video', edit: 'nenai/edit', audio: 'nenai/audio' };
+    const NODE_MENU_TYPES = { text: 'nenai/text', image: 'nenai/image', video: 'nenai/video', edit: 'nenai/edit', audio: 'nenai/audio', muleai: 'nenai/muleai' };
 
     function wireToolbar() {
         const addMenu = document.getElementById('addNodeMenu');
