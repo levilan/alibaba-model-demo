@@ -51,6 +51,7 @@ python app.py
 | 圖片生成 | 文生圖 (T2I) 與圖像編輯 (I2I)，支援多張參考圖、點擊放大預覽 |
 | 影片生成 | 文生影片 / 圖生影片 / 參考生影片 / 視頻編輯 / 動作動畫，含即時輪詢進度與配音 |
 | NenAI Spicy | Wan 2.7 I2V Spicy、Z-Image Spicy、圖像編輯 Spicy、圖像換臉 |
+| AI Canvas | 節點式視覺化畫布（`/canvas`），可拖拉連線組合文字／圖片／影片／圖像編輯／MuleAI 節點，串接多個模型呼叫 |
 
 ---
 
@@ -74,6 +75,7 @@ python app.py
 | deepseek-v4-flash | DeepSeek V4 Flash | 第三方 | — |
 | deepseek-v3.2 | DeepSeek V3.2 | 第三方 | — |
 | glm-5.1 | GLM 5.1 | 第三方 | — |
+| glm-5.2 | GLM 5.2 | 第三方 | — |
 
 ### 圖片生成
 
@@ -101,6 +103,22 @@ python app.py
 | qwen-image-2.0（編輯） | 千問圖像 2.0 | 千問圖像編輯 |
 
 > qwen-image-2.0 系列為生成與編輯融合模型：最多 3 張參考圖、可一次輸出 1–6 張，並以 `prompt_extend` 取代 `ref_strength` 參數。
+
+**GPT Image（文生圖，尺寸格式為 `WIDTHxHEIGHT`）**
+
+| 模型 ID | 名稱 |
+|---|---|
+| gpt-image-2 | GPT Image 2（OpenAI 旗艦圖像模型） |
+| gpt-image-1.5 | GPT Image 1.5（OpenAI 前代圖像模型） |
+
+**Gemini Image（文生圖，走 `/v1/chat/completions` + `modalities`，不支援自訂尺寸）**
+
+| 模型 ID | 名稱 |
+|---|---|
+| gemini-3-pro-image | Gemini 3 Pro Image（旗艦，畫質最佳） |
+| gemini-3.1-flash-image | Gemini 3.1 Flash Image（速度與品質平衡） |
+| gemini-2.5-flash-image | Gemini 2.5 Flash Image（穩定版） |
+| gemini-3.1-flash-lite-image | Gemini 3.1 Flash Lite Image（輕量極速） |
 
 圖片輸出支援點擊放大預覽（lightbox）。
 
@@ -130,6 +148,20 @@ python app.py
 > 萬相 2.6/2.7 系列 T2V/I2V/R2V 皆支援自動配音（BGM 自動生成或自訂音訊上傳）。
 > 動作動畫模型：視頻換人（將參考影片角色替換為人物圖片）、圖生動作（將參考影片動作遷移到人物圖片）。
 
+**Veo（Google，duration 僅接受 4/6/8 秒）**
+
+| 模型 ID | 名稱 |
+|---|---|
+| veo-3.1-generate-001 | Veo 3.1（旗艦，含原生配音） |
+| veo-3.1-fast-generate-001 | Veo 3.1 Fast（極速，含原生配音） |
+| veo-3.1-lite-generate-001 | Veo 3.1 Lite（輕量，含原生配音） |
+
+**Gemini Omni（走 `/v1beta/interactions`，模型自行決定長度/解析度，固定含原生配音）**
+
+| 模型 ID | 名稱 |
+|---|---|
+| gemini-omni-flash-preview | Gemini Omni Flash Preview（多模態影片生成預覽版，最長約 10 秒） |
+
 ### NenAI Spicy（需 NenAI API Key）
 
 | 模型 ID | 名稱 | 分類 | 輸入 |
@@ -141,15 +173,35 @@ python app.py
 
 ---
 
+## AI Canvas（`/canvas`）
+
+節點式視覺化畫布，以拖拉連線的方式組合平台上的模型呼叫（類似 ComfyUI），基於 [litegraph.js](https://github.com/jagenjo/litegraph.js)。
+
+| 節點 | 說明 |
+|---|---|
+| 文字 Text | 手動輸入 prompt，或選模型做真正的文字生成；若連接圖片輸入則可改用「分析圖片」 |
+| 圖片 Image | 文生圖 (t2i)；若連接參考圖輸入則自動切換為圖像生成 (i2i) |
+| 影片 Video | 依連接的圖片組合自動切換 t2v / i2v（首尾幀）/ r2v（最多 6 張參考圖） |
+| 圖像編輯 Editing | 圖像編輯 (i2i)，需連接一張來源圖片 |
+| MuleAI Spicy | 對應 NenAI Spicy 四個模型，依選擇的模型動態切換必填輸入與輸出型別（image/video） |
+
+節點之間可用連線傳遞文字/圖片/影片輸出，設定面板僅在節點被選取時以固定大小浮層顯示於節點下方。
+
+---
+
 ## 主要依賴套件
 
 | 套件 | 版本 |
 |---|---|
 | fastapi | 0.136.3 |
 | uvicorn[standard] | 0.48.0 |
+| python-multipart | 0.0.29 |
 | openai | 2.38.0 |
-| httpx | 0.28.1 |
+| python-dotenv | 1.2.2 |
+| requests | 2.34.2 |
 | Pillow | 12.2.0 |
+| httpx | 0.28.1 |
 | websockets | 16.0 |
-| oss2 | 2.19.1 |
+| aiohttp | 3.13.5 |
 | pydantic | 2.13.4 |
+| oss2 | 2.19.1 |
