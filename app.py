@@ -492,6 +492,29 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
     )
 
 
+# ─── API: Vision（AI Canvas「圖片 → 文字」節點用，圖片以 base64 data URI 內嵌傳入）──
+class AnalyzeImageRequest(BaseModel):
+    model: str = "qwen3.5-flash"
+    prompt: str = "請用一句話描述這張圖片的內容。"
+    image_data_uri: str
+
+@app.post("/api/text/analyze_image")
+async def analyze_image(data: AnalyzeImageRequest, api_key: str = Depends(get_api_key)):
+    if not data.image_data_uri:
+        raise HTTPException(status_code=400, detail="image_data_uri is required")
+    try:
+        user_client = OpenAI(api_key=api_key, base_url=BASE_URL_COMPATIBLE)
+        resp = user_client.chat.completions.create(
+            model=data.model,
+            messages=[{"role": "user", "content": [
+                {"type": "text", "text": data.prompt or "請描述這張圖片"},
+                {"type": "image_url", "image_url": {"url": data.image_data_uri}},
+            ]}],
+        )
+        content = resp.choices[0].message.content if resp.choices else ""
+        return {"success": True, "content": content}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 
