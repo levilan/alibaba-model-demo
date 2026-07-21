@@ -751,6 +751,10 @@ async def _extract_images_from_data(data_list: list) -> list:
             images.append({"url": None, "local_path": await _save_image_bytes(raw, "png"), "actual_prompt": item.get("actual_prompt")})
     return images
 
+# Gemini 圖像模型偶爾會不出圖、只回一段純文字聊天式回覆（同一個 prompt 重試
+# 就可能成功，屬於模型端的不穩定行為，不是固定的 prompt 問題），故加上重試
+_GEMINI_IMAGE_MAX_RETRIES = 2
+
 async def _generate_gemini_chat_image(model: str, prompt: str, n: int, api_key: str) -> dict:
     payload = {
         "model": model,
@@ -758,25 +762,31 @@ async def _generate_gemini_chat_image(model: str, prompt: str, n: int, api_key: 
         "modalities": ["text", "image"],
         "n": n,
     }
+    last_text = ""
     async with httpx.AsyncClient(timeout=180.0) as client:
-        resp = await client.post(
-            f"{NENAI_V1}/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=payload,
-        )
-        rj = resp.json()
-        if resp.status_code != 200:
-            return JSONResponse(status_code=resp.status_code,
-                                content={"error": rj.get("error", {}).get("message", resp.text)})
-        images = []
-        for choice in rj.get("choices", []):
-            content = choice.get("message", {}).get("content", "") or ""
-            for ext, b64 in _B64_IMAGE_RE.findall(content):
-                raw = base64.b64decode(b64)
-                images.append({"url": None, "local_path": await _save_image_bytes(raw, ext), "actual_prompt": None})
-        if not images:
-            return JSONResponse(status_code=500, content={"error": f"No images in response: {rj}"})
-        return {"success": True, "images": images, "model": model}
+        for attempt in range(_GEMINI_IMAGE_MAX_RETRIES + 1):
+            resp = await client.post(
+                f"{NENAI_V1}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=payload,
+            )
+            rj = resp.json()
+            if resp.status_code != 200:
+                return JSONResponse(status_code=resp.status_code,
+                                    content={"error": rj.get("error", {}).get("message", resp.text)})
+            images = []
+            for choice in rj.get("choices", []):
+                content = choice.get("message", {}).get("content", "") or ""
+                last_text = content
+                for ext, b64 in _B64_IMAGE_RE.findall(content):
+                    raw = base64.b64decode(b64)
+                    images.append({"url": None, "local_path": await _save_image_bytes(raw, ext), "actual_prompt": None})
+            if images:
+                return {"success": True, "images": images, "model": model}
+        preview = last_text[:200] + ("…" if len(last_text) > 200 else "")
+        return JSONResponse(status_code=500, content={
+            "error": f"模型未回傳圖片，改用純文字回覆（重試 {_GEMINI_IMAGE_MAX_RETRIES} 次仍失敗）：{preview}"
+        })
 
 # ─── API: Image Generate (T2I) ────────────────────────────────────
 class ImageGenerateRequest(BaseModel):
