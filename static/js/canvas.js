@@ -747,6 +747,49 @@
         document.getElementById('zoomLabel').textContent = Math.round((lgCanvas.ds.scale || 1) * 100) + '%';
     }
 
+    // ── 連線動態流動效果：沿每條連線的貝茲曲線畫幾個發光的移動光點，呈現
+    // 資料流動的感覺。LGraphCanvas 建構時會自動用 requestAnimationFrame
+    // 持續重繪（startRendering），此 hook 每一幀都會被呼叫，ctx 此時仍在
+    // 已經套用 pan/zoom 的畫布座標系底下（和 node.pos 同一個座標空間）。
+    function cubicBezierPoint(p1, c1, c2, p2, t) {
+        const mt = 1 - t;
+        const a = mt * mt * mt, b = 3 * mt * mt * t, c = 3 * mt * t * t, d = t * t * t;
+        return [
+            a * p1[0] + b * c1[0] + c * c2[0] + d * p2[0],
+            a * p1[1] + b * c1[1] + c * c2[1] + d * p2[1],
+        ];
+    }
+    function drawFlowingLinks(ctx) {
+        if (!graph) return;
+        const t = (Date.now() % 2600) / 2600;
+        for (const id in graph.links) {
+            const link = graph.links[id];
+            if (!link) continue;
+            const originNode = graph.getNodeById(link.origin_id);
+            const targetNode = graph.getNodeById(link.target_id);
+            if (!originNode || !targetNode) continue;
+            const p1 = originNode.getConnectionPos(false, link.origin_slot);
+            const p2 = targetNode.getConnectionPos(true, link.target_slot);
+            const dist = Math.max(Math.abs(p2[0] - p1[0]) * 0.5, 40);
+            const c1 = [p1[0] + dist, p1[1]];
+            const c2 = [p2[0] - dist, p2[1]];
+            const color = (LGraphCanvas.link_type_colors[link.type] || '#8fd3ff');
+            for (let k = 0; k < 2; k++) {
+                const lt = (t + k * 0.5) % 1;
+                const [x, y] = cubicBezierPoint(p1, c1, c2, p2, lt);
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(x, y, 3.2, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.shadowColor = color;
+                ctx.shadowBlur = 10;
+                ctx.globalAlpha = 0.55 + 0.45 * Math.sin(lt * Math.PI);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+    }
+
     function fitView() {
         const nodes = graph._nodes;
         if (!nodes.length) return;
@@ -830,6 +873,10 @@
         // 註冊的 5 種節點。
         LiteGraph.registered_node_types = {};
         registerNodeTypes();
+        // 標題列改細一點、字放小，讓它讀起來更像截圖參考裡那種淡淡的標籤，
+        // 不是一個很搶眼的色塊——真正的視覺重點放在下面的圖片預覽
+        LiteGraph.NODE_TITLE_HEIGHT = 24;
+        LiteGraph.NODE_TEXT_SIZE = 12;
         // 依資料型別上色連線，方便一眼看出文字/圖片/影片/音訊的連線關係
         Object.assign(LGraphCanvas.link_type_colors, {
             string: '#facc15', image: '#4f8cff', video: '#4ade80', audio: '#f87171',
@@ -837,9 +884,13 @@
 
         graph = new LGraph();
         lgCanvas = new LGraphCanvas('#litegraphCanvas', graph);
-        lgCanvas.background_image = null;
+        // 細緻的暗色點狀網格背景，取代 litegraph 預設的方格網格圖
+        lgCanvas.background_image =
+            "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E" +
+            "%3Ccircle cx='2' cy='2' r='1.4' fill='%233a3a3d'/%3E%3C/svg%3E";
         lgCanvas.render_canvas_border = false;
         lgCanvas.links_render_mode = LiteGraph.SPLINE_LINK;
+        lgCanvas.onDrawForeground = drawFlowingLinks;
 
         resizeCanvasEl();
         window.addEventListener('resize', resizeCanvasEl);
