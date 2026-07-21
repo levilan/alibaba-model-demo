@@ -751,14 +751,16 @@ async def _extract_images_from_data(data_list: list) -> list:
             images.append({"url": None, "local_path": await _save_image_bytes(raw, "png"), "actual_prompt": item.get("actual_prompt")})
     return images
 
-# Gemini 圖像模型偶爾會不出圖、只回一段純文字聊天式回覆（同一個 prompt 重試
-# 就可能成功，屬於模型端的不穩定行為，不是固定的 prompt 問題），故加上重試
+# Gemini 圖像模型偶爾會不出圖、只回一段純文字聊天式回覆——實測發現這跟 prompt
+# 讀起來像不像「聊天訊息」高度相關：越像一段對話/討論文字（例如上游文字節點
+# 生成的長篇分析），模型就越容易把它當成聊天來回覆而不畫圖。加上明確的繪圖
+# 指令前綴可顯著改善成功率，仍會不穩定則再靠重試補強。
 _GEMINI_IMAGE_MAX_RETRIES = 2
 
 async def _generate_gemini_chat_image(model: str, prompt: str, n: int, api_key: str) -> dict:
     payload = {
         "model": model,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [{"role": "user", "content": f"Generate an image depicting: {prompt}"}],
         "modalities": ["text", "image"],
         "n": n,
     }

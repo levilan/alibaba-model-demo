@@ -183,6 +183,21 @@
         });
     }
 
+    // 讓生成類節點預設只顯示圖片/影片本身：表單控制收在 .cv-controls 裡，生成
+    // 成功後自動收起，只留下一個小小的「✏️」在預覽區可以點開重新編輯設定。
+    function wireCollapsible(node, panel) {
+        const controls = panel.querySelector('.cv-controls');
+        node._setControlsVisible = (visible) => { controls.style.display = visible ? '' : 'none'; };
+        const editBtn = el('button', 'cv-edit-btn', '✏️');
+        editBtn.title = '編輯設定';
+        editBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+        editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            node._setControlsVisible(controls.style.display === 'none');
+        });
+        node._previewBox.appendChild(editBtn);
+    }
+
     function sharedOnRemoved() {
         if (this._domPanel) { this._domPanel.remove(); this._domPanel = null; }
         if (this._closeBtn) { this._closeBtn.remove(); this._closeBtn = null; }
@@ -427,14 +442,16 @@
 
         const panel = el('div');
         panel.innerHTML = `
-            <label>模型 <span class="cv-hint cv-mode-hint">（文生圖）</span></label>
-            <div class="cv-select-slot"></div>
-            <label>Prompt<span class="cv-hint">（若連接文字節點會優先使用其輸出）</span></label>
-            <textarea placeholder="輸入文字…"></textarea>
-            <label>尺寸</label>
-            <div class="cv-size-slot"></div>
-            <button class="cv-generate">▶ 生成圖片</button>
-            <div class="cv-status"></div>`;
+            <div class="cv-controls">
+                <label>模型 <span class="cv-hint cv-mode-hint">（文生圖）</span></label>
+                <div class="cv-select-slot"></div>
+                <label>Prompt<span class="cv-hint">（若連接文字節點會優先使用其輸出）</span></label>
+                <textarea placeholder="輸入文字…"></textarea>
+                <label>尺寸</label>
+                <div class="cv-size-slot"></div>
+                <button class="cv-generate">▶ 生成圖片</button>
+                <div class="cv-status"></div>
+            </div>`;
         attachDomPanel(this, panel);
         this.textarea = panel.querySelector('textarea');
         this.textarea.addEventListener('input', () => { this.properties.prompt = this.textarea.value; });
@@ -451,6 +468,7 @@
         this._rebuildSizeSelect(sizesForModel('image', this.properties.model));
 
         panel.appendChild(buildPreview(this));
+        wireCollapsible(this, panel);
         attachNodeChrome(this);
     }
     ImageGenNode.title = '圖片 Image';
@@ -508,6 +526,7 @@
             this.imageUrl = data.images[0].local_path || data.images[0].url;
             this.statusEl.textContent = '完成';
             setPreviewImage(this, this.imageUrl);
+            this._setControlsVisible(false);
         } catch (e) {
             this.statusEl.textContent = '錯誤：' + e.message;
             setPreviewEmpty(this, '生成失敗');
@@ -537,17 +556,19 @@
 
         const panel = el('div');
         panel.innerHTML = `
-            <label>模型 <span class="cv-hint cv-mode-hint">（文生影片）</span></label>
-            <div class="cv-select-slot"></div>
-            <label>Prompt<span class="cv-hint">（若連接文字節點會優先使用其輸出）</span></label>
-            <textarea placeholder="輸入文字…"></textarea>
-            <label>解析度</label>
-            <div class="cv-res-slot"></div>
-            <label>時長（秒）<span class="cv-dur-val">5</span></label>
-            <input type="range" class="cv-dur-slider" min="2" max="15" step="1" value="5">
-            <button class="cv-add-ref-btn">+ 新增參考圖輸入</button>
-            <button class="cv-generate cv-submit-btn">▶ 生成影片</button>
-            <div class="cv-status"></div>`;
+            <div class="cv-controls">
+                <label>模型 <span class="cv-hint cv-mode-hint">（文生影片）</span></label>
+                <div class="cv-select-slot"></div>
+                <label>Prompt<span class="cv-hint">（若連接文字節點會優先使用其輸出）</span></label>
+                <textarea placeholder="輸入文字…"></textarea>
+                <label>解析度</label>
+                <div class="cv-res-slot"></div>
+                <label>時長（秒）<span class="cv-dur-val">5</span></label>
+                <input type="range" class="cv-dur-slider" min="2" max="15" step="1" value="5">
+                <button class="cv-add-ref-btn">+ 新增參考圖輸入</button>
+                <button class="cv-generate cv-submit-btn">▶ 生成影片</button>
+                <div class="cv-status"></div>
+            </div>`;
         attachDomPanel(this, panel);
         this.textarea = panel.querySelector('textarea');
         this.textarea.addEventListener('input', () => { this.properties.prompt = this.textarea.value; });
@@ -570,6 +591,7 @@
         });
 
         panel.appendChild(buildPreview(this));
+        wireCollapsible(this, panel);
         attachNodeChrome(this);
     }
     VideoGenNode.title = '影片 Video';
@@ -638,6 +660,7 @@
             this.videoUrl = result.local_path || result.video_url;
             this.statusEl.textContent = '完成';
             setPreviewVideo(this, this.videoUrl);
+            this._setControlsVisible(false);
         } catch (e) {
             this.statusEl.textContent = '錯誤：' + e.message;
             setPreviewEmpty(this, '生成失敗');
@@ -660,12 +683,14 @@
 
         const panel = el('div');
         panel.innerHTML = `
-            <label>模型</label>
-            <div class="cv-select-slot"></div>
-            <label>Prompt<span class="cv-hint">（若連接文字節點會優先使用其輸出）</span></label>
-            <textarea placeholder="輸入編輯指示…"></textarea>
-            <button class="cv-generate">▶ 編輯圖片</button>
-            <div class="cv-status"></div>`;
+            <div class="cv-controls">
+                <label>模型</label>
+                <div class="cv-select-slot"></div>
+                <label>Prompt<span class="cv-hint">（若連接文字節點會優先使用其輸出）</span></label>
+                <textarea placeholder="輸入編輯指示…"></textarea>
+                <button class="cv-generate">▶ 編輯圖片</button>
+                <div class="cv-status"></div>
+            </div>`;
         attachDomPanel(this, panel);
         this.textarea = panel.querySelector('textarea');
         this.textarea.addEventListener('input', () => { this.properties.prompt = this.textarea.value; });
@@ -676,6 +701,7 @@
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
 
         panel.appendChild(buildPreview(this));
+        wireCollapsible(this, panel);
         attachNodeChrome(this);
     }
     ImageEditNode.title = '圖像編輯 Editing';
@@ -704,6 +730,7 @@
             this.imageUrl = data.images[0].local_path || data.images[0].url;
             this.statusEl.textContent = '完成';
             setPreviewImage(this, this.imageUrl);
+            this._setControlsVisible(false);
         } catch (e) {
             this.statusEl.textContent = '錯誤：' + e.message;
             setPreviewEmpty(this, '生成失敗');
