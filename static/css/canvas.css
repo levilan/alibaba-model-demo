@@ -1,0 +1,115 @@
+/* AI Canvas — 節點式畫布，獨立深色主題 */
+:root {
+    --cv-bg:        #1a1a1a;
+    --cv-panel:     #232323;
+    --cv-panel-2:   #2a2a2a;
+    --cv-border:    #3a3a3a;
+    --cv-text:      #e8e8e8;
+    --cv-text-sub:  #9a9a9a;
+    --cv-accent:    #ff6a00;
+    --cv-accent-2:  #4f8cff;
+    --cv-danger:    #ff5555;
+    --cv-ok:        #4ade80;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: var(--cv-bg); }
+body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(--cv-text); }
+
+#canvasApp { position: fixed; inset: 0; display: flex; flex-direction: column; }
+
+/* ── Top bar ─────────────────────────────────────────── */
+.canvas-topbar {
+    height: 52px; flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+    padding: 0 16px; background: var(--cv-panel); border-bottom: 1px solid var(--cv-border);
+    position: relative; z-index: 20;
+}
+.canvas-back-btn {
+    color: var(--cv-text-sub); text-decoration: none; font-size: 1.3rem; line-height: 1;
+    padding: 4px 8px; border-radius: 6px;
+}
+.canvas-back-btn:hover { background: var(--cv-panel-2); color: var(--cv-text); }
+.canvas-breadcrumb { color: var(--cv-text-sub); font-size: 0.9rem; }
+.canvas-breadcrumb-sep { color: var(--cv-border); }
+.canvas-title-input {
+    background: transparent; border: 1px solid transparent; color: var(--cv-text);
+    font-size: 0.92rem; font-weight: 600; padding: 5px 8px; border-radius: 6px; min-width: 160px;
+}
+.canvas-title-input:hover { border-color: var(--cv-border); }
+.canvas-title-input:focus { outline: none; border-color: var(--cv-accent-2); background: var(--cv-panel-2); }
+.canvas-topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.canvas-btn-ghost {
+    background: transparent; border: 1px solid var(--cv-border); color: var(--cv-text-sub);
+    border-radius: 7px; padding: 6px 12px; font-size: 0.8rem; cursor: pointer;
+}
+.canvas-btn-ghost:hover { color: var(--cv-text); border-color: var(--cv-text-sub); }
+
+/* ── Left floating toolbar ──────────────────────────────── */
+.canvas-toolbar {
+    position: absolute; left: 16px; top: 68px; z-index: 15;
+    display: flex; flex-direction: column; gap: 6px;
+    background: var(--cv-panel); border: 1px solid var(--cv-border);
+    border-radius: 12px; padding: 6px;
+}
+.canvas-tool-btn {
+    width: 36px; height: 36px; border-radius: 8px; border: none;
+    background: transparent; color: var(--cv-text-sub); font-size: 1.1rem;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.canvas-tool-btn:hover { background: var(--cv-panel-2); color: var(--cv-text); }
+.canvas-tool-btn.active { background: var(--cv-accent); color: #fff; }
+
+/* ── Add-node popup menu ─────────────────────────────────── */
+.add-node-menu {
+    position: absolute; left: 60px; top: 68px; z-index: 30;
+    background: var(--cv-panel); border: 1px solid var(--cv-border);
+    border-radius: 10px; padding: 6px; min-width: 200px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.add-node-menu-title {
+    font-size: 0.72rem; color: var(--cv-text-sub); text-transform: uppercase;
+    letter-spacing: 0.04em; padding: 6px 10px 4px;
+}
+.add-node-menu button {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    background: transparent; border: none; color: var(--cv-text);
+    text-align: left; padding: 9px 10px; border-radius: 7px; font-size: 0.86rem; cursor: pointer;
+}
+.add-node-menu button:hover { background: var(--cv-panel-2); }
+.add-node-menu button.disabled { color: var(--cv-text-sub); cursor: not-allowed; opacity: 0.55; }
+.add-node-menu button.disabled:hover { background: transparent; }
+
+/* ── Zoom controls (bottom-left) ─────────────────────────── */
+.canvas-zoom-controls {
+    position: absolute; left: 16px; bottom: 16px; z-index: 15;
+    display: flex; align-items: center; gap: 2px;
+    background: var(--cv-panel); border: 1px solid var(--cv-border);
+    border-radius: 10px; padding: 4px; font-size: 0.78rem;
+}
+.canvas-zoom-controls button {
+    width: 26px; height: 26px; border-radius: 6px; border: none;
+    background: transparent; color: var(--cv-text-sub); cursor: pointer; font-size: 0.95rem;
+}
+.canvas-zoom-controls button:hover { background: var(--cv-panel-2); color: var(--cv-text); }
+#zoomLabel { color: var(--cv-text-sub); width: 44px; text-align: center; }
+
+/* ── Login gate ──────────────────────────────────────────── */
+.canvas-login-gate {
+    position: fixed; inset: 0; z-index: 100; background: var(--cv-bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    color: var(--cv-text);
+}
+.canvas-login-gate a {
+    color: #fff; background: var(--cv-accent); text-decoration: none;
+    padding: 9px 18px; border-radius: 8px; font-size: 0.88rem;
+}
+
+/* ── LiteGraph canvas element ─────────────────────────────── */
+#litegraphCanvas { flex: 1 1 auto; width: 100%; height: 100%; display: block; outline: none; }
+
+/* Toast for generation errors */
+.canvas-toast {
+    position: absolute; bottom: 16px; right: 16px; z-index: 40;
+    background: #3a1a1a; border: 1px solid var(--cv-danger); color: #ffb4b4;
+    padding: 10px 14px; border-radius: 8px; font-size: 0.82rem; max-width: 360px;
+}

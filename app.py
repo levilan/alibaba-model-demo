@@ -13,7 +13,7 @@ import httpx
 from fastapi import FastAPI, Request, Depends, HTTPException, File, UploadFile, Form, WebSocket, WebSocketDisconnect
 import websockets
 import asyncio
-from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -268,6 +268,10 @@ def get_api_key(request: Request) -> str:
 async def index():
     return FileResponse(Path(__file__).parent / "templates" / "index.html")
 
+@app.get("/canvas")
+async def canvas_page():
+    return FileResponse(Path(__file__).parent / "templates" / "canvas.html")
+
 class LoginRequest(BaseModel):
     api_key: str
 
@@ -300,6 +304,22 @@ async def login(data: LoginRequest):
 @app.get("/api/models")
 async def get_models(api_key: str = Depends(get_api_key)):
     return MODELS
+
+# Canvas 節點間傳遞的圖片/影片網址可能落在 OSS bucket，瀏覽器直接 fetch 會被 CORS 擋下，
+# 故提供一個僅允許白名單網域的代理端點；不可放行任意網址，否則會變成 SSRF 入口
+_PROXY_ALLOWED_SUFFIXES = (".aliyuncs.com",)
+
+@app.get("/api/proxy/fetch")
+async def proxy_fetch(url: str, api_key: str = Depends(get_api_key)):
+    from urllib.parse import urlparse
+    host = (urlparse(url).hostname or "").lower()
+    if not host or not any(host == s.lstrip(".") or host.endswith(s) for s in _PROXY_ALLOWED_SUFFIXES):
+        raise HTTPException(status_code=400, detail="URL host not allowed")
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        r = await client.get(url)
+        if r.status_code != 200:
+            raise HTTPException(status_code=r.status_code, detail="Upstream fetch failed")
+        return Response(content=r.content, media_type=r.headers.get("content-type", "application/octet-stream"))
 
 # ─── API: Text Generation (SSE Streaming) ─────────────────────────
 class TextGenerateRequest(BaseModel):

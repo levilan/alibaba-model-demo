@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Canvas — NenAI Testing Platform</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23FF6A00'/%3E%3Cpath d='M7 20a6 6 0 01-.6-11.964A8.4 8.4 0 0123.8 15.6h1.08a3.6 3.6 0 010 7.2H7z' fill='white' fill-opacity='0.95'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litegraph.js@0.7.18/css/litegraph.css">
+    <link rel="stylesheet" href="/static/css/canvas.css">
+</head>
+<body>
+
+<div id="canvasLoginGate" class="canvas-login-gate" style="display:none">
+    <p>請先登入才能使用 AI Canvas</p>
+    <a href="/">回登入頁</a>
+</div>
+
+<div id="canvasApp" style="display:none">
+    <header class="canvas-topbar">
+        <a href="/" class="canvas-back-btn" title="返回">‹</a>
+        <span class="canvas-breadcrumb">Canvas</span>
+        <span class="canvas-breadcrumb-sep">/</span>
+        <input id="canvasTitle" class="canvas-title-input" value="Untitled Canvas">
+        <div class="canvas-topbar-right">
+            <span style="color:var(--cv-text-sub);font-size:0.78rem">尚未支援存檔，重新整理將清空畫布</span>
+            <button class="canvas-btn-ghost" onclick="location.href='/'">返回主控台</button>
+        </div>
+    </header>
+
+    <div class="canvas-toolbar">
+        <button class="canvas-tool-btn" id="btnAddNode" title="新增節點">+</button>
+        <button class="canvas-tool-btn" id="btnFitView" title="置中顯示全部節點">⤢</button>
+    </div>
+
+    <div id="addNodeMenu" class="add-node-menu" style="display:none">
+        <div class="add-node-menu-title">新增節點</div>
+        <button data-type="text">📄　文字 Text</button>
+        <button data-type="image">🖼️　圖片 Image</button>
+        <button data-type="video">🎬　影片 Video</button>
+        <button data-type="audio" class="disabled" disabled>🎵　語音 Audio（尚未支援）</button>
+        <button data-type="edit">✂️　圖像編輯 Editing</button>
+    </div>
+
+    <div class="canvas-zoom-controls">
+        <button id="zoomOut">−</button>
+        <span id="zoomLabel">100%</span>
+        <button id="zoomIn">+</button>
+        <button id="zoomReset" title="重置縮放">重置</button>
+    </div>
+
+    <canvas id="litegraphCanvas"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/litegraph.js@0.7.18/build/litegraph.min.js"></script>
+<script src="/static/js/canvas.js"></script>
+</body>
+</html>
