@@ -101,9 +101,23 @@
         return sel;
     }
 
+    // 這個版本的 LiteGraph 選取狀態存在 lgCanvas.selected_nodes 這個字典裡（用
+    // node.id 當 key），不是 node.selected 這個布林屬性——實測過才發現的，直接
+    // 讀 node.selected 永遠是 undefined。
+    function isNodeSelected(node) {
+        return !!(lgCanvas.selected_nodes && lgCanvas.selected_nodes[node.id]);
+    }
+
     function attachDomPanel(node, panel) {
         panel.className = 'cv-node-panel';
-        panel.addEventListener('mousedown', (e) => e.stopPropagation());
+        panel.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            // DOM 面板蓋在畫布上方，滑鼠事件傳不到 LiteGraph 原生的點擊選取邏輯，
+            // 所以點擊節點本體時要自己呼叫官方選取 API（這樣空白處點擊取消選取、
+            // Delete 鍵刪除節點等原生行為才會維持正常運作）
+            lgCanvas.selectNode(node, false);
+            lgCanvas.setDirty(true, true);
+        });
         panel.addEventListener('wheel', (e) => e.stopPropagation());
         domLayer.appendChild(panel);
         node._domPanel = panel;
@@ -151,6 +165,7 @@
                 newNode.pos = [sourceNode.pos[0] + sourceNode.size[0] + 90, sourceNode.pos[1]];
                 graph.add(newNode);
                 connectToFirstCompatibleInput(sourceNode, outSlot, newNode);
+                selectNodeOnly(newNode);
                 closeQuickAddMenu();
             });
         });
@@ -183,23 +198,29 @@
         });
     }
 
-    // 讓生成類節點預設只顯示圖片/影片本身：表單控制收在 .cv-controls 裡，生成
-    // 成功後自動收起，只留下一個小小的「✏️」在預覽區可以點開重新編輯設定。
-    function wireCollapsible(node, panel) {
+    // 讓生成類節點預設只顯示圖片/影片本身：表單控制（.cv-controls）移出節點面板，
+    // 變成一個獨立的浮動面板，只在節點被選中時才出現，且用固定像素大小顯示
+    // （不隨畫布縮放），這樣不管畫布縮到多小，面板文字都維持可讀——這是實際比對
+    // 參考產品後發現的關鍵差異：它的設定面板永遠是固定大小，只有位置跟著節點移動。
+    function wireConfigOverlay(node, panel) {
         const controls = panel.querySelector('.cv-controls');
-        node._setControlsVisible = (visible) => { controls.style.display = visible ? '' : 'none'; };
-        const editBtn = el('button', 'cv-edit-btn', '✏️');
-        editBtn.title = '編輯設定';
-        editBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-        editBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            node._setControlsVisible(controls.style.display === 'none');
-        });
-        node._previewBox.appendChild(editBtn);
+        if (!controls) return;
+        controls.remove();
+        controls.classList.add('cv-config-overlay');
+        controls.addEventListener('mousedown', (e) => e.stopPropagation());
+        controls.addEventListener('wheel', (e) => e.stopPropagation());
+        domLayer.appendChild(controls);
+        node._configOverlay = controls;
+    }
+
+    function selectNodeOnly(node) {
+        lgCanvas.selectNode(node, false);
+        lgCanvas.setDirty(true, true);
     }
 
     function sharedOnRemoved() {
         if (this._domPanel) { this._domPanel.remove(); this._domPanel = null; }
+        if (this._configOverlay) { this._configOverlay.remove(); this._configOverlay = null; }
         if (this._closeBtn) { this._closeBtn.remove(); this._closeBtn = null; }
         (this._addBtns || []).forEach(b => b.remove());
         this._addBtns = [];
@@ -264,6 +285,18 @@
                 btn.style.top = (sy - 11 * scale) + 'px';
                 btn.style.transform = `scale(${scale})`;
             });
+            // 設定浮層固定像素大小、不套用縮放 transform，只在節點被選中時顯示，
+            // 貼在節點下方——這樣不管畫布縮到多小，面板文字都維持可讀
+            if (node._configOverlay) {
+                const showConfig = isNodeSelected(node) && !collapsed;
+                node._configOverlay.style.display = showConfig ? '' : 'none';
+                if (showConfig && panel) {
+                    const [sx, sy] = toScreen(node.pos[0], node.pos[1] + zoneH);
+                    const bodyScreenH = (panel.offsetHeight || 0) * scale;
+                    node._configOverlay.style.left = sx + 'px';
+                    node._configOverlay.style.top = (sy + bodyScreenH + 10) + 'px';
+                }
+            }
         });
         requestAnimationFrame(positionAllPanels);
     }
@@ -468,7 +501,7 @@
         this._rebuildSizeSelect(sizesForModel('image', this.properties.model));
 
         panel.appendChild(buildPreview(this));
-        wireCollapsible(this, panel);
+        wireConfigOverlay(this, panel);
         attachNodeChrome(this);
     }
     ImageGenNode.title = '圖片 Image';
@@ -526,7 +559,6 @@
             this.imageUrl = data.images[0].local_path || data.images[0].url;
             this.statusEl.textContent = '完成';
             setPreviewImage(this, this.imageUrl);
-            this._setControlsVisible(false);
         } catch (e) {
             this.statusEl.textContent = '錯誤：' + e.message;
             setPreviewEmpty(this, '生成失敗');
@@ -591,7 +623,7 @@
         });
 
         panel.appendChild(buildPreview(this));
-        wireCollapsible(this, panel);
+        wireConfigOverlay(this, panel);
         attachNodeChrome(this);
     }
     VideoGenNode.title = '影片 Video';
@@ -660,7 +692,6 @@
             this.videoUrl = result.local_path || result.video_url;
             this.statusEl.textContent = '完成';
             setPreviewVideo(this, this.videoUrl);
-            this._setControlsVisible(false);
         } catch (e) {
             this.statusEl.textContent = '錯誤：' + e.message;
             setPreviewEmpty(this, '生成失敗');
@@ -701,7 +732,7 @@
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
 
         panel.appendChild(buildPreview(this));
-        wireCollapsible(this, panel);
+        wireConfigOverlay(this, panel);
         attachNodeChrome(this);
     }
     ImageEditNode.title = '圖像編輯 Editing';
@@ -730,7 +761,6 @@
             this.imageUrl = data.images[0].local_path || data.images[0].url;
             this.statusEl.textContent = '完成';
             setPreviewImage(this, this.imageUrl);
-            this._setControlsVisible(false);
         } catch (e) {
             this.statusEl.textContent = '錯誤：' + e.message;
             setPreviewEmpty(this, '生成失敗');
@@ -859,6 +889,7 @@
                 const cy = (canvasEl.height / 2) / lgCanvas.ds.scale - lgCanvas.ds.offset[1];
                 node.pos = [cx - node.size[0] / 2, cy - node.size[1] / 2];
                 graph.add(node);
+                selectNodeOnly(node);
                 addMenu.style.display = 'none';
             });
         });
