@@ -214,9 +214,13 @@
         graph._nodes.forEach(node => {
             const collapsed = node.flags && node.flags.collapsed;
             const zoneH = socketZoneHeight(node);
-            if (node._contentHeight) node.size[1] = node._contentHeight + zoneH;
             const panel = node._domPanel;
             if (panel) {
+                // 面板高度用實際渲染出來的內容量測，不要用固定猜測值——不然遇到
+                // 長寬比不同的圖片、變長的錯誤訊息、動態新增的參考圖插槽等內容
+                // 比預期高時，畫面會超出節點自己畫的深色底框（超出框框）
+                panel.style.width = node.size[0] + 'px';
+                node.size[1] = (panel.offsetHeight || node._contentHeight || 200) + zoneH;
                 if (collapsed) {
                     panel.style.display = 'none';
                 } else {
@@ -224,9 +228,10 @@
                     const [sx, sy] = toScreen(node.pos[0], node.pos[1] + zoneH);
                     panel.style.left = sx + 'px';
                     panel.style.top = sy + 'px';
-                    panel.style.width = node.size[0] + 'px';
                     panel.style.transform = `scale(${scale})`;
                 }
+            } else if (node._contentHeight) {
+                node.size[1] = node._contentHeight + zoneH;
             }
             if (node._closeBtn) {
                 const [sx, sy] = toScreen(node.pos[0] + node.size[0], node.pos[1] - titleH);
