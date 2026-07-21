@@ -6,10 +6,10 @@
 /* ─── Variables ─────────────────────────────────────────────── */
 :root {
     /* Alibaba Cloud Brand Colors */
-    --ali-orange:      #1C8DE0;
-    --ali-orange-dark: #1573B8;
-    --ali-orange-soft: #EAF4FD;
-    --ali-orange-mid:  #B9E0F7;
+    --ali-orange:      #01A0C7;
+    --ali-orange-dark: #0183A3;
+    --ali-orange-soft: #EBF7FB;
+    --ali-orange-mid:  #A6DEEB;
     --ali-blue:        #0064C8;
     --ali-blue-soft:   #EBF4FF;
 
@@ -18,7 +18,7 @@
     --bg-white:     #FFFFFF;
     --bg-aside:     #FAFBFC;
     --border:       #E0E3E8;
-    --border-focus: #1C8DE0;
+    --border-focus: #01A0C7;
     --text-h:       #1A1A2E;
     --text-body:    #3D4151;
     --text-sub:     #6B7280;
@@ -36,7 +36,7 @@
 
     /* Shadow */
     --shadow-card: 0 1px 4px rgba(0,0,0,0.08), 0 0 0 1px var(--border);
-    --shadow-btn:  0 1px 3px rgba(28,141,224,0.25);
+    --shadow-btn:  0 1px 3px rgba(1,160,199,0.25);
 
     /* Transitions */
     --t: 0.18s ease;
@@ -84,7 +84,7 @@ img { display: block; max-width: 100%; }
 
 .login-header {
     background: var(--ali-orange);
-    background-image: linear-gradient(135deg, #1C8DE0 0%, #4FB0F0 100%);
+    background-image: linear-gradient(135deg, #01A0C7 0%, #3FC4E8 100%);
     padding: 28px 32px;
     display: flex; align-items: center; gap: 14px;
 }
@@ -233,7 +233,7 @@ input[type="number"].number-input {
 }
 input[type="number"].number-input:focus {
     border-color: var(--ali-orange);
-    box-shadow: 0 0 0 2px rgba(28,141,224,0.12);
+    box-shadow: 0 0 0 2px rgba(1,160,199,0.12);
 }
 input[type="number"].number-input::placeholder { color: var(--text-muted); }
 
@@ -247,7 +247,7 @@ select.select-input, textarea.textarea-input {
 }
 input:focus, select.select-input:focus, textarea.textarea-input:focus {
     border-color: var(--ali-orange);
-    box-shadow: 0 0 0 2px rgba(28,141,224,0.12);
+    box-shadow: 0 0 0 2px rgba(1,160,199,0.12);
 }
 select.select-input {
     cursor: pointer; appearance: none;
@@ -267,7 +267,7 @@ input[type="range"] {
 input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none; width: 14px; height: 14px;
     background: var(--ali-orange); border-radius: 50%;
-    box-shadow: 0 1px 3px rgba(28,141,224,0.3);
+    box-shadow: 0 1px 3px rgba(1,160,199,0.3);
 }
 
 /* Toggle */
@@ -355,7 +355,7 @@ input[type="range"]::-webkit-slider-thumb {
     resize: none; outline: none; line-height: 1.5; min-height: 40px; max-height: 120px;
     background: var(--bg-white); transition: var(--t);
 }
-.chat-textarea:focus { border-color: var(--ali-orange); box-shadow: 0 0 0 2px rgba(28,141,224,0.1); }
+.chat-textarea:focus { border-color: var(--ali-orange); box-shadow: 0 0 0 2px rgba(1,160,199,0.1); }
 .chat-textarea::placeholder { color: var(--text-muted); }
 .chat-actions-row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
 
@@ -390,7 +390,7 @@ input[type="range"]::-webkit-slider-thumb {
     border-radius: var(--radius-lg); overflow: hidden;
     transition: var(--t); animation: fadeUp 0.25s ease;
 }
-.img-card:hover { border-color: var(--ali-orange); box-shadow: 0 2px 12px rgba(28,141,224,0.1); }
+.img-card:hover { border-color: var(--ali-orange); box-shadow: 0 2px 12px rgba(1,160,199,0.1); }
 .img-card img {
     width: 100%; max-height: 300px; object-fit: cover;
     cursor: zoom-in; transition: opacity var(--t);
@@ -453,7 +453,7 @@ input[type="range"]::-webkit-slider-thumb {
 .vtc-progress { height: 3px; background: var(--border); border-radius: 2px; margin-bottom: 10px; overflow: hidden; }
 .vtc-progress-bar {
     height: 100%; border-radius: 2px;
-    background: linear-gradient(90deg, var(--ali-orange) 0%, #4FB0F0 100%);
+    background: linear-gradient(90deg, var(--ali-orange) 0%, #3FC4E8 100%);
     transition: width 0.5s ease; animation: pulse 2s ease-in-out infinite;
 }
 .video-player {
