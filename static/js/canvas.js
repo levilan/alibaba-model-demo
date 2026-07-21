@@ -411,8 +411,12 @@
     TextPromptNode.prototype.onRemoved = sharedOnRemoved;
 
     // ── Node: Image（文生圖，t2i 模型） ─────────────────────────
+    // 圖片節點依「是否連接參考圖」自動切換 t2i（純文生圖）/ i2i（拿參考圖做
+    // 圖像生成，實際呼叫 /api/image/edit）——這樣使用者可以直接把一個圖片節點
+    // 的輸出拉線接到另一個圖片節點的「參考圖」輸入，做「用圖像生成圖像」。
     function ImageGenNode() {
         this.addInput('prompt', 'string');
+        this.addInput('參考圖', 'image');
         this.addOutput('image', 'image');
         const models = getModelsFor('image', 't2i');
         this.properties = { model: (models[0] && models[0].id) || '', prompt: '', size: '1024*1024', status: '' };
@@ -423,7 +427,7 @@
 
         const panel = el('div');
         panel.innerHTML = `
-            <label>模型</label>
+            <label>模型 <span class="cv-hint cv-mode-hint">（文生圖）</span></label>
             <div class="cv-select-slot"></div>
             <label>Prompt<span class="cv-hint">（若連接文字節點會優先使用其輸出）</span></label>
             <textarea placeholder="輸入文字…"></textarea>
@@ -435,6 +439,7 @@
         this.textarea = panel.querySelector('textarea');
         this.textarea.addEventListener('input', () => { this.properties.prompt = this.textarea.value; });
         this.statusEl = panel.querySelector('.cv-status');
+        this.modeHintEl = panel.querySelector('.cv-mode-hint');
         panel.querySelector('.cv-generate').addEventListener('click', () => this.generate());
 
         this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => {
@@ -456,21 +461,48 @@
         this.sizeSelect = buildSelect(sizes, this.properties.size, (v) => { this.properties.size = v; });
         slot.appendChild(this.sizeSelect);
     };
+    ImageGenNode.prototype._detectMode = function () {
+        return this.getInputNode(1) ? 'i2i' : 't2i';
+    };
     ImageGenNode.prototype.onExecute = function () {
         this.setOutputData(0, this.imageUrl);
+    };
+    ImageGenNode.prototype.onConnectionsChange = function (type) {
+        if (type !== LiteGraph.INPUT || !this.modelSelect) return;
+        const mode = this._detectMode();
+        const list = getModelsFor('image', mode);
+        const values = list.map(m => m.id);
+        if (!values.includes(this.properties.model)) this.properties.model = values[0] || '';
+        this.modelSelect.innerHTML = values.map(v => `<option value="${v}"${v === this.properties.model ? ' selected' : ''}>${v}</option>`).join('');
+        this._rebuildSizeSelect(sizesForModel('image', this.properties.model));
+        this.modeHintEl.textContent = mode === 'i2i' ? '（參考圖生成圖像）' : '（文生圖）';
     };
     ImageGenNode.prototype.generate = async function () {
         const promptIn = this.getInputData(0);
         const prompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
         if (!prompt) { showToast('請輸入 prompt'); return; }
         if (!this.properties.model) { showToast('請選擇模型'); return; }
+        const mode = this._detectMode();
         this.statusEl.textContent = '生成中…';
         setPreviewEmpty(this, '生成中…');
         try {
-            const res = await apiFetch('/api/image/generate', {
-                method: 'POST',
-                body: JSON.stringify({ model: this.properties.model, prompt, size: this.properties.size, n: 1 }),
-            });
+            let res;
+            if (mode === 'i2i') {
+                const refUrl = this.getInputData(1);
+                if (!refUrl) throw new Error('參考圖節點尚未生成完成，請先按上游圖片節點的「生成圖片」');
+                const fd = new FormData();
+                fd.append('model', this.properties.model);
+                fd.append('prompt', prompt);
+                fd.append('size', this.properties.size);
+                fd.append('n', '1');
+                fd.append('image_1', await fetchAsBlob(refUrl), 'ref.png');
+                res = await apiFetch('/api/image/edit', { method: 'POST', body: fd });
+            } else {
+                res = await apiFetch('/api/image/generate', {
+                    method: 'POST',
+                    body: JSON.stringify({ model: this.properties.model, prompt, size: this.properties.size, n: 1 }),
+                });
+            }
             const data = await res.json();
             if (!res.ok || !data.images || !data.images.length) throw new Error((data.error && (data.error.message || data.error)) || '生成失敗');
             this.imageUrl = data.images[0].local_path || data.images[0].url;
@@ -546,9 +578,12 @@
         this.addInput('參考圖 ' + (this.refSlots.length + 1), 'image');
         this.refSlots.push(this.inputs.length - 1);
     };
+    // 模式判定要用「有沒有連線」（結構性、graph topology），不能用「有沒有資料」
+    // （getInputData 要等上游節點生成完畢並執行過 onExecute 才會有值）——否則
+    // 剛接上參考圖但還沒按生成時，會誤判成沒有參考圖而退回 i2v/first_frame。
     VideoGenNode.prototype._detectMode = function () {
-        const refUrls = this.refSlots.map(i => this.getInputData(i)).filter(Boolean);
-        if (refUrls.length) return 'r2v';
+        const hasRef = this.refSlots.some(i => !!this.getInputNode(i));
+        if (hasRef) return 'r2v';
         if (this.getInputNode(1)) return 'i2v';
         return 't2v';
     };
@@ -582,6 +617,7 @@
             if (mode === 'r2v') {
                 endpoint = '/api/video/r2v';
                 const refUrls = this.refSlots.map(i => this.getInputData(i)).filter(Boolean);
+                if (!refUrls.length) throw new Error('參考圖節點尚未生成完成，請先按上游圖片節點的「生成圖片」');
                 for (const url of refUrls) {
                     fd.append('reference_files', await fetchAsBlob(url), 'ref.png');
                 }
