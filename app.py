@@ -184,6 +184,11 @@ MODELS = {
             "desc": "OpenAI 旗艦圖像模型", "type": "t2i", "max_n": 4,
             "sizes": ["1024x1024","1536x1024","1024x1536"],
         },
+        {
+            "id": "gpt-image-1.5", "name": "GPT Image 1.5", "group": "GPT Image",
+            "desc": "OpenAI 前代圖像模型", "type": "t2i", "max_n": 4,
+            "sizes": ["1024x1024","1536x1024","1024x1536"],
+        },
         # ── Gemini Image（走 /v1/chat/completions + modalities，不支援 size 參數）──
         {
             "id": "gemini-3-pro-image", "name": "Gemini 3 Pro Image", "group": "Gemini Image",
@@ -730,6 +735,21 @@ async def _save_image_bytes(data: bytes, ext: str) -> Optional[str]:
         print(f"Image save error: {e}")
         return None
 
+# OpenAI 相容的 /v1/images/generations 回應，圖片可能是 "url" 或直接內嵌的 "b64_json"
+# （例如 gpt-image-2/1.5 預設就回 b64_json），兩種都要處理，否則會誤判為生成失敗
+async def _extract_images_from_data(data_list: list) -> list:
+    images = []
+    for item in data_list:
+        url = item.get("url")
+        if url:
+            images.append({"url": url, "local_path": await _async_download_image(url), "actual_prompt": item.get("actual_prompt")})
+            continue
+        b64 = item.get("b64_json")
+        if b64:
+            raw = base64.b64decode(b64)
+            images.append({"url": None, "local_path": await _save_image_bytes(raw, "png"), "actual_prompt": item.get("actual_prompt")})
+    return images
+
 async def _generate_gemini_chat_image(model: str, prompt: str, n: int, api_key: str) -> dict:
     payload = {
         "model": model,
@@ -800,11 +820,7 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
             if resp.status_code != 200:
                 return JSONResponse(status_code=resp.status_code,
                                     content={"error": rj.get("error", {}).get("message", resp.text)})
-            images = []
-            for item in rj.get("data", []):
-                url = item.get("url")
-                if url:
-                    images.append({"url": url, "local_path": await _async_download_image(url), "actual_prompt": item.get("actual_prompt")})
+            images = await _extract_images_from_data(rj.get("data", []))
             if not images:
                 return JSONResponse(status_code=500, content={"error": f"No images in response: {rj}"})
             return {"success": True, "images": images, "model": data.model}
@@ -890,11 +906,7 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
             if resp.status_code != 200:
                 return JSONResponse(status_code=resp.status_code,
                                     content={"error": rj.get("error", {}).get("message", resp.text)})
-            images = []
-            for item in rj.get("data", []):
-                url = item.get("url")
-                if url:
-                    images.append({"url": url, "local_path": await _async_download_image(url), "actual_prompt": item.get("actual_prompt")})
+            images = await _extract_images_from_data(rj.get("data", []))
             if not images:
                 return JSONResponse(status_code=500, content={"error": f"No images in response: {rj}"})
             return {"success": True, "images": images, "model": model}

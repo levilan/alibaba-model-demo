@@ -109,6 +109,87 @@
         node._domPanel = panel;
     }
 
+    // ── 節點「外框裝飾」：右上角刪除鈕、每個輸出插槽旁的「+」快速新增關聯節點鈕 ──
+    // （原生 LiteGraph 的連線插槽很小、不好抓，這裡提供更明顯的點擊入口）
+    const NODE_TYPE_LABELS = {
+        text: { type: 'nenai/text', label: '📄　文字 Text' },
+        image: { type: 'nenai/image', label: '🖼️　圖片 Image' },
+        video: { type: 'nenai/video', label: '🎬　影片 Video' },
+        edit: { type: 'nenai/edit', label: '✂️　圖像編輯 Editing' },
+        audio: { type: 'nenai/audio', label: '🎵　語音 Audio（尚未支援）', disabled: true },
+    };
+
+    function connectToFirstCompatibleInput(sourceNode, outSlot, targetNode) {
+        const outType = sourceNode.outputs[outSlot].type;
+        const inputs = targetNode.inputs || [];
+        for (let i = 0; i < inputs.length; i++) {
+            if (inputs[i].type === outType) { sourceNode.connect(outSlot, targetNode, i); return true; }
+        }
+        if (inputs.length) { sourceNode.connect(outSlot, targetNode, 0); return true; }
+        return false;
+    }
+
+    let _quickAddMenu = null;
+    function closeQuickAddMenu() {
+        if (_quickAddMenu) { _quickAddMenu.remove(); _quickAddMenu = null; }
+    }
+    function openQuickAddMenu(sourceNode, outSlot, screenX, screenY) {
+        closeQuickAddMenu();
+        const menu = el('div', 'add-node-menu');
+        menu.style.left = screenX + 'px';
+        menu.style.top = screenY + 'px';
+        menu.style.display = 'block';
+        menu.innerHTML = '<div class="add-node-menu-title">新增關聯節點</div>' +
+            Object.values(NODE_TYPE_LABELS).map(t =>
+                `<button data-type="${t.type}"${t.disabled ? ' class="disabled" disabled' : ''}>${t.label}</button>`
+            ).join('');
+        menu.addEventListener('mousedown', (e) => e.stopPropagation());
+        domLayer.appendChild(menu);
+        menu.querySelectorAll('button[data-type]:not(.disabled)').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const newNode = LiteGraph.createNode(btn.dataset.type);
+                newNode.pos = [sourceNode.pos[0] + sourceNode.size[0] + 90, sourceNode.pos[1]];
+                graph.add(newNode);
+                connectToFirstCompatibleInput(sourceNode, outSlot, newNode);
+                closeQuickAddMenu();
+            });
+        });
+        _quickAddMenu = menu;
+        setTimeout(() => document.addEventListener('click', function onDocClick(e) {
+            if (_quickAddMenu && !_quickAddMenu.contains(e.target)) { closeQuickAddMenu(); }
+            document.removeEventListener('click', onDocClick);
+        }), 0);
+    }
+
+    function attachNodeChrome(node) {
+        const closeBtn = el('button', 'cv-close-btn', '✕');
+        closeBtn.title = '刪除節點';
+        closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+        closeBtn.addEventListener('click', (e) => { e.stopPropagation(); graph.remove(node); });
+        domLayer.appendChild(closeBtn);
+        node._closeBtn = closeBtn;
+
+        node._addBtns = (node.outputs || []).map((out, slot) => {
+            const btn = el('button', 'cv-add-link-btn', '+');
+            btn.title = '新增關聯節點';
+            btn.addEventListener('mousedown', (e) => e.stopPropagation());
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const r = btn.getBoundingClientRect();
+                openQuickAddMenu(node, slot, r.right + 6, r.top - 6);
+            });
+            domLayer.appendChild(btn);
+            return btn;
+        });
+    }
+
+    function sharedOnRemoved() {
+        if (this._domPanel) { this._domPanel.remove(); this._domPanel = null; }
+        if (this._closeBtn) { this._closeBtn.remove(); this._closeBtn = null; }
+        (this._addBtns || []).forEach(b => b.remove());
+        this._addBtns = [];
+    }
+
     // LiteGraph 的座標轉換公式（來自 DragAndScale.convertOffsetToCanvas）：
     // canvasPixel = (graphPos + ds.offset) * ds.scale —— ctx 是先 scale 再 translate。
     // node.pos 是節點「主體」（title 列下方）的左上角，title 往上額外佔用 NODE_TITLE_HEIGHT。
@@ -118,18 +199,38 @@
         const rect = canvasEl.getBoundingClientRect();
         const scale = lgCanvas.ds.scale || 1;
         const offset = lgCanvas.ds.offset || [0, 0];
+        const titleH = LiteGraph.NODE_TITLE_HEIGHT || 30;
+        const toScreen = (gx, gy) => [rect.left + (gx + offset[0]) * scale, rect.top + (gy + offset[1]) * scale];
         graph._nodes.forEach(node => {
-            const panel = node._domPanel;
-            if (!panel) return;
             const collapsed = node.flags && node.flags.collapsed;
-            if (collapsed) { panel.style.display = 'none'; return; }
-            panel.style.display = '';
-            const screenX = rect.left + (node.pos[0] + offset[0]) * scale;
-            const screenY = rect.top + (node.pos[1] + offset[1]) * scale;
-            panel.style.left = screenX + 'px';
-            panel.style.top = screenY + 'px';
-            panel.style.width = node.size[0] + 'px';
-            panel.style.transform = `scale(${scale})`;
+            const panel = node._domPanel;
+            if (panel) {
+                if (collapsed) {
+                    panel.style.display = 'none';
+                } else {
+                    panel.style.display = '';
+                    const [sx, sy] = toScreen(node.pos[0], node.pos[1]);
+                    panel.style.left = sx + 'px';
+                    panel.style.top = sy + 'px';
+                    panel.style.width = node.size[0] + 'px';
+                    panel.style.transform = `scale(${scale})`;
+                }
+            }
+            if (node._closeBtn) {
+                const [sx, sy] = toScreen(node.pos[0] + node.size[0], node.pos[1] - titleH);
+                node._closeBtn.style.left = (sx - 22 * scale) + 'px';
+                node._closeBtn.style.top = (sy + 4 * scale) + 'px';
+                node._closeBtn.style.transform = `scale(${scale})`;
+            }
+            (node._addBtns || []).forEach((btn, slot) => {
+                if (collapsed) { btn.style.display = 'none'; return; }
+                btn.style.display = '';
+                const p = node.getConnectionPos(false, slot);
+                const [sx, sy] = toScreen(p[0], p[1]);
+                btn.style.left = (sx + 6 * scale) + 'px';
+                btn.style.top = (sy - 11 * scale) + 'px';
+                btn.style.transform = `scale(${scale})`;
+            });
         });
         requestAnimationFrame(positionAllPanels);
     }
@@ -167,35 +268,73 @@
         node._previewBox.appendChild(dl);
     }
 
-    // ── Node: Text（手動輸入 prompt；若連接「圖片」輸入，可改用圖片分析結果） ──
+    // ── Node: Text（可手動輸入當純 prompt 來源，也可選模型做真正的文字生成；
+    //              若連接「圖片」輸入，改為顯示「分析圖片」按鈕呼叫圖片分析） ──
     function TextPromptNode() {
         this.addInput('image', 'image');
         this.addOutput('text', 'string');
-        this.properties = { text: '', status: '' };
-        this.size = [300, 230];
+        const models = getModelsFor('text');
+        this.properties = { model: (models[0] && models[0].id) || '', text: '', status: '' };
+        this.generatedText = null;
+        this.size = [300, 340];
         this.color = '#3d3320'; this.bgcolor = '#2a2a2a';
 
         const panel = el('div');
         panel.innerHTML = `
+            <label>模型<span class="cv-hint">（不生成也可直接當純文字輸出）</span></label>
+            <div class="cv-select-slot"></div>
             <label>Prompt</label>
             <textarea placeholder="輸入文字…"></textarea>
-            <button class="cv-generate cv-analyze-btn" style="display:none;margin-top:8px">🔍 分析已連接的圖片</button>
-            <div class="cv-status"></div>`;
+            <button class="cv-generate cv-gen-text-btn">▶ 生成文字</button>
+            <button class="cv-generate cv-analyze-btn" style="display:none">🔍 分析已連接的圖片</button>
+            <div class="cv-status"></div>
+            <div class="cv-output-box" style="display:none"></div>`;
         attachDomPanel(this, panel);
         this.textarea = panel.querySelector('textarea');
-        this.textarea.addEventListener('input', () => { this.properties.text = this.textarea.value; });
+        this.textarea.addEventListener('input', () => {
+            this.properties.text = this.textarea.value;
+            this.generatedText = null;
+            this.outputBox.style.display = 'none';
+        });
         this.statusEl = panel.querySelector('.cv-status');
+        this.outputBox = panel.querySelector('.cv-output-box');
+        panel.querySelector('.cv-gen-text-btn').addEventListener('click', () => this.generateText());
         this.analyzeBtn = panel.querySelector('.cv-analyze-btn');
         this.analyzeBtn.addEventListener('click', () => this.analyzeImage());
+
+        this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => { this.properties.model = v; });
+        panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+        attachNodeChrome(this);
     }
     TextPromptNode.title = '文字 Text';
     TextPromptNode.prototype.onExecute = function () {
-        this.setOutputData(0, this.properties.text);
+        this.setOutputData(0, this.generatedText != null ? this.generatedText : this.properties.text);
     };
     TextPromptNode.prototype.onConnectionsChange = function (type) {
         if (type !== LiteGraph.INPUT || !this.analyzeBtn) return;
         const hasImage = !!this.getInputNode(0);
         this.analyzeBtn.style.display = hasImage ? '' : 'none';
+    };
+    TextPromptNode.prototype.generateText = async function () {
+        const prompt = this.properties.text;
+        if (!prompt) { showToast('請輸入文字'); return; }
+        if (!this.properties.model) { showToast('請選擇模型'); return; }
+        this.statusEl.textContent = '生成中…';
+        try {
+            const res = await apiFetch('/api/text/generate', {
+                method: 'POST',
+                body: JSON.stringify({ model: this.properties.model, prompt, stream: false }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || '生成失敗');
+            this.generatedText = data.content || '';
+            this.outputBox.textContent = this.generatedText;
+            this.outputBox.style.display = '';
+            this.statusEl.textContent = '完成（輸出已改為生成結果）';
+        } catch (e) {
+            this.statusEl.textContent = '錯誤：' + e.message;
+            showToast('文字生成失敗：' + e.message);
+        }
     };
     TextPromptNode.prototype.analyzeImage = async function () {
         const imgUrl = this.getInputData(0);
@@ -210,17 +349,18 @@
             });
             const data = await res.json();
             if (!res.ok || !data.success) throw new Error((data.error && (data.error.message || data.error)) || '分析失敗');
-            this.properties.text = data.content || '';
-            this.textarea.value = this.properties.text;
+            this.generatedText = data.content || '';
+            this.textarea.value = this.generatedText;
+            this.properties.text = this.generatedText;
+            this.outputBox.textContent = this.generatedText;
+            this.outputBox.style.display = '';
             this.statusEl.textContent = '完成';
         } catch (e) {
             this.statusEl.textContent = '錯誤：' + e.message;
             showToast('圖片分析失敗：' + e.message);
         }
     };
-    TextPromptNode.prototype.onRemoved = function () {
-        if (this._domPanel) { this._domPanel.remove(); this._domPanel = null; }
-    };
+    TextPromptNode.prototype.onRemoved = sharedOnRemoved;
 
     // ── Node: Image（文生圖，t2i 模型） ─────────────────────────
     function ImageGenNode() {
@@ -257,6 +397,7 @@
         this._rebuildSizeSelect(sizesForModel('image', this.properties.model));
 
         panel.appendChild(buildPreview(this));
+        attachNodeChrome(this);
     }
     ImageGenNode.title = '圖片 Image';
     ImageGenNode.prototype._rebuildSizeSelect = function (sizes) {
@@ -292,9 +433,7 @@
             showToast('圖片生成失敗：' + e.message);
         }
     };
-    ImageGenNode.prototype.onRemoved = function () {
-        if (this._domPanel) { this._domPanel.remove(); this._domPanel = null; }
-    };
+    ImageGenNode.prototype.onRemoved = sharedOnRemoved;
 
     // ── Node: Video（t2v / i2v，依 first_frame 是否連線自動切換） ──
     function VideoGenNode() {
@@ -341,6 +480,7 @@
         });
 
         panel.appendChild(buildPreview(this));
+        attachNodeChrome(this);
     }
     VideoGenNode.title = '影片 Video';
     VideoGenNode.prototype.onExecute = function () {
@@ -392,9 +532,7 @@
             showToast('影片生成失敗：' + e.message);
         }
     };
-    VideoGenNode.prototype.onRemoved = function () {
-        if (this._domPanel) { this._domPanel.remove(); this._domPanel = null; }
-    };
+    VideoGenNode.prototype.onRemoved = sharedOnRemoved;
 
     // ── Node: Editing（i2i 圖像編輯，需連接一張輸入圖片） ───────────
     function ImageEditNode() {
@@ -425,6 +563,7 @@
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
 
         panel.appendChild(buildPreview(this));
+        attachNodeChrome(this);
     }
     ImageEditNode.title = '圖像編輯 Editing';
     ImageEditNode.prototype.onExecute = function () {
@@ -458,9 +597,7 @@
             showToast('圖像編輯失敗：' + e.message);
         }
     };
-    ImageEditNode.prototype.onRemoved = function () {
-        if (this._domPanel) { this._domPanel.remove(); this._domPanel = null; }
-    };
+    ImageEditNode.prototype.onRemoved = sharedOnRemoved;
 
     // ── Node: Audio（尚未有可用的 TTS 後端，先提供停用佔位節點） ───
     function AudioPlaceholderNode() {
@@ -471,11 +608,10 @@
         const panel = el('div');
         panel.innerHTML = `<div class="cv-status" style="margin-top:4px">平台目前沒有可用的 TTS 後端，此節點尚未支援</div>`;
         attachDomPanel(this, panel);
+        attachNodeChrome(this);
     }
     AudioPlaceholderNode.title = '語音 Audio（尚未支援）';
-    AudioPlaceholderNode.prototype.onRemoved = function () {
-        if (this._domPanel) { this._domPanel.remove(); this._domPanel = null; }
-    };
+    AudioPlaceholderNode.prototype.onRemoved = sharedOnRemoved;
 
     function registerNodeTypes() {
         LiteGraph.registerNodeType('nenai/text', TextPromptNode);
