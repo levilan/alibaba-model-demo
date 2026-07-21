@@ -146,6 +146,12 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
 }
 .cv-node-panel button.cv-generate:hover { filter: brightness(1.08); }
 .cv-node-panel button.cv-analyze-btn { background: linear-gradient(135deg, var(--cv-accent-2), #7ab0ff); }
+.cv-node-panel button.cv-add-ref-btn {
+    width: 100%; margin-top: 10px; background: transparent; border: 1px dashed var(--cv-border);
+    color: var(--cv-text-sub); font-weight: 500; padding: 8px; border-radius: 8px;
+    cursor: pointer; font-size: 12px;
+}
+.cv-node-panel button.cv-add-ref-btn:hover { border-color: var(--cv-accent-2); color: var(--cv-accent-2); }
 .cv-node-panel .cv-status {
     font-size: 11px; color: var(--cv-text-sub); margin-top: 7px; text-align: center; min-height: 14px;
 }

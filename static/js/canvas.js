@@ -193,6 +193,16 @@
     // LiteGraph 的座標轉換公式（來自 DragAndScale.convertOffsetToCanvas）：
     // canvasPixel = (graphPos + ds.offset) * ds.scale —— ctx 是先 scale 再 translate。
     // node.pos 是節點「主體」（title 列下方）的左上角，title 往上額外佔用 NODE_TITLE_HEIGHT。
+    //
+    // 重要：LiteGraph 會在節點主體最上方、依插槽數量畫出原生的輸入/輸出連線圓點
+    // （每格高 NODE_SLOT_HEIGHT）。如果 DOM 面板從 node.pos[1] 就開始蓋，會把這些
+    // 圓點完全蓋住、連拖曳連線都抓不到——所以面板必須往下留出「插槽區」的高度，
+    // 同時把 node.size[1] 一併加大，讓節點的底色範圍完整包住插槽區 + 面板內容。
+    function socketZoneHeight(node) {
+        const rows = Math.max((node.inputs || []).length, (node.outputs || []).length, 1);
+        return rows * (LiteGraph.NODE_SLOT_HEIGHT || 20) + 14;
+    }
+
     function positionAllPanels() {
         if (!graph || !lgCanvas) return;
         const canvasEl = document.getElementById('litegraphCanvas');
@@ -203,13 +213,15 @@
         const toScreen = (gx, gy) => [rect.left + (gx + offset[0]) * scale, rect.top + (gy + offset[1]) * scale];
         graph._nodes.forEach(node => {
             const collapsed = node.flags && node.flags.collapsed;
+            const zoneH = socketZoneHeight(node);
+            if (node._contentHeight) node.size[1] = node._contentHeight + zoneH;
             const panel = node._domPanel;
             if (panel) {
                 if (collapsed) {
                     panel.style.display = 'none';
                 } else {
                     panel.style.display = '';
-                    const [sx, sy] = toScreen(node.pos[0], node.pos[1]);
+                    const [sx, sy] = toScreen(node.pos[0], node.pos[1] + zoneH);
                     panel.style.left = sx + 'px';
                     panel.style.top = sy + 'px';
                     panel.style.width = node.size[0] + 'px';
@@ -227,7 +239,8 @@
                 btn.style.display = '';
                 const p = node.getConnectionPos(false, slot);
                 const [sx, sy] = toScreen(p[0], p[1]);
-                btn.style.left = (sx + 6 * scale) + 'px';
+                // 往右偏移一段距離，避免蓋住原生連線圓點（那個點仍保留給滑鼠拖曳連線用）
+                btn.style.left = (sx + 18 * scale) + 'px';
                 btn.style.top = (sy - 11 * scale) + 'px';
                 btn.style.transform = `scale(${scale})`;
             });
@@ -276,6 +289,7 @@
         const models = getModelsFor('text');
         this.properties = { model: (models[0] && models[0].id) || '', text: '', status: '' };
         this.generatedText = null;
+        this._contentHeight = 340;
         this.size = [300, 340];
         this.color = '#3d3320'; this.bgcolor = '#2a2a2a';
 
@@ -369,6 +383,7 @@
         const models = getModelsFor('image', 't2i');
         this.properties = { model: (models[0] && models[0].id) || '', prompt: '', size: '1024*1024', status: '' };
         this.imageUrl = null;
+        this._contentHeight = 470;
         this.size = [320, 470];
         this.color = '#1f3a2e'; this.bgcolor = '#2a2a2a';
 
@@ -435,16 +450,23 @@
     };
     ImageGenNode.prototype.onRemoved = sharedOnRemoved;
 
-    // ── Node: Video（t2v / i2v，依 first_frame 是否連線自動切換） ──
+    // ── Node: Video（t2v / i2v / r2v，依連接的圖片組合自動切換） ──
+    // r2v（參考生影片）可以連接多張參考圖到同一個節點：初始給 2 個「參考圖」
+    // 輸入插槽，並提供「+ 新增參考圖輸入」按鈕可再加到最多 6 張。
+    const VIDEO_MAX_REF_SLOTS = 6;
     function VideoGenNode() {
         this.addInput('prompt', 'string');
         this.addInput('first_frame', 'image');
         this.addInput('last_frame', 'image');
         this.addOutput('video', 'video');
+        this.refSlots = [];
+        this._addRefSlot();
+        this._addRefSlot();
         const models = getModelsFor('video', 't2v');
         this.properties = { model: (models[0] && models[0].id) || '', prompt: '', resolution: '720P', duration: 5, status: '' };
         this.videoUrl = null;
-        this.size = [320, 500];
+        this._contentHeight = 560;
+        this.size = [320, 560];
         this.color = '#1f2f3a'; this.bgcolor = '#2a2a2a';
 
         const panel = el('div');
@@ -457,14 +479,16 @@
             <div class="cv-res-slot"></div>
             <label>時長（秒）<span class="cv-dur-val">5</span></label>
             <input type="range" class="cv-dur-slider" min="2" max="15" step="1" value="5">
-            <button class="cv-generate">▶ 生成影片</button>
+            <button class="cv-add-ref-btn">+ 新增參考圖輸入</button>
+            <button class="cv-generate cv-submit-btn">▶ 生成影片</button>
             <div class="cv-status"></div>`;
         attachDomPanel(this, panel);
         this.textarea = panel.querySelector('textarea');
         this.textarea.addEventListener('input', () => { this.properties.prompt = this.textarea.value; });
         this.statusEl = panel.querySelector('.cv-status');
         this.modeHintEl = panel.querySelector('.cv-mode-hint');
-        panel.querySelector('.cv-generate').addEventListener('click', () => this.generate());
+        panel.querySelector('.cv-add-ref-btn').addEventListener('click', () => this._addRefSlot());
+        panel.querySelector('.cv-submit-btn').addEventListener('click', () => this.generate());
 
         this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => { this.properties.model = v; });
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
@@ -483,25 +507,35 @@
         attachNodeChrome(this);
     }
     VideoGenNode.title = '影片 Video';
+    VideoGenNode.prototype._addRefSlot = function () {
+        if (this.refSlots.length >= VIDEO_MAX_REF_SLOTS) { showToast(`最多 ${VIDEO_MAX_REF_SLOTS} 張參考圖`); return; }
+        this.addInput('參考圖 ' + (this.refSlots.length + 1), 'image');
+        this.refSlots.push(this.inputs.length - 1);
+    };
+    VideoGenNode.prototype._detectMode = function () {
+        const refUrls = this.refSlots.map(i => this.getInputData(i)).filter(Boolean);
+        if (refUrls.length) return 'r2v';
+        if (this.getInputNode(1)) return 'i2v';
+        return 't2v';
+    };
     VideoGenNode.prototype.onExecute = function () {
         this.setOutputData(0, this.videoUrl);
     };
     VideoGenNode.prototype.onConnectionsChange = function (type) {
         if (type !== LiteGraph.INPUT || !this.modelSelect) return;
-        const hasFirstFrame = !!this.getInputNode(1);
-        const list = getModelsFor('video', hasFirstFrame ? 'i2v' : 't2v');
+        const mode = this._detectMode();
+        const list = getModelsFor('video', mode);
         const values = list.map(m => m.id);
         if (!values.includes(this.properties.model)) this.properties.model = values[0] || '';
         this.modelSelect.innerHTML = values.map(v => `<option value="${v}"${v === this.properties.model ? ' selected' : ''}>${v}</option>`).join('');
-        this.modeHintEl.textContent = hasFirstFrame ? '（圖生影片 / 參考圖）' : '（文生影片）';
+        this.modeHintEl.textContent = mode === 'r2v' ? '（參考生影片 / 多圖）' : mode === 'i2v' ? '（圖生影片）' : '（文生影片）';
     };
     VideoGenNode.prototype.generate = async function () {
         const promptIn = this.getInputData(0);
         const prompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
         if (!prompt) { showToast('請輸入 prompt'); return; }
         if (!this.properties.model) { showToast('請選擇模型'); return; }
-        const firstFrameUrl = this.getInputData(1);
-        const lastFrameUrl = this.getInputData(2);
+        const mode = this._detectMode();
         this.statusEl.textContent = '送出中…';
         setPreviewEmpty(this, '送出中…');
         try {
@@ -511,8 +545,16 @@
             fd.append('resolution', this.properties.resolution);
             fd.append('duration', String(this.properties.duration));
             let endpoint = '/api/video/t2v';
-            if (firstFrameUrl) {
+            if (mode === 'r2v') {
+                endpoint = '/api/video/r2v';
+                const refUrls = this.refSlots.map(i => this.getInputData(i)).filter(Boolean);
+                for (const url of refUrls) {
+                    fd.append('reference_files', await fetchAsBlob(url), 'ref.png');
+                }
+            } else if (mode === 'i2v') {
                 endpoint = '/api/video/i2v';
+                const firstFrameUrl = this.getInputData(1);
+                const lastFrameUrl = this.getInputData(2);
                 fd.append('i2v_mode', lastFrameUrl ? 'first_last_frame' : 'first_frame');
                 fd.append('first_frame', await fetchAsBlob(firstFrameUrl), 'first_frame.png');
                 if (lastFrameUrl) fd.append('last_frame', await fetchAsBlob(lastFrameUrl), 'last_frame.png');
@@ -542,6 +584,7 @@
         const models = getModelsFor('image', 'i2i');
         this.properties = { model: (models[0] && models[0].id) || '', prompt: '', size: '1024*1024', status: '' };
         this.imageUrl = null;
+        this._contentHeight = 470;
         this.size = [320, 470];
         this.color = '#3a2340'; this.bgcolor = '#2a2a2a';
 
@@ -603,6 +646,7 @@
     function AudioPlaceholderNode() {
         this.addInput('text', 'string');
         this.addOutput('audio', 'audio');
+        this._contentHeight = 110;
         this.size = [300, 110];
         this.color = '#333'; this.bgcolor = '#2a2a2a';
         const panel = el('div');
@@ -711,11 +755,16 @@
             showToast('模型清單載入失敗：' + e.message);
         }
         registerNodeTypes();
+        // 依資料型別上色連線，方便一眼看出文字/圖片/影片/音訊的連線關係
+        Object.assign(LGraphCanvas.link_type_colors, {
+            string: '#facc15', image: '#4f8cff', video: '#4ade80', audio: '#f87171',
+        });
 
         graph = new LGraph();
         lgCanvas = new LGraphCanvas('#litegraphCanvas', graph);
         lgCanvas.background_image = null;
         lgCanvas.render_canvas_border = false;
+        lgCanvas.links_render_mode = LiteGraph.SPLINE_LINK;
 
         resizeCanvasEl();
         window.addEventListener('resize', resizeCanvasEl);
