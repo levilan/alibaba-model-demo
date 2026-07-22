@@ -409,7 +409,7 @@ function onImgModelChange() {
 
     // prompt_extend 僅 T2I 與 qwen-image-2.0 系列（i2i 融合模型）支援，其餘 I2I 圖像編輯模型後端不支援此參數
     document.getElementById('imgPromptExtendGroup').style.display =
-        (t === 't2i' || modelInfo.no_ref_strength) ? '' : 'none';
+        (t === 't2i' || modelInfo.fusion_edit) ? '' : 'none';
 
     // 參考圖張數上限（qwen-image-2.0 系列最多 3 張，其餘模型最多 9 張）
     imgMaxRef = modelInfo.max_ref || 9;

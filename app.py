@@ -109,16 +109,6 @@ MODELS = {
             "desc": "標準文生圖", "type": "t2i", "max_n": 4,
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
-        {
-            "id": "qwen-image-max", "name": "千問圖像 Max", "group": "千問文生圖",
-            "desc": "旗艦畫質，細節豐富", "type": "t2i", "max_n": 4,
-            "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
-        },
-        {
-            "id": "qwen-image-plus", "name": "千問圖像 Plus", "group": "千問文生圖",
-            "desc": "均衡品質與速度", "type": "t2i", "max_n": 4,
-            "sizes": ["1328*1328","1664*928","928*1664","1472*1104","1104*1472"],
-        },
         # ── 萬相文生圖 ────────────────────────────────────────────
         {
             "id": "wan2.7-image-pro", "name": "萬相 2.7 Image Pro", "group": "萬相文生圖",
@@ -141,6 +131,17 @@ MODELS = {
             "desc": "輕量級快速生成", "type": "t2i", "max_n": 4,
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
+        # ── MAI Image（Azure OpenAI 管道，尺寸格式與 GPT Image 相同為 WIDTHxHEIGHT）──
+        {
+            "id": "MAI-Image-2.5", "name": "MAI-Image-2.5", "group": "MAI Image",
+            "desc": "旗艦圖像生成", "type": "t2i", "max_n": 4,
+            "sizes": ["1024x1024","1536x1024","1024x1536"],
+        },
+        {
+            "id": "MAI-Image-2.5-Flash", "name": "MAI-Image-2.5-Flash", "group": "MAI Image",
+            "desc": "極速圖像生成", "type": "t2i", "max_n": 4,
+            "sizes": ["1024x1024","1536x1024","1024x1536"],
+        },
         # ── 萬相圖像編輯 ──────────────────────────────────────────
         {
             "id": "wan2.7-image-pro", "name": "萬相 2.7 Image Pro（編輯）", "group": "萬相圖像編輯",
@@ -157,26 +158,17 @@ MODELS = {
             "desc": "前代編輯模型", "type": "i2i", "max_n": 1,
             "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960"],
         },
-        # ── 千問圖像編輯 ──────────────────────────────────────────
-        {
-            "id": "qwen-image-edit-max", "name": "千問圖像編輯 Max", "group": "千問圖像編輯",
-            "desc": "複雜圖文編輯", "type": "i2i", "max_n": 1,
-            "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
-        },
-        {
-            "id": "qwen-image-edit-plus", "name": "千問圖像編輯 Plus", "group": "千問圖像編輯",
-            "desc": "輕量圖文編輯", "type": "i2i", "max_n": 1,
-            "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
-        },
         # ── 千問圖像 2.0（生成與編輯融合模型，同一模型 ID 兼具 T2I 與 I2I）──
         {
             "id": "qwen-image-2.0-pro", "name": "千問圖像 2.0 Pro（編輯）", "group": "千問圖像編輯",
-            "desc": "生成與編輯融合模型 Pro 系列", "type": "i2i", "max_n": 6, "max_ref": 3, "no_ref_strength": True,
+            "desc": "生成與編輯融合模型 Pro 系列", "type": "i2i", "max_n": 6, "max_ref": 3,
+            "no_ref_strength": True, "fusion_edit": True,
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
         {
             "id": "qwen-image-2.0", "name": "千問圖像 2.0（編輯）", "group": "千問圖像編輯",
-            "desc": "生成與編輯融合模型加速版", "type": "i2i", "max_n": 6, "max_ref": 3, "no_ref_strength": True,
+            "desc": "生成與編輯融合模型加速版", "type": "i2i", "max_n": 6, "max_ref": 3,
+            "no_ref_strength": True, "fusion_edit": True,
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
         # ── GPT Image（尺寸格式為 WIDTHxHEIGHT，與其他模型的 WIDTH*HEIGHT 不同）──
@@ -206,6 +198,45 @@ MODELS = {
         {
             "id": "gemini-3.1-flash-lite-image", "name": "Gemini 3.1 Flash Lite Image", "group": "Gemini Image",
             "desc": "輕量極速圖像生成", "type": "t2i", "max_n": 4, "no_size": True,
+        },
+        # ── GPT Image 編輯（沿用一般 /v1/images/edits 流程）──────────
+        {
+            "id": "gpt-image-2", "name": "GPT Image 2（編輯）", "group": "GPT Image",
+            "desc": "OpenAI 旗艦圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True,
+            "sizes": ["1024x1024","1536x1024","1024x1536"],
+        },
+        {
+            "id": "gpt-image-1.5", "name": "GPT Image 1.5（編輯）", "group": "GPT Image",
+            "desc": "OpenAI 前代圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True,
+            "sizes": ["1024x1024","1536x1024","1024x1536"],
+        },
+        # ── MAI Image 編輯（Azure OpenAI 管道，沿用一般 /v1/images/edits 流程，不支援 ref_strength）──
+        {
+            "id": "MAI-Image-2.5", "name": "MAI-Image-2.5（編輯）", "group": "MAI Image",
+            "desc": "旗艦圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True,
+            "sizes": ["1024x1024","1536x1024","1024x1536"],
+        },
+        {
+            "id": "MAI-Image-2.5-Flash", "name": "MAI-Image-2.5-Flash（編輯）", "group": "MAI Image",
+            "desc": "極速圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True,
+            "sizes": ["1024x1024","1536x1024","1024x1536"],
+        },
+        # ── Gemini Image 編輯（走 /v1/chat/completions + modalities，帶入參考圖）──
+        {
+            "id": "gemini-3-pro-image", "name": "Gemini 3 Pro Image（編輯）", "group": "Gemini Image",
+            "desc": "Google 旗艦圖像編輯，畫質最佳", "type": "i2i", "max_n": 1, "no_size": True, "no_ref_strength": True,
+        },
+        {
+            "id": "gemini-3.1-flash-image", "name": "Gemini 3.1 Flash Image（編輯）", "group": "Gemini Image",
+            "desc": "速度與品質平衡，建議日常使用", "type": "i2i", "max_n": 1, "no_size": True, "no_ref_strength": True,
+        },
+        {
+            "id": "gemini-2.5-flash-image", "name": "Gemini 2.5 Flash Image（編輯）", "group": "Gemini Image",
+            "desc": "穩定版，較成熟的圖像模型", "type": "i2i", "max_n": 1, "no_size": True, "no_ref_strength": True,
+        },
+        {
+            "id": "gemini-3.1-flash-lite-image", "name": "Gemini 3.1 Flash Lite Image（編輯）", "group": "Gemini Image",
+            "desc": "輕量極速圖像編輯", "type": "i2i", "max_n": 1, "no_size": True, "no_ref_strength": True,
         },
     ],
     "video": [
@@ -757,10 +788,18 @@ async def _extract_images_from_data(data_list: list) -> list:
 # 指令前綴可顯著改善成功率，仍會不穩定則再靠重試補強。
 _GEMINI_IMAGE_MAX_RETRIES = 2
 
-async def _generate_gemini_chat_image(model: str, prompt: str, n: int, api_key: str) -> dict:
+async def _generate_gemini_chat_image(model: str, prompt: str, n: int, api_key: str,
+                                       image_files: Optional[list] = None) -> dict:
+    if image_files:
+        content: Any = [{"type": "text", "text": f"Edit the image(s) as follows: {prompt}"}]
+        for fname, fbytes, ftype in image_files:
+            b64 = base64.b64encode(fbytes).decode()
+            content.append({"type": "image_url", "image_url": {"url": f"data:{ftype};base64,{b64}"}})
+    else:
+        content = f"Generate an image depicting: {prompt}"
     payload = {
         "model": model,
-        "messages": [{"role": "user", "content": f"Generate an image depicting: {prompt}"}],
+        "messages": [{"role": "user", "content": content}],
         "modalities": ["text", "image"],
         "n": n,
     }
@@ -842,6 +881,8 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
 
 # qwen-image-2.0 系列為「生成與編輯融合模型」：最多 3 張參考圖、可輸出 1-6 張，且不支援 ref_strength 參數
 _QWEN2_EDIT_MODELS = {"qwen-image-2.0-pro", "qwen-image-2.0"}
+# GPT Image 系列的 /images/edits 不接受 ref_strength 參數，帶入會被上游拒絕（400 Unknown parameter）
+_NO_REF_STRENGTH_EDIT_MODELS = _QWEN2_EDIT_MODELS | {"gpt-image-2", "gpt-image-1.5", "MAI-Image-2.5", "MAI-Image-2.5-Flash"}
 
 # ─── API: Image Edit (I2I) ────────────────────────────────────────
 @app.post("/api/image/edit")
@@ -892,11 +933,17 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
     if not image_files:
         return JSONResponse(status_code=400, content={"error": "至少需要一張參考圖片"})
 
+    if model in _GEMINI_CHAT_IMAGE_MODELS:
+        try:
+            return await _generate_gemini_chat_image(model, prompt, n, api_key, image_files)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     try:
         form_data = {"model": model, "prompt": prompt, "size": size, "n": str(n)}
         if is_qwen2_edit:
             form_data["prompt_extend"] = "true" if prompt_extend else "false"
-        else:
+        if model not in _NO_REF_STRENGTH_EDIT_MODELS:
             form_data["ref_strength"] = str(ref_strength)
         if neg_prompt:
             form_data["negative_prompt"] = neg_prompt
