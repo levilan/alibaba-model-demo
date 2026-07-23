@@ -245,6 +245,8 @@ MODELS = {
         {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片",     "type": "t2v",   "audio": True, "min_dur": 2, "max_dur": 15},
         # ── 圖生影片 ──────────────────────────────────────────────
         {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀/首尾幀/配音/影片延伸", "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15},
+        # wan2.6-i2v / wan2.6-i2v-flash 目前 NenAI 平台端 pipeline 故障（無論送任何欄位格式都回
+        # "Field required: input.img_url"，已用直連 API 排除是本專案的請求格式問題），保留在清單中等待平台方修復
         {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片",       "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15},
         {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版", "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15},
         # ── 參考生影片 ────────────────────────────────────────────
@@ -274,9 +276,25 @@ MODELS = {
          "desc": "Google 極速文生影片，含原生配音", "type": "t2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
         {"id": "veo-3.1-lite-generate-001", "name": "Veo 3.1 Lite", "group": "Veo",
          "desc": "Google 輕量文生影片，含原生配音", "type": "t2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+        {"id": "veo-3.1-generate-001", "name": "Veo 3.1（圖生影片）", "group": "Veo",
+         "desc": "Google 旗艦圖生影片，含原生配音", "type": "i2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+        {"id": "veo-3.1-fast-generate-001", "name": "Veo 3.1 Fast（圖生影片）", "group": "Veo",
+         "desc": "Google 極速圖生影片，含原生配音", "type": "i2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+        {"id": "veo-3.1-lite-generate-001", "name": "Veo 3.1 Lite（圖生影片）", "group": "Veo",
+         "desc": "Google 輕量圖生影片，含原生配音", "type": "i2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+        {"id": "veo-3.1-generate-001", "name": "Veo 3.1（參考生影片）", "group": "Veo",
+         "desc": "Google 旗艦參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+        {"id": "veo-3.1-fast-generate-001", "name": "Veo 3.1 Fast（參考生影片）", "group": "Veo",
+         "desc": "Google 極速參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+        {"id": "veo-3.1-lite-generate-001", "name": "Veo 3.1 Lite（參考生影片）", "group": "Veo",
+         "desc": "Google 輕量參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
         # ── Gemini Omni（走 /v1beta/interactions，模型自行決定長度/解析度，固定含原生配音）──
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview", "group": "Gemini",
          "desc": "Google 多模態影片生成（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "t2v", "audio": False, "no_duration": True},
+        {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview（圖生影片）", "group": "Gemini",
+         "desc": "Google 多模態圖生影片（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "i2v", "audio": False, "no_duration": True},
+        {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview（參考生影片）", "group": "Gemini",
+         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），最長約 10 秒，自動含原生配音（無需另設定）", "type": "r2v", "audio": False, "no_duration": True},
     ],
     "muleai": [
         {"id": "wan2.7-i2v-spicy",       "name": "Wan 2.7 I2V Spicy",  "group": "影片生成", "desc": "Spicy 模型 (支援文字/圖片)"},
@@ -987,6 +1005,8 @@ def _res_to_wh(resolution: str) -> tuple[int, int]:
 
 # Gemini Omni 不走 /v1/videos 的非同步任務模式，而是同步呼叫 /v1beta/interactions 直接拿到完成的影片
 _INTERACTIONS_VIDEO_MODELS = {"gemini-omni-flash-preview"}
+# Veo 預設的 personGeneration 安全設定較嚴格，帶真人圖片容易被擋，明確放寬為 allow_adult
+_VEO_MODELS = {"veo-3.1-generate-001", "veo-3.1-fast-generate-001", "veo-3.1-lite-generate-001"}
 _OMNI_TASK_CACHE: Dict[str, dict] = {}
 
 async def _save_video_bytes(data: bytes) -> Optional[str]:
@@ -1003,8 +1023,13 @@ async def _save_video_bytes(data: bytes) -> Optional[str]:
         print(f"Video save error: {e}")
         return None
 
-async def _generate_omni_video(model: str, prompt: str, api_key: str) -> dict:
-    payload = {"model": model, "input": [{"type": "user_input", "content": [{"type": "text", "text": prompt}]}]}
+async def _generate_omni_video(model: str, prompt: str, api_key: str,
+                                image_files: Optional[list] = None) -> dict:
+    content: list = [{"type": "text", "text": prompt}]
+    for fbytes, ftype in (image_files or []):
+        b64 = base64.b64encode(fbytes).decode()
+        content.append({"type": "image", "data": b64, "mime_type": ftype})
+    payload = {"model": model, "input": [{"type": "user_input", "content": content}]}
     async with httpx.AsyncClient(timeout=180.0) as client:
         resp = await client.post(
             f"{NENAI_BASE}/v1beta/interactions",
@@ -1067,6 +1092,7 @@ async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
     if watermark:       meta["watermark"] = True
     if seed is not None: meta["seed"] = seed
     if ratio:           meta["ratio"] = ratio
+    if model in _VEO_MODELS: meta["person_generation"] = "allow_adult"
 
     if audio_file and hasattr(audio_file, "filename") and audio_file.filename:
         ab = await audio_file.read()
@@ -1125,6 +1151,15 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
     audio_file       = form.get("driving_audio")
     clip_file        = form.get("first_clip")
 
+    if model in _INTERACTIONS_VIDEO_MODELS:
+        first_bytes = await _read_image_bytes(first_frame_file)
+        if not first_bytes:
+            return JSONResponse(status_code=400, content={"error": "I2V 需要上傳首幀圖片"})
+        try:
+            return await _generate_omni_video(model, prompt, api_key, [(first_bytes, "image/png")])
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     w, h = _res_to_wh(resolution)
     actual_duration = duration
     payload: dict = {"model": model, "prompt": prompt,
@@ -1135,6 +1170,7 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
     if watermark:     meta["watermark"] = True
     if seed is not None: meta["seed"] = seed
     if ratio:         meta["ratio"] = ratio
+    if model in _VEO_MODELS: meta["person_generation"] = "allow_adult"
     if audio_bgm_file and hasattr(audio_bgm_file, "filename") and audio_bgm_file.filename:
         ab = await audio_bgm_file.read()
         audio_mime = audio_bgm_file.content_type or "audio/mpeg"
@@ -1279,6 +1315,7 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
 
     VIDEO_EXTS = {'.mp4', '.avi', '.mov', '.mkv', '.webm', '.m4v'}
     media_arr: list = []
+    image_files: list = []
     for f in ref_files:
         if not hasattr(f, "filename") or not f.filename:
             continue
@@ -1287,9 +1324,19 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
         mime = "video/mp4" if ext in VIDEO_EXTS else "image/png"
         media_type = "reference_video" if ext in VIDEO_EXTS else "reference_image"
         media_arr.append({"url": f"data:{mime};base64,{base64.b64encode(fb).decode()}", "type": media_type})
+        if media_type == "reference_image":
+            image_files.append((fb, mime))
 
     if not media_arr:
         return JSONResponse(status_code=400, content={"error": "At least one reference file is required"})
+
+    if model in _INTERACTIONS_VIDEO_MODELS:
+        if not image_files:
+            return JSONResponse(status_code=400, content={"error": "R2V 需要至少一張參考圖片"})
+        try:
+            return await _generate_omni_video(model, prompt, api_key, image_files[:3])
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
     w, h = _res_to_wh(resolution)
     meta: dict = {}
@@ -1297,6 +1344,7 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
     if watermark:     meta["watermark"] = True
     if seed is not None: meta["seed"] = seed
     if ratio:         meta["ratio"] = ratio
+    if model in _VEO_MODELS: meta["person_generation"] = "allow_adult"
     if audio_bgm_file and hasattr(audio_bgm_file, "filename") and audio_bgm_file.filename:
         ab = await audio_bgm_file.read()
         audio_mime = audio_bgm_file.content_type or "audio/mpeg"
@@ -1410,8 +1458,8 @@ async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
                 result["local_path"] = local if local else video_url
                 result["video_url"] = video_url
             else:
-                # Fallback: try /content which may redirect to the actual file
-                async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as c2:
+                # Fallback: /content 可能轉址到實際檔案，也可能直接回傳影片二進位內容（如 Veo）
+                async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as c2:
                     cr = await c2.get(f"{NENAI_V1}/videos/{task_id}/content",
                                       headers={"Authorization": f"Bearer {api_key}"})
                     loc = cr.headers.get("location") or cr.headers.get("Location")
@@ -1419,6 +1467,10 @@ async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
                         local = await _async_download_video(loc)
                         result["local_path"] = local if local else loc
                         result["video_url"] = loc
+                    elif cr.status_code == 200 and "video" in cr.headers.get("content-type", ""):
+                        local = await _save_video_bytes(cr.content)
+                        result["local_path"] = local
+                        result["video_url"] = local
             actual_prompt = (
                 rj.get("actual_prompt")
                 or rj.get("task_info", {}).get("actual_prompt")
