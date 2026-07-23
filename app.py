@@ -96,6 +96,35 @@ MODELS = {
         {"id": "deepseek-v3.2",      "name": "DeepSeek V3.2",    "group": "第三方", "desc": "前代深度推理",           "thinking": False},
         {"id": "glm-5.1",            "name": "GLM 5.1",          "group": "第三方", "desc": "智譜 GLM 前一版",        "thinking": False},
         {"id": "glm-5.2",            "name": "GLM 5.2",          "group": "第三方", "desc": "智譜 GLM 最新版",        "thinking": False},
+        # ── Claude ────────────────────────────────────────────────
+        {"id": "claude-opus-4-8",             "name": "Claude Opus 4.8",   "group": "Claude", "desc": "旗艦，最強推理",   "thinking": False},
+        {"id": "claude-opus-4-7",             "name": "Claude Opus 4.7",   "group": "Claude", "desc": "前代旗艦",         "thinking": False},
+        {"id": "claude-opus-4-6",             "name": "Claude Opus 4.6",   "group": "Claude", "desc": "前代旗艦",         "thinking": False},
+        {"id": "claude-opus-4-5-20251101",    "name": "Claude Opus 4.5",   "group": "Claude", "desc": "前代旗艦",         "thinking": False},
+        {"id": "claude-opus-4-1-20250805",    "name": "Claude Opus 4.1",   "group": "Claude", "desc": "前代旗艦",         "thinking": False},
+        {"id": "claude-sonnet-5",             "name": "Claude Sonnet 5",   "group": "Claude", "desc": "最新均衡，推薦使用", "thinking": False},
+        {"id": "claude-sonnet-4-6",           "name": "Claude Sonnet 4.6", "group": "Claude", "desc": "前代均衡模型",     "thinking": False},
+        {"id": "claude-sonnet-4-5-20250929",  "name": "Claude Sonnet 4.5", "group": "Claude", "desc": "前代均衡模型",     "thinking": False},
+        {"id": "claude-haiku-4-5-20251001",   "name": "Claude Haiku 4.5",  "group": "Claude", "desc": "極速模型",         "thinking": False},
+        {"id": "claude-fable-5",              "name": "Claude Fable 5",    "group": "Claude", "desc": "創意寫作模型",     "thinking": False},
+        # ── GPT ───────────────────────────────────────────────────
+        {"id": "gpt-5.6-terra", "name": "GPT 5.6 Terra", "group": "GPT", "desc": "最新特化模型", "thinking": False},
+        {"id": "gpt-5.6-sol",   "name": "GPT 5.6 Sol",   "group": "GPT", "desc": "最新特化模型", "thinking": False},
+        {"id": "gpt-5.6-luna",  "name": "GPT 5.6 Luna",  "group": "GPT", "desc": "最新特化模型", "thinking": False},
+        {"id": "gpt-5.5",       "name": "GPT 5.5",       "group": "GPT", "desc": "均衡模型",     "thinking": False},
+        {"id": "gpt-5.4",       "name": "GPT 5.4",       "group": "GPT", "desc": "均衡模型",     "thinking": False},
+        {"id": "gpt-5.4-mini",  "name": "GPT 5.4 Mini",  "group": "GPT", "desc": "輕量極速",     "thinking": False},
+        {"id": "gpt-5.4-nano",  "name": "GPT 5.4 Nano",  "group": "GPT", "desc": "超輕量極速",   "thinking": False},
+        {"id": "gpt-5.2",       "name": "GPT 5.2",       "group": "GPT", "desc": "前代均衡模型", "thinking": False},
+        {"id": "gpt-5-mini",    "name": "GPT 5 Mini",    "group": "GPT", "desc": "前代輕量模型", "thinking": False},
+        # ── Gemini ────────────────────────────────────────────────
+        {"id": "gemini-3.1-pro-preview",      "name": "Gemini 3.1 Pro Preview",      "group": "Gemini", "desc": "旗艦，最強推理",   "thinking": False},
+        {"id": "gemini-3.6-flash",            "name": "Gemini 3.6 Flash",            "group": "Gemini", "desc": "新一代均衡模型",   "thinking": False},
+        {"id": "gemini-3.5-flash",            "name": "Gemini 3.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": False},
+        {"id": "gemini-3-flash-preview",      "name": "Gemini 3 Flash Preview",      "group": "Gemini", "desc": "前代均衡模型",     "thinking": False},
+        {"id": "gemini-2.5-pro",              "name": "Gemini 2.5 Pro",              "group": "Gemini", "desc": "前代旗艦",         "thinking": False},
+        {"id": "gemini-2.5-flash",            "name": "Gemini 2.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": False},
+        {"id": "gemini-2.5-flash-lite",       "name": "Gemini 2.5 Flash Lite",       "group": "Gemini", "desc": "前代輕量極速",     "thinking": False},
     ],
     "image": [
         # ── 千問文生圖 ────────────────────────────────────────────
@@ -505,14 +534,17 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
     create_kwargs = dict(
         model=data.model,
         messages=messages,
-        temperature=data.temperature,
-        top_p=data.top_p,
         max_tokens=data.max_tokens,
         presence_penalty=data.presence_penalty,
         frequency_penalty=data.frequency_penalty,
         stream=data.stream,
         extra_body=extra_body or None,
     )
+    # Claude 系列在此平台的 Bedrock 後端不接受 temperature/top_p（部分模型視為已棄用參數，
+    # 部分模型不允許兩者同時指定），一律不送這兩個參數，讓後端使用預設取樣設定
+    if not data.model.startswith("claude-"):
+        create_kwargs["temperature"] = data.temperature
+        create_kwargs["top_p"] = data.top_p
     if data.top_k is not None and data.top_k > 0:
         create_kwargs["extra_body"] = {**(extra_body or {}), "top_k": data.top_k}
     if data.seed is not None:

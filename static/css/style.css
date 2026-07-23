@@ -439,10 +439,11 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .vtc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; }
 .vtc-model { font-size: 0.8rem; font-weight: 600; color: var(--text-h); }
-.vtc-timer { font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono); margin-left: auto; }
+.vtc-timer { font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono); }
 .vtc-status {
     font-size: 0.7rem; font-weight: 700; padding: 2px 8px;
     border-radius: 20px; text-transform: uppercase;
+    margin-left: auto;
 }
 .vtc-status.pending  { background: #FFF8E1; color: var(--yellow); }
 .vtc-status.running  { background: var(--ali-blue-soft); color: var(--ali-blue); }

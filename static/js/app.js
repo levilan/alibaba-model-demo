@@ -1203,8 +1203,8 @@ function addVideoTask(taskId, model, prompt, status) {
     card.innerHTML = `
         <div class="vtc-header">
             <span class="vtc-model">${model}</span>
+            <span class="vtc-timer" id="tm-${taskId}">(耗時 0s)</span>
             <span class="vtc-status ${status?.toLowerCase() || 'pending'}" id="st-${taskId}">${status || 'PENDING'}</span>
-            <span class="vtc-timer" id="tm-${taskId}">0s</span>
         </div>
         <div class="vtc-prompt">${prompt.substring(0, 120)}${prompt.length > 120 ? '...' : ''}</div>
         <div class="vtc-progress"><div class="vtc-progress-bar" id="pb-${taskId}" style="width:5%"></div></div>
@@ -1236,7 +1236,8 @@ async function pollVideo(taskId, startTime) {
         // 更新計時器
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         const tmEl = document.getElementById(`tm-${taskId}`);
-        if (tmEl) tmEl.textContent = elapsed >= 60 ? `${Math.floor(elapsed/60)}m${elapsed%60}s` : `${elapsed}s`;
+        const elapsedText = elapsed >= 60 ? `${Math.floor(elapsed/60)}m${elapsed%60}s` : `${elapsed}s`;
+        if (tmEl) tmEl.textContent = `(耗時 ${elapsedText})`;
 
         if (tries > maxTries) { updateVTC(taskId, 'TIMEOUT', null, '等待超時'); return; }
         try {
@@ -1613,7 +1614,7 @@ function addMuleAIVideoTask(taskId, model, prompt, status) {
     if (empty) empty.remove();
     const startTime = Date.now();
     const card = el('div', { className: 'video-task-card', id: 'mtask-' + taskId });
-    card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-status ' + (status ? status.toLowerCase() : 'pending') + '" id="mst-' + taskId + '">' + (status || 'PENDING') + '</span><span class="vtc-timer" id="mtm-' + taskId + '">0s</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><div class="vtc-progress"><div class="vtc-progress-bar" id="mpb-' + taskId + '" style="width:5%"></div></div><div id="mrv-' + taskId + '"></div>';
+    card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-timer" id="mtm-' + taskId + '">(耗時 0s)</span><span class="vtc-status ' + (status ? status.toLowerCase() : 'pending') + '" id="mst-' + taskId + '">' + (status || 'PENDING') + '</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><div class="vtc-progress"><div class="vtc-progress-bar" id="mpb-' + taskId + '" style="width:5%"></div></div><div id="mrv-' + taskId + '"></div>';
     cont.insertBefore(card, cont.firstChild);
     pollMuleAIVideo(taskId, startTime, model, prompt);
 }
@@ -1625,7 +1626,8 @@ async function pollMuleAIVideo(taskId, startTime, model, promptText) {
         tries++;
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         const tmEl = document.getElementById('mtm-' + taskId);
-        if (tmEl) tmEl.textContent = elapsed >= 60 ? Math.floor(elapsed/60) + 'm' + (elapsed%60) + 's' : elapsed + 's';
+        const elapsedText = elapsed >= 60 ? Math.floor(elapsed/60) + 'm' + (elapsed%60) + 's' : elapsed + 's';
+        if (tmEl) tmEl.textContent = '(耗時 ' + elapsedText + ')';
 
         if (tries > maxTries) { 
             const stEl = document.getElementById('mst-' + taskId);
