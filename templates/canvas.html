@@ -6,7 +6,7 @@
     <title>AI Canvas — NenAI Testing Platform</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2301A0C7'/%3E%3Cpath d='M7 20a6 6 0 01-.6-11.964A8.4 8.4 0 0123.8 15.6h1.08a3.6 3.6 0 010 7.2H7z' fill='white' fill-opacity='0.95'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litegraph.js@0.7.18/css/litegraph.css">
-    <link rel="stylesheet" href="/static/css/canvas.css">
+    <link rel="stylesheet" href="/static/css/canvas.css?v=2">
 </head>
 <body>
 
@@ -35,6 +35,8 @@
     <div id="addNodeMenu" class="add-node-menu" style="display:none">
         <div class="add-node-menu-title">新增節點</div>
         <button data-type="text">📄　文字 Text</button>
+        <button data-type="camera_angle">📐　相機角度 Camera Angle</button>
+        <button data-type="load_image">📁　上傳圖片 Load Image</button>
         <button data-type="image">🖼️　圖片 Image</button>
         <button data-type="video">🎬　影片 Video</button>
         <button data-type="audio" class="disabled" disabled>🎵　語音 Audio（尚未支援）</button>
@@ -58,6 +60,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/litegraph.js@0.7.18/build/litegraph.min.js"></script>
-<script src="/static/js/canvas.js"></script>
+<script src="/static/js/canvas.js?v=7"></script>
 </body>
 </html>

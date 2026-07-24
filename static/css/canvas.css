@@ -216,6 +216,36 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
     white-space: pre-wrap;
 }
 
+/* ── Camera Angle 節點：仿 ComfyUI-qwenmultiangle 的拖曳式相機角度控制 ── */
+.cv-cam-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.cv-cam-row label { flex: 0 0 auto; margin: 0; font-size: 10.5px; }
+.cv-cam-row input[type="number"] { width: 70px; text-align: right; }
+.cv-cam-widget {
+    position: relative; margin-top: 10px; background: #0c0c0e;
+    border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; overflow: hidden;
+    height: 200px;
+}
+.cv-cam-svg { width: 100%; height: 100%; display: block; }
+.cv-cam-ring { fill: none; stroke: #E93D82; stroke-width: 1.5; opacity: 0.75; }
+.cv-cam-arc { fill: none; stroke: #00FFD0; stroke-width: 2; opacity: 0.8; }
+.cv-cam-az-dot { fill: #E93D82; cursor: grab; }
+.cv-cam-el-dot { fill: #00FFD0; cursor: grab; }
+.cv-cam-az-dot:active, .cv-cam-el-dot:active { cursor: grabbing; }
+.cv-cam-card {
+    position: absolute; left: 50%; top: 46%; width: 70px; height: 96px;
+    border-radius: 6px; overflow: hidden; background: #1e1e22; pointer-events: none;
+    border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+}
+.cv-cam-card-img { width: 100%; height: 100%; object-fit: cover; }
+.cv-cam-readout {
+    display: flex; justify-content: space-between; margin-top: 10px;
+    font-size: 10px; text-align: center; color: var(--cv-text-sub); letter-spacing: 0.03em;
+}
+.cv-cam-readout b { display: block; font-size: 13px; margin-top: 2px; }
+.cv-cam-ro-h b { color: #E93D82; }
+.cv-cam-ro-v b { color: #00FFD0; }
+.cv-cam-ro-z b { color: #FFB800; }
+
 /* ── 節點外框裝飾：刪除鈕 / 快速新增關聯節點鈕（比原生插槽點更好抓） ── */
 .cv-close-btn {
     position: absolute; top: 0; left: 0; transform-origin: top left; z-index: 8;

@@ -127,6 +127,8 @@
     // （原生 LiteGraph 的連線插槽很小、不好抓，這裡提供更明顯的點擊入口）
     const NODE_TYPE_LABELS = {
         text: { type: 'nenai/text', label: '📄　文字 Text' },
+        camera_angle: { type: 'nenai/camera_angle', label: '📐　相機角度 Camera Angle' },
+        load_image: { type: 'nenai/load_image', label: '📁　上傳圖片 Load Image' },
         image: { type: 'nenai/image', label: '🖼️　圖片 Image' },
         video: { type: 'nenai/video', label: '🎬　影片 Video' },
         edit: { type: 'nenai/edit', label: '✂️　圖像編輯 Editing' },
@@ -145,16 +147,20 @@
     }
 
     let _quickAddMenu = null;
+    let _quickAddMenuDocHandler = null;
     function closeQuickAddMenu() {
         if (_quickAddMenu) { _quickAddMenu.remove(); _quickAddMenu = null; }
+        if (_quickAddMenuDocHandler) { document.removeEventListener('click', _quickAddMenuDocHandler); _quickAddMenuDocHandler = null; }
     }
+    // sourceNode/outSlot 為 null 時（例如在空白畫布右鍵），選擇的節點會直接
+    // 建立在點擊位置，不會自動連線——用於取代原生右鍵選單（已被關閉）
     function openQuickAddMenu(sourceNode, outSlot, screenX, screenY) {
         closeQuickAddMenu();
         const menu = el('div', 'add-node-menu');
         menu.style.left = screenX + 'px';
         menu.style.top = screenY + 'px';
         menu.style.display = 'block';
-        menu.innerHTML = '<div class="add-node-menu-title">新增關聯節點</div>' +
+        menu.innerHTML = `<div class="add-node-menu-title">${sourceNode ? '新增關聯節點' : '新增節點'}</div>` +
             Object.values(NODE_TYPE_LABELS).map(t =>
                 `<button data-type="${t.type}"${t.disabled ? ' class="disabled" disabled' : ''}>${t.label}</button>`
             ).join('');
@@ -163,18 +169,27 @@
         menu.querySelectorAll('button[data-type]:not(.disabled)').forEach(btn => {
             btn.addEventListener('click', () => {
                 const newNode = LiteGraph.createNode(btn.dataset.type);
-                newNode.pos = [sourceNode.pos[0] + sourceNode.size[0] + 90, sourceNode.pos[1]];
-                graph.add(newNode);
-                connectToFirstCompatibleInput(sourceNode, outSlot, newNode);
+                if (sourceNode) {
+                    newNode.pos = [sourceNode.pos[0] + sourceNode.size[0] + 90, sourceNode.pos[1]];
+                    graph.add(newNode);
+                    connectToFirstCompatibleInput(sourceNode, outSlot, newNode);
+                } else {
+                    const canvasEl = document.getElementById('litegraphCanvas');
+                    const rect = canvasEl.getBoundingClientRect();
+                    const scale = lgCanvas.ds.scale || 1;
+                    const offset = lgCanvas.ds.offset || [0, 0];
+                    newNode.pos = [(screenX - rect.left) / scale - offset[0], (screenY - rect.top) / scale - offset[1]];
+                    graph.add(newNode);
+                }
                 selectNodeOnly(newNode);
                 closeQuickAddMenu();
             });
         });
         _quickAddMenu = menu;
-        setTimeout(() => document.addEventListener('click', function onDocClick(e) {
+        _quickAddMenuDocHandler = (e) => {
             if (_quickAddMenu && !_quickAddMenu.contains(e.target)) { closeQuickAddMenu(); }
-            document.removeEventListener('click', onDocClick);
-        }), 0);
+        };
+        setTimeout(() => document.addEventListener('click', _quickAddMenuDocHandler), 0);
     }
 
     function attachNodeChrome(node) {
@@ -459,6 +474,232 @@
     };
     TextPromptNode.prototype.onRemoved = sharedOnRemoved;
 
+    // ── Node: Camera Angle（多角度相機控制，仿 ComfyUI-qwenmultiangle 的拖曳式
+    // 相機角度控制介面，輸出符合 Qwen-Image-Edit 多角度 LoRA 慣例格式的 prompt，
+    // 例如 "<sks> front view eye-level shot medium shot"——這裡只產生格式化好
+    // 的提示詞，NenAI 平台目前沒有對應的 LoRA 管道，效果仍取決於下游圖片編輯
+    // 模型是否認得這種寫法）用 2D SVG 取代原專案的 Three.js 3D 場景，互動邏輯
+    // （atan2 反推角度、環形/弧形限制拖曳範圍）比照原專案的 CameraWidget.ts ──
+    function _classifyAzimuth(deg) {
+        const table = [
+            [22.5, 'front view'], [67.5, 'front-right quarter view'], [112.5, 'right side view'],
+            [157.5, 'back-right quarter view'], [202.5, 'back view'], [247.5, 'back-left quarter view'],
+            [292.5, 'left side view'], [337.5, 'front-left quarter view'], [360.1, 'front view'],
+        ];
+        for (const [max, label] of table) if (deg < max) return label;
+        return 'front view';
+    }
+    function _classifyElevation(deg) {
+        if (deg < -15) return 'low-angle shot';
+        if (deg <= 15) return 'eye-level shot';
+        if (deg <= 45) return 'elevated shot';
+        return 'high-angle shot';
+    }
+    function _classifyZoom(z) {
+        if (z < 2) return 'wide shot';
+        if (z <= 6) return 'medium shot';
+        return 'close-up';
+    }
+    // 橢圓形方位環（模擬俯視的水平軌道）
+    const CAM_RING = { cx: 130, cy: 148, rx: 104, ry: 26 };
+    // 仰角弧（左側，-30°~60° 對應弧上 200°~100° 的掃角）——圓心/半徑要讓整段弧
+    // 都落在 viewBox（260x200）範圍內，否則 SVG 預設會裁切掉超出範圍的部分，
+    // 導致弧線跟控制點大部分時間畫面外看不到也點不到
+    const CAM_ARC = { cx: 75, cy: 140, r: 68, angMin: -30, angMax: 60, sweepMin: 200, sweepMax: 100 };
+    function _azimuthPoint(deg) {
+        const rad = deg * Math.PI / 180;
+        return [CAM_RING.cx + CAM_RING.rx * Math.sin(rad), CAM_RING.cy + CAM_RING.ry * Math.cos(rad)];
+    }
+    function _elevationPoint(deg) {
+        const t = (deg - CAM_ARC.angMin) / (CAM_ARC.angMax - CAM_ARC.angMin);
+        const sweep = (CAM_ARC.sweepMin + t * (CAM_ARC.sweepMax - CAM_ARC.sweepMin)) * Math.PI / 180;
+        return [CAM_ARC.cx + CAM_ARC.r * Math.cos(sweep), CAM_ARC.cy - CAM_ARC.r * Math.sin(sweep)];
+    }
+    function _svgPoint(svgEl, clientX, clientY) {
+        const rect = svgEl.getBoundingClientRect();
+        const vb = svgEl.viewBox.baseVal;
+        return [
+            (clientX - rect.left) / rect.width * vb.width + vb.x,
+            (clientY - rect.top) / rect.height * vb.height + vb.y,
+        ];
+    }
+    function _attachDrag(dotEl, svgEl, onMove) {
+        dotEl.addEventListener('mousedown', (e) => {
+            e.stopPropagation(); e.preventDefault();
+            const move = (ev) => { const [x, y] = _svgPoint(svgEl, ev.clientX, ev.clientY); onMove(x, y); };
+            const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); };
+            document.addEventListener('mousemove', move);
+            document.addEventListener('mouseup', up);
+        });
+    }
+    function CameraAngleNode() {
+        this.addInput('image', 'image');
+        this.addOutput('prompt', 'string');
+        // 把接進來的圖片原樣傳出去，這樣同一條 Load Image/圖片節點可以一路接到
+        // 下游節點的「參考圖」，不用另外拉一條線——不然使用者容易誤以為接了
+        // image 輸入就會自動把圖傳給下游，結果下游其實完全沒收到參考圖
+        this.addOutput('image', 'image');
+        this.properties = { horizontal: 0, vertical: 0, zoom: 5 };
+        this._contentHeight = 470;
+        this.size = [300, 470];
+        this.color = '#2a3a3d'; this.bgcolor = '#2a2a2a';
+
+        const panel = el('div');
+        panel.innerHTML = `
+            <div class="cv-cam-row"><label>horizontal_angle</label><input type="number" class="cv-cam-h" min="0" max="360" step="1" value="0"></div>
+            <div class="cv-cam-row"><label>vertical_angle</label><input type="number" class="cv-cam-v" min="-30" max="60" step="1" value="0"></div>
+            <div class="cv-cam-row"><label>zoom</label><input type="number" class="cv-cam-z" min="0" max="10" step="0.1" value="5"></div>
+            <div class="cv-hint">拖曳圖上的控制點調整相機角度</div>
+            <div class="cv-cam-widget">
+                <svg class="cv-cam-svg" viewBox="0 0 260 200" preserveAspectRatio="xMidYMid meet">
+                    <ellipse class="cv-cam-ring" cx="${CAM_RING.cx}" cy="${CAM_RING.cy}" rx="${CAM_RING.rx}" ry="${CAM_RING.ry}"></ellipse>
+                    <path class="cv-cam-arc"></path>
+                    <circle class="cv-cam-az-dot" r="9"></circle>
+                    <circle class="cv-cam-el-dot" r="8"></circle>
+                </svg>
+                <div class="cv-cam-card"><img class="cv-cam-card-img" style="display:none"></div>
+            </div>
+            <div class="cv-cam-readout">
+                <span class="cv-cam-ro-h">HORIZONTAL<br><b>0°</b></span>
+                <span class="cv-cam-ro-v">VERTICAL<br><b>0°</b></span>
+                <span class="cv-cam-ro-z">ZOOM<br><b>5.0</b></span>
+            </div>
+            <label>輸出 Prompt</label>
+            <div class="cv-output-box"></div>`;
+        attachDomPanel(this, panel);
+
+        this.hInput = panel.querySelector('.cv-cam-h');
+        this.vInput = panel.querySelector('.cv-cam-v');
+        this.zInput = panel.querySelector('.cv-cam-z');
+        this.outputBox = panel.querySelector('.cv-output-box');
+        this.svgEl = panel.querySelector('.cv-cam-svg');
+        this.arcPath = panel.querySelector('.cv-cam-arc');
+        this.azDot = panel.querySelector('.cv-cam-az-dot');
+        this.elDot = panel.querySelector('.cv-cam-el-dot');
+        this.cardEl = panel.querySelector('.cv-cam-card');
+        this.cardImg = panel.querySelector('.cv-cam-card-img');
+        this.roH = panel.querySelector('.cv-cam-ro-h b');
+        this.roV = panel.querySelector('.cv-cam-ro-v b');
+        this.roZ = panel.querySelector('.cv-cam-ro-z b');
+
+        const [ax, ay] = _elevationPoint(CAM_ARC.angMin);
+        const [bx, by] = _elevationPoint(CAM_ARC.angMax);
+        this.arcPath.setAttribute('d', `M ${ax} ${ay} A ${CAM_ARC.r} ${CAM_ARC.r} 0 0 1 ${bx} ${by}`);
+
+        const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+        const refresh = () => {
+            const { horizontal, vertical, zoom } = this.properties;
+            const [azx, azy] = _azimuthPoint(horizontal);
+            this.azDot.setAttribute('cx', azx); this.azDot.setAttribute('cy', azy);
+            const [elx, ely] = _elevationPoint(vertical);
+            this.elDot.setAttribute('cx', elx); this.elDot.setAttribute('cy', ely);
+            const tilt = clamp((horizontal <= 180 ? horizontal : horizontal - 360) * 0.5, -70, 70);
+            const scale = 0.65 + (zoom / 10) * 0.6;
+            this.cardEl.style.transform = `translate(-50%,-50%) perspective(500px) rotateY(${tilt}deg) scale(${scale})`;
+            this.hInput.value = Math.round(horizontal);
+            this.vInput.value = Math.round(vertical);
+            this.zInput.value = zoom.toFixed(1);
+            this.roH.textContent = Math.round(horizontal) + '°';
+            this.roV.textContent = Math.round(vertical) + '°';
+            this.roZ.textContent = zoom.toFixed(1);
+            this.outputBox.textContent = this._buildPrompt();
+        };
+        this.refresh = refresh;
+
+        this.hInput.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.vInput.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.zInput.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.hInput.addEventListener('change', () => { this.properties.horizontal = clamp(parseFloat(this.hInput.value) || 0, 0, 360); refresh(); });
+        this.vInput.addEventListener('change', () => { this.properties.vertical = clamp(parseFloat(this.vInput.value) || 0, -30, 60); refresh(); });
+        this.zInput.addEventListener('change', () => { this.properties.zoom = clamp(parseFloat(this.zInput.value) || 0, 0, 10); refresh(); });
+
+        _attachDrag(this.azDot, this.svgEl, (x, y) => {
+            const nx = (x - CAM_RING.cx) / CAM_RING.rx;
+            const ny = (y - CAM_RING.cy) / CAM_RING.ry;
+            let deg = Math.atan2(nx, ny) * 180 / Math.PI;
+            if (deg < 0) deg += 360;
+            this.properties.horizontal = deg;
+            refresh();
+        });
+        _attachDrag(this.elDot, this.svgEl, (x, y) => {
+            let ang = Math.atan2(-(y - CAM_ARC.cy), x - CAM_ARC.cx) * 180 / Math.PI;
+            if (ang < 0) ang += 360;
+            const lo = Math.min(CAM_ARC.sweepMin, CAM_ARC.sweepMax);
+            const hi = Math.max(CAM_ARC.sweepMin, CAM_ARC.sweepMax);
+            ang = clamp(ang, lo, hi);
+            const t = (ang - CAM_ARC.sweepMin) / (CAM_ARC.sweepMax - CAM_ARC.sweepMin);
+            this.properties.vertical = clamp(CAM_ARC.angMin + t * (CAM_ARC.angMax - CAM_ARC.angMin), -30, 60);
+            refresh();
+        });
+
+        refresh();
+        attachNodeChrome(this);
+    }
+    CameraAngleNode.title = '相機角度 Camera Angle';
+    CameraAngleNode.prototype._buildPrompt = function () {
+        const { horizontal, vertical, zoom } = this.properties;
+        return `<sks> ${_classifyAzimuth(horizontal)} ${_classifyElevation(vertical)} ${_classifyZoom(zoom)}`;
+    };
+    CameraAngleNode.prototype.onExecute = function () {
+        const imgUrl = this.getInputData(0);
+        if (imgUrl && imgUrl !== this._lastImgUrl) {
+            this._lastImgUrl = imgUrl;
+            this.cardImg.src = imgUrl;
+            this.cardImg.style.display = '';
+        }
+        this.setOutputData(0, this._buildPrompt());
+        this.setOutputData(1, imgUrl || null);
+    };
+    CameraAngleNode.prototype.onRemoved = sharedOnRemoved;
+
+    // ── Node: Load Image（直接上傳本機圖片，不經過模型生成，作為其他節點的
+    // 圖片輸入來源，例如接到圖片編輯節點的「參考圖」或影片節點的 first_frame）──
+    function LoadImageNode() {
+        this.addOutput('image', 'image');
+        this.imageUrl = null;
+        this._contentHeight = 300;
+        // 寬度需與 .cv-config-overlay 的固定 300px 對齊，否則設定浮層會跟節點本體寬度對不齊
+        this.size = [300, 300];
+        this.color = '#3a2f1f'; this.bgcolor = '#2a2a2a';
+
+        const panel = el('div');
+        panel.innerHTML = `
+            <div class="cv-controls">
+                <label>上傳圖片</label>
+                <input type="file" class="cv-load-file" accept="image/*" style="display:none">
+                <button class="cv-generate cv-load-btn">📁 選擇檔案</button>
+                <div class="cv-status"></div>
+            </div>`;
+        attachDomPanel(this, panel);
+        this.fileInput = panel.querySelector('.cv-load-file');
+        this.statusEl = panel.querySelector('.cv-status');
+        const loadBtn = panel.querySelector('.cv-load-btn');
+        loadBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+        loadBtn.addEventListener('click', () => this.fileInput.click());
+        this.fileInput.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.fileInput.addEventListener('change', () => this._onFile());
+
+        panel.appendChild(buildPreview(this));
+        wireConfigOverlay(this, panel);
+        attachNodeChrome(this);
+    }
+    LoadImageNode.title = '上傳圖片 Load Image';
+    LoadImageNode.prototype._onFile = function () {
+        const file = this.fileInput.files[0];
+        if (!file) return;
+        if (this.imageUrl && this.imageUrl.startsWith('blob:')) URL.revokeObjectURL(this.imageUrl);
+        this.imageUrl = URL.createObjectURL(file);
+        setPreviewImage(this, this.imageUrl);
+        this.statusEl.textContent = '已載入：' + file.name;
+    };
+    LoadImageNode.prototype.onExecute = function () {
+        this.setOutputData(0, this.imageUrl);
+    };
+    LoadImageNode.prototype.onRemoved = function () {
+        if (this.imageUrl && this.imageUrl.startsWith('blob:')) URL.revokeObjectURL(this.imageUrl);
+        sharedOnRemoved.call(this);
+    };
+
     // ── Node: Image（文生圖，t2i 模型） ─────────────────────────
     // 圖片節點依「是否連接參考圖」自動切換 t2i（純文生圖）/ i2i（拿參考圖做
     // 圖像生成，實際呼叫 /api/image/edit）——這樣使用者可以直接把一個圖片節點
@@ -652,7 +893,10 @@
         const values = list.map(m => m.id);
         if (!values.includes(this.properties.model)) this.properties.model = values[0] || '';
         this.modelSelect.innerHTML = values.map(v => `<option value="${v}"${v === this.properties.model ? ' selected' : ''}>${v}</option>`).join('');
-        this.modeHintEl.textContent = mode === 'r2v' ? '（參考生影片 / 多圖）' : mode === 'i2v' ? '（圖生影片）' : '（文生影片）';
+        const firstFrameAlsoConnected = mode === 'r2v' && !!this.getInputNode(1);
+        this.modeHintEl.textContent = mode === 'r2v'
+            ? (firstFrameAlsoConnected ? '（參考生影片 / 多圖，first_frame 將被忽略）' : '（參考生影片 / 多圖）')
+            : mode === 'i2v' ? '（圖生影片）' : '（文生影片）';
     };
     VideoGenNode.prototype.generate = async function () {
         const promptIn = this.getInputData(0);
@@ -660,6 +904,9 @@
         if (!prompt) { showToast('請輸入 prompt'); return; }
         if (!this.properties.model) { showToast('請選擇模型'); return; }
         const mode = this._detectMode();
+        if (mode === 'r2v' && this.getInputNode(1)) {
+            showToast('已連接參考圖，first_frame 的圖片將被忽略（r2v 與 i2v 是互斥的兩種生成模式）');
+        }
         this.statusEl.textContent = '送出中…';
         setPreviewEmpty(this, '送出中…');
         try {
@@ -975,6 +1222,8 @@
 
     function registerNodeTypes() {
         LiteGraph.registerNodeType('nenai/text', TextPromptNode);
+        LiteGraph.registerNodeType('nenai/camera_angle', CameraAngleNode);
+        LiteGraph.registerNodeType('nenai/load_image', LoadImageNode);
         LiteGraph.registerNodeType('nenai/image', ImageGenNode);
         LiteGraph.registerNodeType('nenai/video', VideoGenNode);
         LiteGraph.registerNodeType('nenai/edit', ImageEditNode);
@@ -1057,7 +1306,7 @@
         updateZoomLabel();
     }
 
-    const NODE_MENU_TYPES = { text: 'nenai/text', image: 'nenai/image', video: 'nenai/video', edit: 'nenai/edit', audio: 'nenai/audio', muleai: 'nenai/muleai' };
+    const NODE_MENU_TYPES = { text: 'nenai/text', camera_angle: 'nenai/camera_angle', load_image: 'nenai/load_image', image: 'nenai/image', video: 'nenai/video', edit: 'nenai/edit', audio: 'nenai/audio', muleai: 'nenai/muleai' };
 
     function wireToolbar() {
         const addMenu = document.getElementById('addNodeMenu');
@@ -1139,6 +1388,14 @@
         lgCanvas.render_canvas_border = false;
         lgCanvas.links_render_mode = LiteGraph.SPLINE_LINK;
         lgCanvas.onDrawForeground = drawFlowingLinks;
+        // litegraph 原生的畫布右鍵選單（Add Node / Add Group）跟這個平台的節點選單是
+        // 兩套獨立系統：Add Group 建出來的原生 Group 框沒有我們自訂的關閉鈕，選不到
+        // 也刪不掉，會卡在畫面上——直接關閉原生右鍵選單，改成右鍵開啟自訂的新增節點選單
+        lgCanvas.getCanvasMenuOptions = () => null;
+        document.getElementById('litegraphCanvas').addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            openQuickAddMenu(null, null, e.clientX, e.clientY);
+        });
 
         resizeCanvasEl();
         window.addEventListener('resize', resizeCanvasEl);
