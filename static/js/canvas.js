@@ -71,6 +71,64 @@
         return (m && m.sizes) || ['1024*1024', '1280*720', '720*1280'];
     }
 
+    // ── 專案存檔還原共用小工具 ────────────────────────────────────
+    // 動態新增的「參考圖 N」插槽不是 LiteGraph 原生 properties 的一部分，配置
+    // 還原後 this.inputs 陣列本身雖然會自動復原，但我們自己追蹤插槽索引用的
+    // this.refSlots 陣列不會——直接從還原後的 inputs 名稱規律反推回來即可，
+    // 不需要額外序列化。
+    function _collectRefSlots(node) {
+        const slots = [];
+        (node.inputs || []).forEach((inp, i) => { if (/^參考圖 \d+$/.test(inp.name)) slots.push(i); });
+        return slots;
+    }
+    // 生成結果的圖片/影片網址存在各節點自己的實例欄位（this.imageUrl/videoUrl），
+    // 不是 LiteGraph 原生 properties 的一部分，必須靠 onSerialize/onConfigure
+    // 手動存取還原；上傳圖片產生的 blob: 網址則刻意不做這件事——分頁重新整理後
+    // 瀏覽器記憶體裡的 Blob 資料已經不存在，存下去也是無效網址。
+    function _restoreGenResult(node, cv) {
+        if (!cv) return;
+        if (cv.imageUrl) { node.imageUrl = cv.imageUrl; setPreviewImage(node, cv.imageUrl); if (node.statusEl) node.statusEl.textContent = '完成'; }
+        if (cv.videoUrl) { node.videoUrl = cv.videoUrl; setPreviewVideo(node, cv.videoUrl); if (node.statusEl) node.statusEl.textContent = '完成'; }
+    }
+    // 之前發生過使用者把 prompt 節點接上後，textarea 仍顯示舊的手動輸入文字，
+    // 誤以為連線生效、生成時卻其實還是用手動文字（因為看不出「目前真正會送出
+    // 的內容」）——這裡讓 textarea 在連線時即時鏡射上游輸出、鎖成唯讀，斷線
+    // 後才還原成可編輯，讓「現在用的是連接文字還是手動輸入」一眼就能分辨。
+    function _syncPromptTextarea(node, textarea, inputSlot) {
+        const connected = !!node.getInputNode(inputSlot);
+        if (connected) {
+            const val = node.getInputData(inputSlot);
+            const text = (val != null && val !== '') ? String(val) : '（等待上游節點輸出…）';
+            if (textarea.value !== text) textarea.value = text;
+            if (!textarea.disabled) {
+                textarea.disabled = true;
+                textarea.classList.add('cv-textarea-linked');
+            }
+        } else if (textarea.disabled) {
+            textarea.disabled = false;
+            textarea.classList.remove('cv-textarea-linked');
+            textarea.value = node.properties.prompt != null ? node.properties.prompt : (node.properties.text || '');
+        }
+    }
+    // 相機角度節點只要透過任何一個輸入插槽接上（不限定 prompt 插槽，接參考圖/
+    // first_frame/來源圖等都算），就自動把它的 prompt 輸出當前綴帶入，不用另外
+    // 手動拉一條 prompt 連線——避免使用者以為「接了圖就會自動帶 prompt」卻其實
+    // 沒有的落差。用 duck-typing 找「有 _buildPrompt 方法」的上游節點（目前只
+    // 有 CameraAngleNode 有），這樣未來如果有其他節點想比照辦理也不用改這裡。
+    function _autoCameraAnglePrefix(node, promptSlot) {
+        const promptSrc = promptSlot != null ? node.getInputNode(promptSlot) : null;
+        for (let i = 0; i < (node.inputs || []).length; i++) {
+            if (i === promptSlot) continue;
+            const src = node.getInputNode(i);
+            if (src && src !== promptSrc && typeof src._buildPrompt === 'function') return src._buildPrompt();
+        }
+        return '';
+    }
+    function _combinePrompt(node, promptSlot, basePrompt) {
+        const prefix = _autoCameraAnglePrefix(node, promptSlot);
+        return prefix ? `${prefix} ${basePrompt || ''}`.trim() : basePrompt;
+    }
+
     function showToast(msg) {
         let el = document.getElementById('cvToast');
         if (!el) {
@@ -126,14 +184,16 @@
     // ── 節點「外框裝飾」：右上角刪除鈕、每個輸出插槽旁的「+」快速新增關聯節點鈕 ──
     // （原生 LiteGraph 的連線插槽很小、不好抓，這裡提供更明顯的點擊入口）
     const NODE_TYPE_LABELS = {
-        text: { type: 'nenai/text', label: '📄　文字 Text' },
-        camera_angle: { type: 'nenai/camera_angle', label: '📐　相機角度 Camera Angle' },
-        load_image: { type: 'nenai/load_image', label: '📁　上傳圖片 Load Image' },
-        image: { type: 'nenai/image', label: '🖼️　圖片 Image' },
-        video: { type: 'nenai/video', label: '🎬　影片 Video' },
-        edit: { type: 'nenai/edit', label: '✂️　圖像編輯 Editing' },
-        audio: { type: 'nenai/audio', label: '🎵　語音 Audio（尚未支援）', disabled: true },
-        muleai: { type: 'nenai/muleai', label: '🌶️　MuleAI Spicy' },
+        text: { type: 'nenai/text', label: '文字 Text' },
+        camera_angle: { type: 'nenai/camera_angle', label: '相機角度 Camera Angle' },
+        load_image: { type: 'nenai/load_image', label: '上傳圖片 Load Image' },
+        image: { type: 'nenai/image', label: '圖片 Image' },
+        video: { type: 'nenai/video', label: '影片 Video' },
+        video_edit: { type: 'nenai/video_edit', label: '影片編輯 Video Edit' },
+        video_animate: { type: 'nenai/video_animate', label: '動作動畫 Animate' },
+        edit: { type: 'nenai/edit', label: '圖像編輯 Editing' },
+        audio: { type: 'nenai/audio', label: '語音 Audio（尚未支援）', disabled: true },
+        muleai: { type: 'nenai/muleai', label: 'MuleAI Spicy' },
     };
 
     function connectToFirstCompatibleInput(sourceNode, outSlot, targetNode) {
@@ -168,21 +228,29 @@
         domLayer.appendChild(menu);
         menu.querySelectorAll('button[data-type]:not(.disabled)').forEach(btn => {
             btn.addEventListener('click', () => {
-                const newNode = LiteGraph.createNode(btn.dataset.type);
-                if (sourceNode) {
-                    newNode.pos = [sourceNode.pos[0] + sourceNode.size[0] + 90, sourceNode.pos[1]];
-                    graph.add(newNode);
-                    connectToFirstCompatibleInput(sourceNode, outSlot, newNode);
-                } else {
-                    const canvasEl = document.getElementById('litegraphCanvas');
-                    const rect = canvasEl.getBoundingClientRect();
-                    const scale = lgCanvas.ds.scale || 1;
-                    const offset = lgCanvas.ds.offset || [0, 0];
-                    newNode.pos = [(screenX - rect.left) / scale - offset[0], (screenY - rect.top) / scale - offset[1]];
-                    graph.add(newNode);
+                // 用 try/finally 確保無論建立節點/連線過程中有沒有出錯，選單一定會關掉——
+                // 之前發生過中途拋例外導致 closeQuickAddMenu() 沒被執行、選單卡在畫面上
+                try {
+                    const newNode = LiteGraph.createNode(btn.dataset.type);
+                    if (sourceNode) {
+                        newNode.pos = [sourceNode.pos[0] + sourceNode.size[0] + 90, sourceNode.pos[1]];
+                        graph.add(newNode);
+                        connectToFirstCompatibleInput(sourceNode, outSlot, newNode);
+                    } else {
+                        const canvasEl = document.getElementById('litegraphCanvas');
+                        const rect = canvasEl.getBoundingClientRect();
+                        const scale = lgCanvas.ds.scale || 1;
+                        const offset = lgCanvas.ds.offset || [0, 0];
+                        newNode.pos = [(screenX - rect.left) / scale - offset[0], (screenY - rect.top) / scale - offset[1]];
+                        graph.add(newNode);
+                    }
+                    selectNodeOnly(newNode);
+                } catch (err) {
+                    console.error('新增節點失敗', err);
+                    showToast('新增節點失敗：' + err.message);
+                } finally {
+                    closeQuickAddMenu();
                 }
-                selectNodeOnly(newNode);
-                closeQuickAddMenu();
             });
         });
         _quickAddMenu = menu;
@@ -280,6 +348,9 @@
                     const [sx, sy] = toScreen(node.pos[0], node.pos[1] + zoneH);
                     panel.style.left = sx + 'px';
                     panel.style.top = sy + 'px';
+                    // 從左上角縮放（預設是置中縮放，元素越寬，縮放時往內縮的偏移量越明顯，
+                    // 導致節點本體跟固定尺寸的設定浮層在非 100% 縮放時對不齊）
+                    panel.style.transformOrigin = 'top left';
                     panel.style.transform = `scale(${scale})`;
                 }
             } else if (node._contentHeight) {
@@ -289,6 +360,7 @@
                 const [sx, sy] = toScreen(node.pos[0] + node.size[0], node.pos[1] - titleH);
                 node._closeBtn.style.left = (sx - 22 * scale) + 'px';
                 node._closeBtn.style.top = (sy + 4 * scale) + 'px';
+                node._closeBtn.style.transformOrigin = 'top left';
                 node._closeBtn.style.transform = `scale(${scale})`;
             }
             (node._addBtns || []).forEach((btn, slot) => {
@@ -299,6 +371,7 @@
                 // 往右偏移一段距離，避免蓋住原生連線圓點（那個點仍保留給滑鼠拖曳連線用）
                 btn.style.left = (sx + 18 * scale) + 'px';
                 btn.style.top = (sy - 11 * scale) + 'px';
+                btn.style.transformOrigin = 'top left';
                 btn.style.transform = `scale(${scale})`;
             });
             // 設定浮層固定像素大小、不套用縮放 transform，只在節點被選中時顯示，
@@ -398,7 +471,7 @@
             <label>Prompt</label>
             <textarea placeholder="輸入文字…"></textarea>
             <button class="cv-generate cv-gen-text-btn">▶ 生成文字</button>
-            <button class="cv-generate cv-analyze-btn" style="display:none">🔍 分析已連接的圖片</button>
+            <button class="cv-generate cv-analyze-btn" style="display:none">分析已連接的圖片</button>
             <div class="cv-status"></div>
             <div class="cv-output-box" style="display:none"></div>`;
         attachDomPanel(this, panel);
@@ -443,6 +516,7 @@
             this.outputBox.textContent = this.generatedText;
             this.outputBox.style.display = '';
             this.statusEl.textContent = '完成（輸出已改為生成結果）';
+            this.setOutputData(0, this.generatedText);
         } catch (e) {
             this.statusEl.textContent = '錯誤：' + e.message;
             showToast('文字生成失敗：' + e.message);
@@ -467,19 +541,36 @@
             this.outputBox.textContent = this.generatedText;
             this.outputBox.style.display = '';
             this.statusEl.textContent = '完成';
+            this.setOutputData(0, this.generatedText);
         } catch (e) {
             this.statusEl.textContent = '錯誤：' + e.message;
             showToast('圖片分析失敗：' + e.message);
         }
     };
+    TextPromptNode.prototype.onSerialize = function (o) {
+        o.cv = { generatedText: this.generatedText || null };
+    };
+    TextPromptNode.prototype.onConfigure = function (o) {
+        this.textarea.value = this.properties.text || '';
+        if (this.modelSelect) this.modelSelect.value = this.properties.model;
+        const cv = o.cv || {};
+        if (cv.generatedText) {
+            this.generatedText = cv.generatedText;
+            this.outputBox.textContent = cv.generatedText;
+            this.outputBox.style.display = '';
+            this.statusEl.textContent = '完成（輸出已改為生成結果）';
+        }
+    };
     TextPromptNode.prototype.onRemoved = sharedOnRemoved;
 
-    // ── Node: Camera Angle（多角度相機控制，仿 ComfyUI-qwenmultiangle 的拖曳式
-    // 相機角度控制介面，輸出符合 Qwen-Image-Edit 多角度 LoRA 慣例格式的 prompt，
-    // 例如 "<sks> front view eye-level shot medium shot"——這裡只產生格式化好
-    // 的提示詞，NenAI 平台目前沒有對應的 LoRA 管道，效果仍取決於下游圖片編輯
-    // 模型是否認得這種寫法）用 2D SVG 取代原專案的 Three.js 3D 場景，互動邏輯
-    // （atan2 反推角度、環形/弧形限制拖曳範圍）比照原專案的 CameraWidget.ts ──
+    // ── Node: Camera Angle（仿 ComfyUI-qwenmultiangle 的拖曳式相機角度控制介面。
+    // 比照原專案設計：視覺化調整方位角/仰角/縮放後，輸出符合該專案 LoRA 慣例
+    // 格式的 prompt，例如 "<sks> front view eye-level shot medium shot"，可直
+    // 接接到下游圖片節點的 prompt 輸入做 i2i 生成；同時把輸入圖片原樣傳出，方
+    // 便同一條線也接到「參考圖」輸入。注意：NenAI 平台沒有對應的 Multiple-
+    // Angles-LoRA，一般模型不認得 <sks> 這種觸發詞，效果不會跟原專案一樣精準）
+    // 用 2D SVG 取代原專案的 Three.js 3D 場景，互動邏輯（atan2 反推角度、環形/
+    // 弧形限制拖曳範圍）比照原專案的 CameraWidget.ts ─────────────────────
     function _classifyAzimuth(deg) {
         const table = [
             [22.5, 'front view'], [67.5, 'front-right quarter view'], [112.5, 'right side view'],
@@ -535,9 +626,8 @@
     function CameraAngleNode() {
         this.addInput('image', 'image');
         this.addOutput('prompt', 'string');
-        // 把接進來的圖片原樣傳出去，這樣同一條 Load Image/圖片節點可以一路接到
-        // 下游節點的「參考圖」，不用另外拉一條線——不然使用者容易誤以為接了
-        // image 輸入就會自動把圖傳給下游，結果下游其實完全沒收到參考圖
+        // 把接進來的圖片原樣傳出去，這樣同一條線可以同時接到下游節點的 prompt
+        // 跟「參考圖」兩個輸入，做 i2i 生成
         this.addOutput('image', 'image');
         this.properties = { horizontal: 0, vertical: 0, zoom: 5 };
         this._contentHeight = 470;
@@ -602,7 +692,12 @@
             this.roH.textContent = Math.round(horizontal) + '°';
             this.roV.textContent = Math.round(vertical) + '°';
             this.roZ.textContent = zoom.toFixed(1);
-            this.outputBox.textContent = this._buildPrompt();
+            const prompt = this._buildPrompt();
+            this.outputBox.textContent = prompt;
+            // 立刻寫入輸出資料，不等 LiteGraph 下一次執行迴圈才呼叫 onExecute——
+            // 否則使用者調完角度馬上按生成，下游節點可能讀到還沒更新的舊資料
+            this.setOutputData(0, prompt);
+            this.setOutputData(1, this.getInputData(0) || null);
         };
         this.refresh = refresh;
 
@@ -650,6 +745,10 @@
         this.setOutputData(0, this._buildPrompt());
         this.setOutputData(1, imgUrl || null);
     };
+    // horizontal/vertical/zoom 都存在 this.properties，LiteGraph 還原設定時會自動
+    // 覆蓋回去，呼叫 refresh() 就能一次把 SVG 控制點、卡片旋轉、數值輸入框、
+    // prompt 文字全部重新同步，不需要額外的序列化資料
+    CameraAngleNode.prototype.onConfigure = function () { this.refresh(); };
     CameraAngleNode.prototype.onRemoved = sharedOnRemoved;
 
     // ── Node: Load Image（直接上傳本機圖片，不經過模型生成，作為其他節點的
@@ -667,7 +766,7 @@
             <div class="cv-controls">
                 <label>上傳圖片</label>
                 <input type="file" class="cv-load-file" accept="image/*" style="display:none">
-                <button class="cv-generate cv-load-btn">📁 選擇檔案</button>
+                <button class="cv-generate cv-load-btn">選擇檔案</button>
                 <div class="cv-status"></div>
             </div>`;
         attachDomPanel(this, panel);
@@ -691,9 +790,16 @@
         this.imageUrl = URL.createObjectURL(file);
         setPreviewImage(this, this.imageUrl);
         this.statusEl.textContent = '已載入：' + file.name;
+        // 立刻寫入輸出資料，不等 LiteGraph 下一次執行迴圈才呼叫 onExecute
+        this.setOutputData(0, this.imageUrl);
     };
     LoadImageNode.prototype.onExecute = function () {
         this.setOutputData(0, this.imageUrl);
+    };
+    // 上傳的圖片是瀏覽器記憶體裡的 Blob，重新整理分頁後就不存在了，網址存下去
+    // 也是無效的——還原專案時只能提示使用者重新選擇檔案
+    LoadImageNode.prototype.onConfigure = function () {
+        this.statusEl.textContent = '請重新選擇圖片檔案（瀏覽器重新整理後上傳檔案不會保留）';
     };
     LoadImageNode.prototype.onRemoved = function () {
         if (this.imageUrl && this.imageUrl.startsWith('blob:')) URL.revokeObjectURL(this.imageUrl);
@@ -704,10 +810,14 @@
     // 圖片節點依「是否連接參考圖」自動切換 t2i（純文生圖）/ i2i（拿參考圖做
     // 圖像生成，實際呼叫 /api/image/edit）——這樣使用者可以直接把一個圖片節點
     // 的輸出拉線接到另一個圖片節點的「參考圖」輸入，做「用圖像生成圖像」。
+    // 可用「+ 新增參考圖輸入」加到最多 6 張（後端 qwen-image-2.0 融合模型最多
+    // 吃 3 張、其餘模型最多 9 張，UI 統一給 6 張上限）。
+    const IMAGE_MAX_REF_SLOTS = 6;
     function ImageGenNode() {
         this.addInput('prompt', 'string');
-        this.addInput('參考圖', 'image');
+        this.addInput('參考圖 1', 'image');
         this.addOutput('image', 'image');
+        this.refSlots = [1];
         const models = getModelsFor('image', 't2i');
         this.properties = { model: (models[0] && models[0].id) || '', prompt: '', size: '1024*1024', status: '' };
         this.imageUrl = null;
@@ -722,8 +832,10 @@
                 <div class="cv-select-slot"></div>
                 <label>Prompt<span class="cv-hint">（若連接文字節點會優先使用其輸出）</span></label>
                 <textarea placeholder="輸入文字…"></textarea>
+                <div class="cv-cam-prefix-hint" style="display:none"></div>
                 <label>尺寸</label>
                 <div class="cv-size-slot"></div>
+                <button class="cv-add-ref-btn">+ 新增參考圖輸入</button>
                 <button class="cv-generate">▶ 生成圖片</button>
                 <div class="cv-status"></div>
             </div>`;
@@ -732,6 +844,8 @@
         this.textarea.addEventListener('input', () => { this.properties.prompt = this.textarea.value; });
         this.statusEl = panel.querySelector('.cv-status');
         this.modeHintEl = panel.querySelector('.cv-mode-hint');
+        this.camHintEl = panel.querySelector('.cv-cam-prefix-hint');
+        panel.querySelector('.cv-add-ref-btn').addEventListener('click', () => this._addRefSlot());
         panel.querySelector('.cv-generate').addEventListener('click', () => this.generate());
 
         this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => {
@@ -747,17 +861,36 @@
         attachNodeChrome(this);
     }
     ImageGenNode.title = '圖片 Image';
+    ImageGenNode.prototype._addRefSlot = function () {
+        if (this.refSlots.length >= IMAGE_MAX_REF_SLOTS) { showToast(`最多 ${IMAGE_MAX_REF_SLOTS} 張參考圖`); return; }
+        const w = this.size[0];
+        this.addInput('參考圖 ' + (this.refSlots.length + 1), 'image');
+        this.refSlots.push(this.inputs.length - 1);
+        // addInput() 內部會呼叫 setSize(computeSize())，用原生插槽文字寬度覆蓋掉
+        // 我們自訂的節點寬度，導致節點框框變窄變形——加完插槽後把寬度改回來
+        this.size[0] = w;
+        lgCanvas.setDirty(true, true);
+    };
     ImageGenNode.prototype._rebuildSizeSelect = function (sizes) {
-        const slot = this._domPanel.querySelector('.cv-size-slot');
+        // wireConfigOverlay() 執行後，.cv-size-slot 所在的表單控制區塊已經搬到
+        // this._configOverlay（獨立浮層），不再是 this._domPanel 的子節點——
+        // 建構子第一次呼叫此方法時 wireConfigOverlay 還沒跑，_configOverlay 尚
+        // 不存在，才需要用 _domPanel 當備援
+        const container = this._configOverlay || this._domPanel;
+        const slot = container.querySelector('.cv-size-slot');
         if (!sizes.includes(this.properties.size)) this.properties.size = sizes[0];
         slot.innerHTML = '';
         this.sizeSelect = buildSelect(sizes, this.properties.size, (v) => { this.properties.size = v; });
         slot.appendChild(this.sizeSelect);
     };
     ImageGenNode.prototype._detectMode = function () {
-        return this.getInputNode(1) ? 'i2i' : 't2i';
+        return this.refSlots.some(i => !!this.getInputNode(i)) ? 'i2i' : 't2i';
     };
     ImageGenNode.prototype.onExecute = function () {
+        _syncPromptTextarea(this, this.textarea, 0);
+        const camPrefix = _autoCameraAnglePrefix(this, 0);
+        this.camHintEl.style.display = camPrefix ? '' : 'none';
+        if (camPrefix) this.camHintEl.textContent = '將自動附加相機角度 prompt：' + camPrefix;
         this.setOutputData(0, this.imageUrl);
     };
     ImageGenNode.prototype.onConnectionsChange = function (type) {
@@ -772,7 +905,8 @@
     };
     ImageGenNode.prototype.generate = async function () {
         const promptIn = this.getInputData(0);
-        const prompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
+        const basePrompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
+        const prompt = _combinePrompt(this, 0, basePrompt);
         if (!prompt) { showToast('請輸入 prompt'); return; }
         if (!this.properties.model) { showToast('請選擇模型'); return; }
         const mode = this._detectMode();
@@ -781,14 +915,31 @@
         try {
             let res;
             if (mode === 'i2i') {
-                const refUrl = this.getInputData(1);
-                if (!refUrl) throw new Error('參考圖節點尚未生成完成，請先按上游圖片節點的「生成圖片」');
+                const refUrls = this.refSlots.map(i => this.getInputData(i)).filter(Boolean);
+                // 暫時性除錯：協助排查「參考圖節點尚未生成完成」的誤判問題，之後會移除
+                console.log('[cv-debug] ref check', JSON.stringify({
+                    refSlots: this.refSlots,
+                    perSlot: this.refSlots.map(i => {
+                        const srcNode = this.getInputNode(i);
+                        return {
+                            slot: i,
+                            slotName: (this.inputs[i] || {}).name,
+                            slotLink: (this.inputs[i] || {}).link,
+                            srcNodeType: srcNode ? srcNode.constructor.name : null,
+                            srcNodeId: srcNode ? srcNode.id : null,
+                            getInputData: this.getInputData(i),
+                        };
+                    }),
+                }, null, 2));
+                if (!refUrls.length) throw new Error('參考圖節點尚未生成完成，請先按上游圖片節點的「生成圖片」');
                 const fd = new FormData();
                 fd.append('model', this.properties.model);
                 fd.append('prompt', prompt);
                 fd.append('size', this.properties.size);
                 fd.append('n', '1');
-                fd.append('image_1', await fetchAsBlob(refUrl), 'ref.png');
+                for (let i = 0; i < refUrls.length; i++) {
+                    fd.append(`image_${i + 1}`, await fetchAsBlob(refUrls[i]), `ref${i + 1}.png`);
+                }
                 res = await apiFetch('/api/image/edit', { method: 'POST', body: fd });
             } else {
                 res = await apiFetch('/api/image/generate', {
@@ -801,11 +952,22 @@
             this.imageUrl = data.images[0].local_path || data.images[0].url;
             this.statusEl.textContent = '完成';
             setPreviewImage(this, this.imageUrl);
+            this.setOutputData(0, this.imageUrl);
         } catch (e) {
             this.statusEl.textContent = '錯誤：' + e.message;
             setPreviewEmpty(this, '生成失敗');
             showToast('圖片生成失敗：' + e.message);
         }
+    };
+    ImageGenNode.prototype.onSerialize = function (o) {
+        o.cv = { imageUrl: this.imageUrl || null };
+    };
+    ImageGenNode.prototype.onConfigure = function (o) {
+        this.textarea.value = this.properties.prompt || '';
+        if (this.modelSelect) this.modelSelect.value = this.properties.model;
+        this._rebuildSizeSelect(sizesForModel('image', this.properties.model));
+        this.refSlots = _collectRefSlots(this);
+        _restoreGenResult(this, o.cv);
     };
     ImageGenNode.prototype.onRemoved = sharedOnRemoved;
 
@@ -871,8 +1033,16 @@
     VideoGenNode.title = '影片 Video';
     VideoGenNode.prototype._addRefSlot = function () {
         if (this.refSlots.length >= VIDEO_MAX_REF_SLOTS) { showToast(`最多 ${VIDEO_MAX_REF_SLOTS} 張參考圖`); return; }
+        const w = this.size[0];
         this.addInput('參考圖 ' + (this.refSlots.length + 1), 'image');
         this.refSlots.push(this.inputs.length - 1);
+        // addInput() 內部會呼叫 setSize(computeSize())，用原生插槽文字寬度覆蓋掉
+        // 我們自訂的節點寬度，導致節點框框變窄變形——加完插槽後把寬度改回來
+        this.size[0] = w;
+        // 強制立即重繪：insert 後畫布可能要等下一輪動畫幀才重新計算新插槽的實際
+        // 螢幕座標，這段空窗期如果使用者剛好開始拖線，滑鼠命中判定可能用到還沒
+        // 更新的舊座標，導致連線拖拉失敗
+        lgCanvas.setDirty(true, true);
     };
     // 模式判定要用「有沒有連線」（結構性、graph topology），不能用「有沒有資料」
     // （getInputData 要等上游節點生成完畢並執行過 onExecute 才會有值）——否則
@@ -884,6 +1054,7 @@
         return 't2v';
     };
     VideoGenNode.prototype.onExecute = function () {
+        _syncPromptTextarea(this, this.textarea, 0);
         this.setOutputData(0, this.videoUrl);
     };
     VideoGenNode.prototype.onConnectionsChange = function (type) {
@@ -900,7 +1071,8 @@
     };
     VideoGenNode.prototype.generate = async function () {
         const promptIn = this.getInputData(0);
-        const prompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
+        const basePrompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
+        const prompt = _combinePrompt(this, 0, basePrompt);
         if (!prompt) { showToast('請輸入 prompt'); return; }
         if (!this.properties.model) { showToast('請選擇模型'); return; }
         const mode = this._detectMode();
@@ -940,13 +1112,254 @@
             this.videoUrl = result.local_path || result.video_url;
             this.statusEl.textContent = '完成';
             setPreviewVideo(this, this.videoUrl);
+            this.setOutputData(0, this.videoUrl);
         } catch (e) {
             this.statusEl.textContent = '錯誤：' + e.message;
             setPreviewEmpty(this, '生成失敗');
             showToast('影片生成失敗：' + e.message);
         }
     };
+    VideoGenNode.prototype.onSerialize = function (o) {
+        o.cv = { videoUrl: this.videoUrl || null };
+    };
+    VideoGenNode.prototype.onConfigure = function (o) {
+        this.textarea.value = this.properties.prompt || '';
+        if (this.modelSelect) this.modelSelect.value = this.properties.model;
+        if (this.resSelect) this.resSelect.value = this.properties.resolution;
+        if (this.durSlider) { this.durSlider.value = this.properties.duration; this.durValEl.textContent = this.properties.duration; }
+        this.refSlots = _collectRefSlots(this);
+        _restoreGenResult(this, o.cv);
+    };
     VideoGenNode.prototype.onRemoved = sharedOnRemoved;
+
+    // ── Node: Video Edit（wan2.7-videoedit，文字/參考圖驅動編輯既有影片）──────
+    // 來源影片可以接 video 型別輸入（例如接影片節點的輸出），也可以直接在節點
+    // 內上傳本機影片檔案——沒有連線時就用上傳的檔案。
+    const VEDIT_MAX_REF_SLOTS = 3;
+    function VideoEditNode() {
+        this.addInput('prompt', 'string');
+        this.addInput('video', 'video');
+        this.addOutput('video', 'video');
+        this.refSlots = [];
+        this.localVideoUrl = null;
+        const models = getModelsFor('video', 'vedit');
+        this.properties = {
+            model: (models[0] && models[0].id) || '', prompt: '', resolution: '1080P',
+            ratio: '', audioSetting: 'auto', duration: 0, status: '',
+        };
+        this.videoUrl = null;
+        this._contentHeight = 620;
+        this.size = [320, 620];
+        this.color = '#1f2f3a'; this.bgcolor = '#2a2a2a';
+
+        const panel = el('div');
+        panel.innerHTML = `
+            <div class="cv-controls">
+                <label>模型</label>
+                <div class="cv-select-slot"></div>
+                <label>Prompt<span class="cv-hint">（若連接文字節點會優先使用其輸出）</span></label>
+                <textarea placeholder="輸入編輯指示…"></textarea>
+                <label>來源影片<span class="cv-hint">（未連接 video 輸入時使用）</span></label>
+                <input type="file" class="cv-vedit-file" accept="video/*" style="display:none">
+                <button class="cv-add-ref-btn cv-vedit-upload-btn">選擇影片檔案</button>
+                <label>畫面比例</label>
+                <div class="cv-ratio-slot"></div>
+                <label>音訊設定</label>
+                <div class="cv-audio-slot"></div>
+                <button class="cv-add-ref-btn cv-add-ref-vedit-btn">+ 新增參考圖輸入</button>
+                <button class="cv-generate cv-submit-btn">▶ 編輯影片</button>
+                <div class="cv-status"></div>
+            </div>`;
+        attachDomPanel(this, panel);
+        this.textarea = panel.querySelector('textarea');
+        this.textarea.addEventListener('input', () => { this.properties.prompt = this.textarea.value; });
+        this.statusEl = panel.querySelector('.cv-status');
+        this.fileInput = panel.querySelector('.cv-vedit-file');
+        this.uploadBtn = panel.querySelector('.cv-vedit-upload-btn');
+        this.uploadBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.uploadBtn.addEventListener('click', () => this.fileInput.click());
+        this.fileInput.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.fileInput.addEventListener('change', () => this._onFile());
+        panel.querySelector('.cv-add-ref-vedit-btn').addEventListener('click', () => this._addRefSlot());
+        panel.querySelector('.cv-submit-btn').addEventListener('click', () => this.generate());
+
+        this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => { this.properties.model = v; });
+        panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+
+        this.ratioSelect = buildSelect(['', '16:9', '9:16', '1:1', '4:3', '3:4'], this.properties.ratio, (v) => { this.properties.ratio = v; });
+        panel.querySelector('.cv-ratio-slot').appendChild(this.ratioSelect);
+
+        this.audioSelect = buildSelect(['auto', 'origin'], this.properties.audioSetting, (v) => { this.properties.audioSetting = v; });
+        panel.querySelector('.cv-audio-slot').appendChild(this.audioSelect);
+
+        panel.appendChild(buildPreview(this));
+        wireConfigOverlay(this, panel);
+        attachNodeChrome(this);
+    }
+    VideoEditNode.title = '影片編輯 Video Edit';
+    VideoEditNode.prototype._addRefSlot = function () {
+        if (this.refSlots.length >= VEDIT_MAX_REF_SLOTS) { showToast(`最多 ${VEDIT_MAX_REF_SLOTS} 張參考圖`); return; }
+        const w = this.size[0];
+        this.addInput('參考圖 ' + (this.refSlots.length + 1), 'image');
+        this.refSlots.push(this.inputs.length - 1);
+        this.size[0] = w;
+        lgCanvas.setDirty(true, true);
+    };
+    VideoEditNode.prototype._onFile = function () {
+        const file = this.fileInput.files[0];
+        if (!file) return;
+        if (this.localVideoUrl && this.localVideoUrl.startsWith('blob:')) URL.revokeObjectURL(this.localVideoUrl);
+        this.localVideoUrl = URL.createObjectURL(file);
+        this.statusEl.textContent = '已選擇：' + file.name;
+    };
+    VideoEditNode.prototype.onExecute = function () {
+        _syncPromptTextarea(this, this.textarea, 0);
+        this.setOutputData(0, this.videoUrl);
+    };
+    VideoEditNode.prototype.generate = async function () {
+        const promptIn = this.getInputData(0);
+        const basePrompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
+        const prompt = _combinePrompt(this, 0, basePrompt);
+        const videoUrl = this.getInputData(1) || this.localVideoUrl;
+        if (!videoUrl) { showToast('請上傳或連接一段來源影片'); return; }
+        if (!this.properties.model) { showToast('請選擇模型'); return; }
+        this.statusEl.textContent = '送出中…';
+        setPreviewEmpty(this, '送出中…');
+        try {
+            const fd = new FormData();
+            fd.append('model', this.properties.model);
+            fd.append('prompt', prompt || '');
+            fd.append('resolution', this.properties.resolution);
+            fd.append('audio_setting', this.properties.audioSetting);
+            if (this.properties.ratio) fd.append('ratio', this.properties.ratio);
+            fd.append('video', await fetchAsBlob(videoUrl), 'source.mp4');
+            const refUrls = this.refSlots.map(i => this.getInputData(i)).filter(Boolean);
+            for (let i = 0; i < refUrls.length; i++) {
+                fd.append(`reference_image_${i + 1}`, await fetchAsBlob(refUrls[i]), `ref${i + 1}.png`);
+            }
+            const res = await apiFetch('/api/video/vedit', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error((data.error && (data.error.message || data.error)) || '任務建立失敗');
+            this.statusEl.textContent = '生成中…';
+            setPreviewEmpty(this, '生成中…（可能需要 1～數分鐘）');
+            const result = await pollVideoTask(data.task_id);
+            this.videoUrl = result.local_path || result.video_url;
+            this.statusEl.textContent = '完成';
+            setPreviewVideo(this, this.videoUrl);
+            this.setOutputData(0, this.videoUrl);
+        } catch (e) {
+            this.statusEl.textContent = '錯誤：' + e.message;
+            setPreviewEmpty(this, '生成失敗');
+            showToast('影片編輯失敗：' + e.message);
+        }
+    };
+    VideoEditNode.prototype.onSerialize = function (o) {
+        o.cv = { videoUrl: this.videoUrl || null };
+    };
+    VideoEditNode.prototype.onConfigure = function (o) {
+        this.textarea.value = this.properties.prompt || '';
+        if (this.modelSelect) this.modelSelect.value = this.properties.model;
+        if (this.ratioSelect) this.ratioSelect.value = this.properties.ratio;
+        if (this.audioSelect) this.audioSelect.value = this.properties.audioSetting;
+        this.refSlots = _collectRefSlots(this);
+        _restoreGenResult(this, o.cv);
+        // 本機上傳的來源影片是 blob:，重新整理後不會保留，需要使用者重新選擇
+        if (!this.getInputNode(1) && !this.localVideoUrl) {
+            this.statusEl.textContent = '若使用本機上傳來源影片，重新整理後需重新選擇檔案';
+        }
+    };
+    VideoEditNode.prototype.onRemoved = function () {
+        if (this.localVideoUrl && this.localVideoUrl.startsWith('blob:')) URL.revokeObjectURL(this.localVideoUrl);
+        sharedOnRemoved.call(this);
+    };
+
+    // ── Node: Animate（wan2.2-animate-mix 視頻換人 / wan2.2-animate-move 圖生動作）──
+    // 把人物圖片套進參考影片：mix 保留原場景與動作、換掉人物；move 把參考影片的
+    // 動作/表情遷移到人物圖片上。沒有 prompt，靠 mode + check_image 控制。
+    function VideoAnimateNode() {
+        this.addInput('人物圖片', 'image');
+        this.addInput('參考影片', 'video');
+        this.addOutput('video', 'video');
+        const models = getModelsFor('video', 'animate');
+        this.properties = { model: (models[0] && models[0].id) || '', mode: 'wan-std', checkImage: true, status: '' };
+        this.videoUrl = null;
+        this._contentHeight = 420;
+        this.size = [300, 420];
+        this.color = '#1f2f3a'; this.bgcolor = '#2a2a2a';
+
+        const panel = el('div');
+        panel.innerHTML = `
+            <div class="cv-controls">
+                <label>模型</label>
+                <div class="cv-select-slot"></div>
+                <label>服務模式</label>
+                <div class="cv-mode-slot"></div>
+                <label class="cv-check-row"><input type="checkbox" class="cv-check-image" checked> 圖片預檢查</label>
+                <button class="cv-generate cv-submit-btn">▶ 生成動畫</button>
+                <div class="cv-status"></div>
+            </div>`;
+        attachDomPanel(this, panel);
+        this.statusEl = panel.querySelector('.cv-status');
+        this.checkImageEl = panel.querySelector('.cv-check-image');
+        this.checkImageEl.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.checkImageEl.addEventListener('change', () => { this.properties.checkImage = this.checkImageEl.checked; });
+        panel.querySelector('.cv-submit-btn').addEventListener('click', () => this.generate());
+
+        this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => { this.properties.model = v; });
+        panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+
+        this.modeSelect = buildSelect(['wan-std', 'wan-pro'], this.properties.mode, (v) => { this.properties.mode = v; });
+        panel.querySelector('.cv-mode-slot').appendChild(this.modeSelect);
+
+        panel.appendChild(buildPreview(this));
+        wireConfigOverlay(this, panel);
+        attachNodeChrome(this);
+    }
+    VideoAnimateNode.title = '動作動畫 Animate';
+    VideoAnimateNode.prototype.onExecute = function () {
+        this.setOutputData(0, this.videoUrl);
+    };
+    VideoAnimateNode.prototype.generate = async function () {
+        const imgUrl = this.getInputData(0);
+        const vidUrl = this.getInputData(1);
+        if (!imgUrl) { showToast('請先連接人物圖片'); return; }
+        if (!vidUrl) { showToast('請先連接參考影片'); return; }
+        if (!this.properties.model) { showToast('請選擇模型'); return; }
+        this.statusEl.textContent = '送出中…';
+        setPreviewEmpty(this, '送出中…');
+        try {
+            const fd = new FormData();
+            fd.append('model', this.properties.model);
+            fd.append('mode', this.properties.mode);
+            fd.append('check_image', this.properties.checkImage);
+            fd.append('image', await fetchAsBlob(imgUrl), 'person.png');
+            fd.append('video', await fetchAsBlob(vidUrl), 'ref.mp4');
+            const res = await apiFetch('/api/video/animate', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error((data.error && (data.error.message || data.error)) || '任務建立失敗');
+            this.statusEl.textContent = '生成中…';
+            setPreviewEmpty(this, '生成中…（可能需要 1～數分鐘）');
+            const result = await pollVideoTask(data.task_id);
+            this.videoUrl = result.local_path || result.video_url;
+            this.statusEl.textContent = '完成';
+            setPreviewVideo(this, this.videoUrl);
+            this.setOutputData(0, this.videoUrl);
+        } catch (e) {
+            this.statusEl.textContent = '錯誤：' + e.message;
+            setPreviewEmpty(this, '生成失敗');
+            showToast('動作動畫生成失敗：' + e.message);
+        }
+    };
+    VideoAnimateNode.prototype.onSerialize = function (o) {
+        o.cv = { videoUrl: this.videoUrl || null };
+    };
+    VideoAnimateNode.prototype.onConfigure = function (o) {
+        if (this.modelSelect) this.modelSelect.value = this.properties.model;
+        if (this.modeSelect) this.modeSelect.value = this.properties.mode;
+        if (this.checkImageEl) this.checkImageEl.checked = !!this.properties.checkImage;
+        _restoreGenResult(this, o.cv);
+    };
+    VideoAnimateNode.prototype.onRemoved = sharedOnRemoved;
 
     // ── Node: Editing（i2i 圖像編輯，需連接一張輸入圖片） ───────────
     function ImageEditNode() {
@@ -985,13 +1398,15 @@
     }
     ImageEditNode.title = '圖像編輯 Editing';
     ImageEditNode.prototype.onExecute = function () {
+        _syncPromptTextarea(this, this.textarea, 1);
         this.setOutputData(0, this.imageUrl);
     };
     ImageEditNode.prototype.generate = async function () {
         const srcImage = this.getInputData(0);
         if (!srcImage) { showToast('請先連接一張來源圖片'); return; }
         const promptIn = this.getInputData(1);
-        const prompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
+        const basePrompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
+        const prompt = _combinePrompt(this, 1, basePrompt);
         if (!prompt) { showToast('請輸入 prompt'); return; }
         if (!this.properties.model) { showToast('請選擇模型'); return; }
         this.statusEl.textContent = '生成中…';
@@ -1009,11 +1424,20 @@
             this.imageUrl = data.images[0].local_path || data.images[0].url;
             this.statusEl.textContent = '完成';
             setPreviewImage(this, this.imageUrl);
+            this.setOutputData(0, this.imageUrl);
         } catch (e) {
             this.statusEl.textContent = '錯誤：' + e.message;
             setPreviewEmpty(this, '生成失敗');
             showToast('圖像編輯失敗：' + e.message);
         }
+    };
+    ImageEditNode.prototype.onSerialize = function (o) {
+        o.cv = { imageUrl: this.imageUrl || null };
+    };
+    ImageEditNode.prototype.onConfigure = function (o) {
+        this.textarea.value = this.properties.prompt || '';
+        if (this.modelSelect) this.modelSelect.value = this.properties.model;
+        _restoreGenResult(this, o.cv);
     };
     ImageEditNode.prototype.onRemoved = sharedOnRemoved;
 
@@ -1153,13 +1577,15 @@
         lgCanvas.setDirty(true, true);
     };
     MuleAiGenNode.prototype.onExecute = function () {
+        if (!this._isFaceSwap()) _syncPromptTextarea(this, this.textarea, 2);
         this.setOutputData(0, this.resultUrl);
     };
     MuleAiGenNode.prototype.generate = async function () {
         const model = this.properties.model;
         const isVideo = this._isVideo(), isFaceSwap = this._isFaceSwap(), needsImage = this._needsImage();
         const promptIn = this.getInputData(2);
-        const prompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
+        const basePrompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
+        const prompt = isFaceSwap ? basePrompt : _combinePrompt(this, 2, basePrompt);
         if (!isFaceSwap && !prompt) { showToast('請輸入 prompt'); return; }
         let imageBlob = null, faceBlob = null;
         if (needsImage) {
@@ -1203,6 +1629,25 @@
             showToast('MuleAI 生成失敗：' + e.message);
         }
     };
+    MuleAiGenNode.prototype.onSerialize = function (o) {
+        o.cv = { resultUrl: this.resultUrl || null };
+    };
+    MuleAiGenNode.prototype.onConfigure = function (o) {
+        this.textarea.value = this.properties.prompt || '';
+        if (this.modelSelect) this.modelSelect.value = this.properties.model;
+        if (this.resSelect) this.resSelect.value = this.properties.resolution;
+        if (this.imgResSelect) this.imgResSelect.value = this.properties.imgResolution;
+        if (this.durSlider) { this.durSlider.value = this.properties.duration; this.durValEl.textContent = this.properties.duration; }
+        // _syncUiForModel() 會把 resultUrl 重置為 null 並清空預覽，必須先呼叫
+        // 校正插槽名稱/顯示區塊，再把還原的結果蓋回去
+        this._syncUiForModel();
+        const cv = o.cv || {};
+        if (cv.resultUrl) {
+            this.resultUrl = cv.resultUrl;
+            this.statusEl.textContent = '完成';
+            if (this._isVideo()) setPreviewVideo(this, cv.resultUrl); else setPreviewImage(this, cv.resultUrl);
+        }
+    };
     MuleAiGenNode.prototype.onRemoved = sharedOnRemoved;
 
     // ── Node: Audio（尚未有可用的 TTS 後端，先提供停用佔位節點） ───
@@ -1226,6 +1671,8 @@
         LiteGraph.registerNodeType('nenai/load_image', LoadImageNode);
         LiteGraph.registerNodeType('nenai/image', ImageGenNode);
         LiteGraph.registerNodeType('nenai/video', VideoGenNode);
+        LiteGraph.registerNodeType('nenai/video_edit', VideoEditNode);
+        LiteGraph.registerNodeType('nenai/video_animate', VideoAnimateNode);
         LiteGraph.registerNodeType('nenai/edit', ImageEditNode);
         LiteGraph.registerNodeType('nenai/audio', AudioPlaceholderNode);
         LiteGraph.registerNodeType('nenai/muleai', MuleAiGenNode);
@@ -1306,7 +1753,7 @@
         updateZoomLabel();
     }
 
-    const NODE_MENU_TYPES = { text: 'nenai/text', camera_angle: 'nenai/camera_angle', load_image: 'nenai/load_image', image: 'nenai/image', video: 'nenai/video', edit: 'nenai/edit', audio: 'nenai/audio', muleai: 'nenai/muleai' };
+    const NODE_MENU_TYPES = { text: 'nenai/text', camera_angle: 'nenai/camera_angle', load_image: 'nenai/load_image', image: 'nenai/image', video: 'nenai/video', video_edit: 'nenai/video_edit', video_animate: 'nenai/video_animate', edit: 'nenai/edit', audio: 'nenai/audio', muleai: 'nenai/muleai' };
 
     function wireToolbar() {
         const addMenu = document.getElementById('addNodeMenu');
@@ -1350,6 +1797,102 @@
             lgCanvas.setDirty(true, true);
             updateZoomLabel();
         });
+
+        document.getElementById('btnExportCanvas').addEventListener('click', exportCanvasToFile);
+        document.getElementById('btnImportCanvas').addEventListener('click', () => {
+            document.getElementById('canvasImportInput').click();
+        });
+        document.getElementById('canvasImportInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) importCanvasFromFile(file);
+            e.target.value = '';
+        });
+        document.getElementById('btnClearCanvas').addEventListener('click', () => {
+            if (!confirm('確定要清空整個畫布嗎？此操作無法復原。')) return;
+            graph.clear();
+            localStorage.removeItem(CANVAS_STORAGE_KEY);
+            _lastSavedJson = null;
+            document.getElementById('canvasSaveStatus').textContent = '';
+        });
+    }
+
+    // ── 專案存檔（本機瀏覽器自動存檔 + 匯出/匯入 JSON 檔案）──────────────
+    // 只做「定期輪詢比對」而不是掛在每個可能的變動來源上，是因為這個平台的節點
+    // 表單控制（textarea/select/拖曳角度等）都是純 DOM 事件直接改 this.properties，
+    // 沒有經過 LiteGraph 的 graph.beforeChange()/afterChange() 通知機制，沒有一個
+    // 單一事件可以可靠地涵蓋所有變動來源。
+    const CANVAS_STORAGE_KEY = 'nenai_canvas_autosave_v1';
+    let _lastSavedJson = null;
+
+    function serializeCanvasPayload() {
+        return {
+            title: document.getElementById('canvasTitle').value || 'Untitled Canvas',
+            savedAt: Date.now(),
+            data: graph.serialize(),
+        };
+    }
+
+    function autosaveTick() {
+        try {
+            const payload = serializeCanvasPayload();
+            const json = JSON.stringify(payload);
+            if (json === _lastSavedJson) return;
+            localStorage.setItem(CANVAS_STORAGE_KEY, json);
+            _lastSavedJson = json;
+            const t = new Date(payload.savedAt);
+            const hh = String(t.getHours()).padStart(2, '0');
+            const mm = String(t.getMinutes()).padStart(2, '0');
+            const statusEl = document.getElementById('canvasSaveStatus');
+            if (statusEl) statusEl.textContent = `已自動儲存於本機瀏覽器 ${hh}:${mm}（上傳的圖片/影片檔案需重新選擇）`;
+        } catch (e) {
+            console.warn('Canvas autosave failed:', e);
+        }
+    }
+
+    function restoreFromStorageIfAny() {
+        let json;
+        try {
+            json = localStorage.getItem(CANVAS_STORAGE_KEY);
+        } catch (e) { return; }
+        if (!json) return;
+        try {
+            const payload = JSON.parse(json);
+            if (payload.title) document.getElementById('canvasTitle').value = payload.title;
+            graph.configure(payload.data);
+            _lastSavedJson = json;
+        } catch (e) {
+            console.warn('Canvas restore failed:', e);
+        }
+    }
+
+    function exportCanvasToFile() {
+        const payload = serializeCanvasPayload();
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const d = new Date(payload.savedAt);
+        const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+        a.href = url;
+        a.download = `${payload.title || 'canvas'}_${stamp}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('已匯出畫布 JSON 檔案');
+    }
+
+    function importCanvasFromFile(file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const parsed = JSON.parse(reader.result);
+                const graphData = parsed.data || parsed;
+                if (parsed.title) document.getElementById('canvasTitle').value = parsed.title;
+                graph.configure(graphData);
+                showToast('已匯入畫布');
+            } catch (e) {
+                showToast('匯入失敗：檔案格式不正確');
+            }
+        };
+        reader.readAsText(file);
     }
 
     async function loadModels() {
@@ -1388,10 +1931,14 @@
         lgCanvas.render_canvas_border = false;
         lgCanvas.links_render_mode = LiteGraph.SPLINE_LINK;
         lgCanvas.onDrawForeground = drawFlowingLinks;
-        // litegraph 原生的畫布右鍵選單（Add Node / Add Group）跟這個平台的節點選單是
-        // 兩套獨立系統：Add Group 建出來的原生 Group 框沒有我們自訂的關閉鈕，選不到
-        // 也刪不掉，會卡在畫面上——直接關閉原生右鍵選單，改成右鍵開啟自訂的新增節點選單
+        // litegraph 原生的右鍵/插槽選單（畫布空白處的 Add Node/Add Group、節點插槽上
+        // 的 Rename Slot/Remove Slot 等）跟這個平台的節點選單是兩套獨立系統，且插槽
+        // 選單不只在真正右鍵時觸發，快速點擊（litegraph 內部判定為 pointer_is_double）
+        // 時在 mousedown 當下就會直接跳出來——跟拉線操作手感接近，很容易誤觸，蓋住
+        // 畫面卡住互動。processContextMenu 是這一切的唯一入口（不論右鍵或快速點擊都
+        // 會呼叫它），直接整個關閉，一律改用下面的自訂選單。
         lgCanvas.getCanvasMenuOptions = () => null;
+        lgCanvas.processContextMenu = () => null;
         document.getElementById('litegraphCanvas').addEventListener('contextmenu', (e) => {
             e.preventDefault();
             openQuickAddMenu(null, null, e.clientX, e.clientY);
@@ -1400,11 +1947,15 @@
         resizeCanvasEl();
         window.addEventListener('resize', resizeCanvasEl);
 
+        restoreFromStorageIfAny();
+
         graph.start();
         wireToolbar();
         updateZoomLabel();
         requestAnimationFrame(positionAllPanels);
         setInterval(updateZoomLabel, 500);
+        setInterval(autosaveTick, 3000);
+        window.addEventListener('beforeunload', autosaveTick);
     }
 
     init();

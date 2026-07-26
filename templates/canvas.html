@@ -6,7 +6,7 @@
     <title>AI Canvas — NenAI Testing Platform</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2301A0C7'/%3E%3Cpath d='M7 20a6 6 0 01-.6-11.964A8.4 8.4 0 0123.8 15.6h1.08a3.6 3.6 0 010 7.2H7z' fill='white' fill-opacity='0.95'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litegraph.js@0.7.18/css/litegraph.css">
-    <link rel="stylesheet" href="/static/css/canvas.css?v=2">
+    <link rel="stylesheet" href="/static/css/canvas.css?v=6">
 </head>
 <body>
 
@@ -22,7 +22,11 @@
         <span class="canvas-breadcrumb-sep">/</span>
         <input id="canvasTitle" class="canvas-title-input" value="Untitled Canvas">
         <div class="canvas-topbar-right">
-            <span style="color:var(--cv-text-sub);font-size:0.78rem">尚未支援存檔，重新整理將清空畫布</span>
+            <span id="canvasSaveStatus" style="color:var(--cv-text-sub);font-size:0.78rem"></span>
+            <input type="file" id="canvasImportInput" accept="application/json" style="display:none">
+            <button class="canvas-btn-ghost" id="btnImportCanvas">匯入</button>
+            <button class="canvas-btn-ghost" id="btnExportCanvas">匯出</button>
+            <button class="canvas-btn-ghost" id="btnClearCanvas">清空畫布</button>
             <button class="canvas-btn-ghost" onclick="location.href='/'">返回主控台</button>
         </div>
     </header>
@@ -34,14 +38,16 @@
 
     <div id="addNodeMenu" class="add-node-menu" style="display:none">
         <div class="add-node-menu-title">新增節點</div>
-        <button data-type="text">📄　文字 Text</button>
-        <button data-type="camera_angle">📐　相機角度 Camera Angle</button>
-        <button data-type="load_image">📁　上傳圖片 Load Image</button>
-        <button data-type="image">🖼️　圖片 Image</button>
-        <button data-type="video">🎬　影片 Video</button>
-        <button data-type="audio" class="disabled" disabled>🎵　語音 Audio（尚未支援）</button>
-        <button data-type="edit">✂️　圖像編輯 Editing</button>
-        <button data-type="muleai">🌶️　MuleAI Spicy</button>
+        <button data-type="text">文字 Text</button>
+        <button data-type="camera_angle">相機角度 Camera Angle</button>
+        <button data-type="load_image">上傳圖片 Load Image</button>
+        <button data-type="image">圖片 Image</button>
+        <button data-type="video">影片 Video</button>
+        <button data-type="video_edit">影片編輯 Video Edit</button>
+        <button data-type="video_animate">動作動畫 Animate</button>
+        <button data-type="audio" class="disabled" disabled>語音 Audio（尚未支援）</button>
+        <button data-type="edit">圖像編輯 Editing</button>
+        <button data-type="muleai">MuleAI Spicy</button>
     </div>
 
     <div class="canvas-zoom-controls">
@@ -60,6 +66,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/litegraph.js@0.7.18/build/litegraph.min.js"></script>
-<script src="/static/js/canvas.js?v=7"></script>
+<script src="/static/js/canvas.js?v=22"></script>
 </body>
 </html>

@@ -138,6 +138,15 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
 .cv-node-panel select:focus, .cv-config-overlay select:focus,
 .cv-node-panel textarea:focus, .cv-config-overlay textarea:focus { border-color: var(--cv-accent-2); }
 .cv-node-panel textarea, .cv-config-overlay textarea { resize: vertical; min-height: 60px; }
+.cv-node-panel textarea.cv-textarea-linked, .cv-config-overlay textarea.cv-textarea-linked {
+    background: #14181a; color: var(--cv-text-sub); border-color: var(--cv-accent-2);
+    cursor: not-allowed; font-style: italic;
+}
+.cv-node-panel .cv-cam-prefix-hint, .cv-config-overlay .cv-cam-prefix-hint {
+    margin-top: 6px; padding: 5px 8px; border-radius: 6px; font-size: 10.5px;
+    background: rgba(233,61,130,0.12); border: 1px solid rgba(233,61,130,0.35);
+    color: #E93D82; word-break: break-word;
+}
 .cv-node-panel input[type="range"], .cv-config-overlay input[type="range"] { width: 100%; accent-color: var(--cv-accent); }
 .cv-node-panel .cv-dur-val, .cv-config-overlay .cv-dur-val { color: var(--cv-text); font-weight: 600; float: right; text-transform: none; }
 .cv-node-panel button, .cv-config-overlay button {
@@ -157,6 +166,13 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
     cursor: pointer; font-size: 12px;
 }
 .cv-node-panel button.cv-add-ref-btn:hover, .cv-config-overlay button.cv-add-ref-btn:hover { border-color: var(--cv-accent-2); color: var(--cv-accent-2); }
+.cv-node-panel .cv-check-row, .cv-config-overlay .cv-check-row {
+    display: flex; align-items: center; gap: 6px; margin-top: 10px;
+    font-size: 12px; color: var(--cv-text); text-transform: none; opacity: 1;
+}
+.cv-node-panel .cv-check-row input[type="checkbox"], .cv-config-overlay .cv-check-row input[type="checkbox"] {
+    width: auto; accent-color: var(--cv-accent);
+}
 .cv-node-panel .cv-status, .cv-config-overlay .cv-status {
     font-size: 11px; color: var(--cv-text-sub); margin-top: 7px; text-align: center; min-height: 14px;
 }
@@ -225,14 +241,21 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
     border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; overflow: hidden;
     height: 200px;
 }
-.cv-cam-svg { width: 100%; height: 100%; display: block; }
+.cv-cam-svg {
+    width: 100%; height: 100%; display: block;
+    /* 卡片是 position:absolute，即使在 DOM 順序上排在 SVG 後面，仍會蓋在
+       static 定位的 SVG 上方——在方位角接近 180°（背面）時，控制點的計算
+       位置剛好落在卡片正後方，被完全遮住、拖不到。明確給兩者疊層順序，
+       讓控制點/軌道線永遠畫在卡片上面 */
+    position: relative; z-index: 2;
+}
 .cv-cam-ring { fill: none; stroke: #E93D82; stroke-width: 1.5; opacity: 0.75; }
 .cv-cam-arc { fill: none; stroke: #00FFD0; stroke-width: 2; opacity: 0.8; }
 .cv-cam-az-dot { fill: #E93D82; cursor: grab; }
 .cv-cam-el-dot { fill: #00FFD0; cursor: grab; }
 .cv-cam-az-dot:active, .cv-cam-el-dot:active { cursor: grabbing; }
 .cv-cam-card {
-    position: absolute; left: 50%; top: 46%; width: 70px; height: 96px;
+    position: absolute; left: 50%; top: 46%; width: 70px; height: 96px; z-index: 1;
     border-radius: 6px; overflow: hidden; background: #1e1e22; pointer-events: none;
     border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 6px 18px rgba(0,0,0,0.5);
 }
