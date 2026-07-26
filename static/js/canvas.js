@@ -398,7 +398,49 @@
     }
 
     function setPreviewEmpty(node, text) {
+        _clearProgressTimer(node);
         node._previewBox.innerHTML = `<span class="cv-empty">${text}</span>`;
+    }
+
+    function _clearProgressTimer(node) {
+        if (node._progressTimer) { clearInterval(node._progressTimer); node._progressTimer = null; }
+    }
+
+    // 圖片/影片生成都是「送出後輪詢」，後端沒有真正的百分比可回報——用指數趨緩
+    // 曲線模擬一個持續前進、但夾在 96% 不會提早衝到 100% 的假進度（時間常數用
+    // estimateSec 的 0.6 倍抓，讓進度大約在預估時間附近落在七八成），配合 CSS
+    // 跑動的漸層與呼吸光暈，讓使用者在等待 1~3 分鐘的影片生成時能感覺「還在動」
+    // 而不是卡住。同一次生成流程若有「送出中→生成中」兩階段，用 updateProgress-
+    // Label() 只換文字、不重置已經跑到一半的進度與計時，避免視覺上倒退
+    function setPreviewProgress(node, label, estimateSec) {
+        _clearProgressTimer(node);
+        const box = node._previewBox;
+        box.innerHTML = `
+            <div class="cv-progress">
+                <div class="cv-progress-label"></div>
+                <div class="cv-progress-track"><div class="cv-progress-fill"></div></div>
+                <div class="cv-progress-meta"><span class="cv-progress-pct"></span><span class="cv-progress-time"></span></div>
+            </div>`;
+        node._progressLabelEl = box.querySelector('.cv-progress-label');
+        node._progressLabelEl.textContent = label;
+        const fill = box.querySelector('.cv-progress-fill');
+        const pctEl = box.querySelector('.cv-progress-pct');
+        const timeEl = box.querySelector('.cv-progress-time');
+        const start = Date.now();
+        const tau = Math.max(3, estimateSec * 0.6) * 1000;
+        const tick = () => {
+            const elapsedMs = Date.now() - start;
+            const pct = Math.min(96, Math.round((1 - Math.exp(-elapsedMs / tau)) * 96));
+            fill.style.width = pct + '%';
+            pctEl.textContent = pct + '%';
+            timeEl.textContent = Math.round(elapsedMs / 1000) + 's';
+        };
+        tick();
+        node._progressTimer = setInterval(tick, 200);
+    }
+
+    function updateProgressLabel(node, label) {
+        if (node._progressLabelEl) node._progressLabelEl.textContent = label;
     }
 
     // ── Lightbox：點擊預覽圖/影片放大顯示 ─────────────────────────
@@ -421,6 +463,7 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
 
     function setPreviewImage(node, url) {
+        _clearProgressTimer(node);
         node._previewBox.innerHTML = '';
         const img = el('img');
         img.src = url;
@@ -436,6 +479,7 @@
     function setPreviewVideo(node, url) {
         // 影片本身有原生播放控制列，不能整個蓋 click 監聽（會跟播放/拖曳衝突），
         // 改用獨立的「⤢ 放大」按鈕開燈箱
+        _clearProgressTimer(node);
         node._previewBox.innerHTML = '';
         const video = el('video');
         video.src = url; video.controls = true;
@@ -911,7 +955,7 @@
         if (!this.properties.model) { showToast('請選擇模型'); return; }
         const mode = this._detectMode();
         this.statusEl.textContent = '生成中…';
-        setPreviewEmpty(this, '生成中…');
+        setPreviewProgress(this, '生成中…', 20);
         try {
             let res;
             if (mode === 'i2i') {
@@ -1080,7 +1124,7 @@
             showToast('已連接參考圖，first_frame 的圖片將被忽略（r2v 與 i2v 是互斥的兩種生成模式）');
         }
         this.statusEl.textContent = '送出中…';
-        setPreviewEmpty(this, '送出中…');
+        setPreviewProgress(this, '送出中…', 90);
         try {
             const fd = new FormData();
             fd.append('model', this.properties.model);
@@ -1107,7 +1151,7 @@
             const data = await res.json();
             if (!res.ok || !data.success) throw new Error((data.error && (data.error.message || data.error)) || '任務建立失敗');
             this.statusEl.textContent = '生成中…';
-            setPreviewEmpty(this, '生成中…（可能需要 1～數分鐘）');
+            updateProgressLabel(this, '生成中…（可能需要 1～數分鐘）');
             const result = await pollVideoTask(data.task_id);
             this.videoUrl = result.local_path || result.video_url;
             this.statusEl.textContent = '完成';
@@ -1224,7 +1268,7 @@
         if (!videoUrl) { showToast('請上傳或連接一段來源影片'); return; }
         if (!this.properties.model) { showToast('請選擇模型'); return; }
         this.statusEl.textContent = '送出中…';
-        setPreviewEmpty(this, '送出中…');
+        setPreviewProgress(this, '送出中…', 90);
         try {
             const fd = new FormData();
             fd.append('model', this.properties.model);
@@ -1241,7 +1285,7 @@
             const data = await res.json();
             if (!res.ok || !data.success) throw new Error((data.error && (data.error.message || data.error)) || '任務建立失敗');
             this.statusEl.textContent = '生成中…';
-            setPreviewEmpty(this, '生成中…（可能需要 1～數分鐘）');
+            updateProgressLabel(this, '生成中…（可能需要 1～數分鐘）');
             const result = await pollVideoTask(data.task_id);
             this.videoUrl = result.local_path || result.video_url;
             this.statusEl.textContent = '完成';
@@ -1326,7 +1370,7 @@
         if (!vidUrl) { showToast('請先連接參考影片'); return; }
         if (!this.properties.model) { showToast('請選擇模型'); return; }
         this.statusEl.textContent = '送出中…';
-        setPreviewEmpty(this, '送出中…');
+        setPreviewProgress(this, '送出中…', 90);
         try {
             const fd = new FormData();
             fd.append('model', this.properties.model);
@@ -1338,7 +1382,7 @@
             const data = await res.json();
             if (!res.ok || !data.success) throw new Error((data.error && (data.error.message || data.error)) || '任務建立失敗');
             this.statusEl.textContent = '生成中…';
-            setPreviewEmpty(this, '生成中…（可能需要 1～數分鐘）');
+            updateProgressLabel(this, '生成中…（可能需要 1～數分鐘）');
             const result = await pollVideoTask(data.task_id);
             this.videoUrl = result.local_path || result.video_url;
             this.statusEl.textContent = '完成';
@@ -1410,7 +1454,7 @@
         if (!prompt) { showToast('請輸入 prompt'); return; }
         if (!this.properties.model) { showToast('請選擇模型'); return; }
         this.statusEl.textContent = '生成中…';
-        setPreviewEmpty(this, '生成中…');
+        setPreviewProgress(this, '生成中…', 20);
         try {
             const fd = new FormData();
             fd.append('model', this.properties.model);
@@ -1599,7 +1643,7 @@
             faceBlob = await fetchAsBlob(faceUrl);
         }
         this.statusEl.textContent = '送出中…';
-        setPreviewEmpty(this, '送出中…');
+        setPreviewProgress(this, '送出中…', isVideo ? 90 : 20);
         try {
             const fd = new FormData();
             fd.append('model', model);
@@ -1615,7 +1659,7 @@
             const data = await res.json();
             if (!res.ok || !data.success) throw new Error((data.error && (data.error.message || data.error)) || '任務建立失敗');
             this.statusEl.textContent = '生成中…';
-            setPreviewEmpty(this, '生成中…（可能需要 1～數分鐘）');
+            updateProgressLabel(this, isVideo ? '生成中…（可能需要 1～數分鐘）' : '生成中…');
             const result = await pollMuleaiTask(model, data.task_id);
             const kind = isVideo ? 'video' : 'image';
             const url = kind === 'video' ? (result.videos && result.videos[0]) : (result.images && result.images[0]);
