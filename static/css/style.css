@@ -311,7 +311,7 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* ─── Chat (Text Tab) ────────────────────────────────────────── */
 .chat-output {
-    flex: 1; overflow-y: auto; padding: 20px 24px;
+    flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px;
     display: flex; flex-direction: column; gap: 12px;
     background: var(--bg-white);
 }
@@ -370,7 +370,12 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* ─── Results Area ───────────────────────────────────────────── */
 .results-area {
-    flex: 1; overflow-y: auto;
+    /* flex 子項預設 min-height:auto，內容一多就會撐破 flex:1 的高度限制，讓
+       overflow-y:auto 完全失效（父層 .panel-main 的 overflow:hidden 會把超出
+       範圍的內容整個裁掉、連捲軸都不會出現）——超過一定張數後最後幾張圖的
+       下載按鈕「消失」正是這個原因，加 min-height:0 讓它老實地被限制在 flex
+       分配到的高度內，才會真的產生捲軸 */
+    flex: 1; min-height: 0; overflow-y: auto;
     padding: 20px; background: var(--bg);
     display: flex; flex-wrap: wrap;
     gap: 12px; align-content: flex-start;
@@ -378,8 +383,14 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* Image results grid */
 #imageResults {
+    /* grid-auto-rows 預設的 auto 在容器有固定高度（來自上面 .results-area 的
+       flex:1）時，會把每一列壓縮塞進容器高度，而不是照片自然高度排列、超出
+       的部分交給 overflow-y:auto 捲動——結果是圖片一多，後面幾列（含下載按鈕）
+       整列被壓扁到看不見。改成 min-content 讓每一列維持自然高度，容器才會
+       真的產生可捲動的內容 */
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    grid-auto-rows: min-content;
     align-content: start;
 }
 
@@ -428,7 +439,7 @@ input[type="range"]::-webkit-slider-thumb {
 
 /* Video results */
 .video-results-area {
-    flex: 1; overflow-y: auto; padding: 20px;
+    flex: 1; min-height: 0; overflow-y: auto; padding: 20px;
     background: var(--bg); display: flex; flex-direction: column; gap: 12px;
 }
 
