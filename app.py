@@ -2,7 +2,8 @@
 Alibaba Cloud AI Model Testing Platform
 FastAPI Backend - API Key per-user authentication
 """
-import os, sys, json, time, uuid, mimetypes, shutil
+import os, sys, json, time, uuid, mimetypes, shutil, logging
+from logging.handlers import RotatingFileHandler
 from PIL import Image as PILImage
 from datetime import datetime
 from pathlib import Path
@@ -82,6 +83,15 @@ OUTPUT_AUDIO_DIR = Path(__file__).parent / "outputs" / "audio"
 OUTPUT_CLONE_DIR = Path(__file__).parent / "outputs" / "voice_clone"
 for d in (UPLOAD_DIR, OUTPUT_IMG_DIR, OUTPUT_VID_DIR, OUTPUT_AUDIO_DIR, OUTPUT_CLONE_DIR):
     d.mkdir(parents=True, exist_ok=True)
+
+# ─── Logging ─────────────────────────────────────────────────
+LOG_DIR = Path(__file__).parent / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+logger = logging.getLogger("ai_model_tester")
+logger.setLevel(logging.INFO)
+_log_handler = RotatingFileHandler(LOG_DIR / "app.log", maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8")
+_log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+logger.addHandler(_log_handler)
 
 # 靜態檔案掛載
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
@@ -827,8 +837,10 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-_HAPPYHORSE_MODELS = {"happyhorse-1.0-t2v", "happyhorse-1.0-i2v",
-                      "happyhorse-1.0-r2v", "happyhorse-1.0-video-edit"}
+_HAPPYHORSE_MODELS = {"happyhorse-1.1-t2v", "happyhorse-1.0-t2v",
+                      "happyhorse-1.1-i2v", "happyhorse-1.0-i2v",
+                      "happyhorse-1.1-r2v", "happyhorse-1.0-r2v",
+                      "happyhorse-1.0-video-edit"}
 _SIZE_MAP = {"480P": "854*480", "720P": "1280*720", "1080P": "1920*1080"}
 
 def _apply_resolution(kwargs: dict, model: str, resolution: str, ratio: str = "") -> None:
@@ -1207,10 +1219,31 @@ async def video_animate(request: Request, api_key: str = Depends(get_api_key)):
 # ─── API: Video Status ────────────────────────────────────────────
 @app.get("/api/video/status/{task_id}")
 async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
+    def _safe_get(output, key: str, default=None):
+        try:
+            val = getattr(output, key, None)
+            if val is not None:
+                return val
+            results = getattr(output, "results", None) or (output.get("results") if hasattr(output, "get") else None) or {}
+            return results.get(key, default)
+        except Exception:
+            return default
+
     try:
         dashscope.api_key = api_key
         rsp = VideoSynthesis.fetch(task_id)
-        raw_status = getattr(rsp.output, "task_status", "UNKNOWN")
+    except Exception as e:
+        # DashScope SDK 有時會在解析非預期的上游回應格式時丟出例外（例如任務因故未正常結束）。
+        # 記錄下來以便排查，但不要讓前端輪詢卡在無法辨識的 500。
+        logger.error("VideoSynthesis.fetch failed for task_id=%s: %s", task_id, e, exc_info=True)
+        return JSONResponse(status_code=502, content={
+            "task_id": task_id,
+            "status": "UNKNOWN",
+            "error_message": f"無法查詢任務狀態（上游回應異常）: {e}",
+        })
+
+    try:
+        raw_status = _safe_get(rsp.output, "task_status", "UNKNOWN")
         status = raw_status.upper() if raw_status else "UNKNOWN"
         if status in ("COMPLETED", "SUCCESS", "SUCCEED", "DONE", "FINISHED"):
             status = "SUCCEEDED"
@@ -1218,20 +1251,20 @@ async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
             status = "PENDING"
         result = {"task_id": task_id, "status": status}
         if status == "SUCCEEDED":
-
-            video_url = getattr(rsp.output, "video_url", "") or rsp.output.get("results", {}).get("video_url", "")
+            video_url = _safe_get(rsp.output, "video_url", "")
             if video_url:
                 local = await _async_download_video(video_url)
                 result["local_path"] = local if local else video_url
                 result["video_url"] = video_url
-            actual_prompt = getattr(rsp.output, "actual_prompt", None) or rsp.output.get("results", {}).get("actual_prompt")
+            actual_prompt = _safe_get(rsp.output, "actual_prompt")
             if actual_prompt:
                 result["actual_prompt"] = actual_prompt
 
         elif status == "FAILED":
-            result["error_message"] = getattr(rsp.output, "message", "Unknown")
+            result["error_message"] = _safe_get(rsp.output, "message", "Unknown")
         return result
     except Exception as e:
+        logger.error("video_status parsing failed for task_id=%s: %s", task_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/video/debug/{task_id}")
