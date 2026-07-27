@@ -567,7 +567,7 @@
         }
     };
     TextPromptNode.prototype.analyzeImage = async function () {
-        const imgUrl = this.getInputData(0);
+        const imgUrl = this.getInputData(0, true);
         if (!imgUrl) { showToast('請先連接一張圖片'); return; }
         this.statusEl.textContent = '分析中…';
         try {
@@ -948,7 +948,7 @@
         this.modeHintEl.textContent = mode === 'i2i' ? '（參考圖生成圖像）' : '（文生圖）';
     };
     ImageGenNode.prototype.generate = async function () {
-        const promptIn = this.getInputData(0);
+        const promptIn = this.getInputData(0, true);
         const basePrompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
         const prompt = _combinePrompt(this, 0, basePrompt);
         if (!prompt) { showToast('請輸入 prompt'); return; }
@@ -959,22 +959,7 @@
         try {
             let res;
             if (mode === 'i2i') {
-                const refUrls = this.refSlots.map(i => this.getInputData(i)).filter(Boolean);
-                // 暫時性除錯：協助排查「參考圖節點尚未生成完成」的誤判問題，之後會移除
-                console.log('[cv-debug] ref check', JSON.stringify({
-                    refSlots: this.refSlots,
-                    perSlot: this.refSlots.map(i => {
-                        const srcNode = this.getInputNode(i);
-                        return {
-                            slot: i,
-                            slotName: (this.inputs[i] || {}).name,
-                            slotLink: (this.inputs[i] || {}).link,
-                            srcNodeType: srcNode ? srcNode.constructor.name : null,
-                            srcNodeId: srcNode ? srcNode.id : null,
-                            getInputData: this.getInputData(i),
-                        };
-                    }),
-                }, null, 2));
+                const refUrls = this.refSlots.map(i => this.getInputData(i, true)).filter(Boolean);
                 if (!refUrls.length) throw new Error('參考圖節點尚未生成完成，請先按上游圖片節點的「生成圖片」');
                 const fd = new FormData();
                 fd.append('model', this.properties.model);
@@ -1114,7 +1099,7 @@
             : mode === 'i2v' ? '（圖生影片）' : '（文生影片）';
     };
     VideoGenNode.prototype.generate = async function () {
-        const promptIn = this.getInputData(0);
+        const promptIn = this.getInputData(0, true);
         const basePrompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
         const prompt = _combinePrompt(this, 0, basePrompt);
         if (!prompt) { showToast('請輸入 prompt'); return; }
@@ -1134,15 +1119,15 @@
             let endpoint = '/api/video/t2v';
             if (mode === 'r2v') {
                 endpoint = '/api/video/r2v';
-                const refUrls = this.refSlots.map(i => this.getInputData(i)).filter(Boolean);
+                const refUrls = this.refSlots.map(i => this.getInputData(i, true)).filter(Boolean);
                 if (!refUrls.length) throw new Error('參考圖節點尚未生成完成，請先按上游圖片節點的「生成圖片」');
                 for (const url of refUrls) {
                     fd.append('reference_files', await fetchAsBlob(url), 'ref.png');
                 }
             } else if (mode === 'i2v') {
                 endpoint = '/api/video/i2v';
-                const firstFrameUrl = this.getInputData(1);
-                const lastFrameUrl = this.getInputData(2);
+                const firstFrameUrl = this.getInputData(1, true);
+                const lastFrameUrl = this.getInputData(2, true);
                 fd.append('i2v_mode', lastFrameUrl ? 'first_last_frame' : 'first_frame');
                 fd.append('first_frame', await fetchAsBlob(firstFrameUrl), 'first_frame.png');
                 if (lastFrameUrl) fd.append('last_frame', await fetchAsBlob(lastFrameUrl), 'last_frame.png');
@@ -1261,10 +1246,10 @@
         this.setOutputData(0, this.videoUrl);
     };
     VideoEditNode.prototype.generate = async function () {
-        const promptIn = this.getInputData(0);
+        const promptIn = this.getInputData(0, true);
         const basePrompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
         const prompt = _combinePrompt(this, 0, basePrompt);
-        const videoUrl = this.getInputData(1) || this.localVideoUrl;
+        const videoUrl = this.getInputData(1, true) || this.localVideoUrl;
         if (!videoUrl) { showToast('請上傳或連接一段來源影片'); return; }
         if (!this.properties.model) { showToast('請選擇模型'); return; }
         this.statusEl.textContent = '送出中…';
@@ -1277,7 +1262,7 @@
             fd.append('audio_setting', this.properties.audioSetting);
             if (this.properties.ratio) fd.append('ratio', this.properties.ratio);
             fd.append('video', await fetchAsBlob(videoUrl), 'source.mp4');
-            const refUrls = this.refSlots.map(i => this.getInputData(i)).filter(Boolean);
+            const refUrls = this.refSlots.map(i => this.getInputData(i, true)).filter(Boolean);
             for (let i = 0; i < refUrls.length; i++) {
                 fd.append(`reference_image_${i + 1}`, await fetchAsBlob(refUrls[i]), `ref${i + 1}.png`);
             }
@@ -1364,8 +1349,8 @@
         this.setOutputData(0, this.videoUrl);
     };
     VideoAnimateNode.prototype.generate = async function () {
-        const imgUrl = this.getInputData(0);
-        const vidUrl = this.getInputData(1);
+        const imgUrl = this.getInputData(0, true);
+        const vidUrl = this.getInputData(1, true);
         if (!imgUrl) { showToast('請先連接人物圖片'); return; }
         if (!vidUrl) { showToast('請先連接參考影片'); return; }
         if (!this.properties.model) { showToast('請選擇模型'); return; }
@@ -1446,9 +1431,9 @@
         this.setOutputData(0, this.imageUrl);
     };
     ImageEditNode.prototype.generate = async function () {
-        const srcImage = this.getInputData(0);
+        const srcImage = this.getInputData(0, true);
         if (!srcImage) { showToast('請先連接一張來源圖片'); return; }
-        const promptIn = this.getInputData(1);
+        const promptIn = this.getInputData(1, true);
         const basePrompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
         const prompt = _combinePrompt(this, 1, basePrompt);
         if (!prompt) { showToast('請輸入 prompt'); return; }
@@ -1627,18 +1612,18 @@
     MuleAiGenNode.prototype.generate = async function () {
         const model = this.properties.model;
         const isVideo = this._isVideo(), isFaceSwap = this._isFaceSwap(), needsImage = this._needsImage();
-        const promptIn = this.getInputData(2);
+        const promptIn = this.getInputData(2, true);
         const basePrompt = (promptIn != null && promptIn !== '') ? promptIn : this.properties.prompt;
         const prompt = isFaceSwap ? basePrompt : _combinePrompt(this, 2, basePrompt);
         if (!isFaceSwap && !prompt) { showToast('請輸入 prompt'); return; }
         let imageBlob = null, faceBlob = null;
         if (needsImage) {
-            const imgUrl = this.getInputData(0);
+            const imgUrl = this.getInputData(0, true);
             if (!imgUrl) { showToast('請先連接一張來源圖片'); return; }
             imageBlob = await fetchAsBlob(imgUrl);
         }
         if (isFaceSwap) {
-            const faceUrl = this.getInputData(1);
+            const faceUrl = this.getInputData(1, true);
             if (!faceUrl) { showToast('請先連接換臉參考圖'); return; }
             faceBlob = await fetchAsBlob(faceUrl);
         }
