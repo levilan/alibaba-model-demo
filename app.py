@@ -1130,8 +1130,10 @@ async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
         ab = await audio_file.read()
         audio_mime = audio_file.content_type or "audio/mpeg"
         meta["audio"] = f"data:{audio_mime};base64,{base64.b64encode(ab).decode()}"
-    elif audio:
-        meta["audio"] = True
+    else:
+        # 上游未收到 audio 欄位時會自行判斷是否配音，不會視為「不要配音」——
+        # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
+        meta["audio"] = audio
 
     if meta: payload["metadata"] = meta
 
@@ -1207,8 +1209,10 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
         ab = await audio_bgm_file.read()
         audio_mime = audio_bgm_file.content_type or "audio/mpeg"
         meta["audio"] = f"data:{audio_mime};base64,{base64.b64encode(ab).decode()}"
-    elif audio_bgm:
-        meta["audio"] = True
+    else:
+        # 上游未收到 audio 欄位時會自行判斷是否配音，不會視為「不要配音」——
+        # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
+        meta["audio"] = audio_bgm
 
     media_arr: list = []
 
@@ -1381,8 +1385,10 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
         ab = await audio_bgm_file.read()
         audio_mime = audio_bgm_file.content_type or "audio/mpeg"
         meta["audio"] = f"data:{audio_mime};base64,{base64.b64encode(ab).decode()}"
-    elif audio_bgm:
-        meta["audio"] = True
+    else:
+        # 上游未收到 audio 欄位時會自行判斷是否配音，不會視為「不要配音」——
+        # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
+        meta["audio"] = audio_bgm
 
     payload: dict = {"model": model, "prompt": prompt,
                      "duration": duration, "width": w, "height": h,
