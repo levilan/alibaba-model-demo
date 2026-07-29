@@ -31,10 +31,21 @@ from openai import AsyncOpenAI, OpenAI
 #   OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET             阿里雲 OSS
 #   S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY / S3_BUCKET_NAME
 #     [S3_REGION，預設 us-east-1] [S3_ENDPOINT，S3 相容服務才需要]   AWS S3
-#   GCS_BUCKET_NAME + (GCS_CREDENTIALS_JSON 內容 或 GOOGLE_APPLICATION_CREDENTIALS 檔案路徑)
-#     GCS 簽名網址需要服務帳戶的私鑰才能本地簽署，故意不支援 Cloud Run/GCE 掛載的
-#     附加服務帳戶（那種身分沒有私鑰，簽名網址需要額外開 IAM SignBlob 權限）——
-#     部署在 GCP 上時，仍請另外建立一組服務帳戶 JSON 金鑰給這個功能用             GCP GCS
+#   GCS_BUCKET_NAME + 下列其中一種身分：                                        GCP GCS
+#     - GCS_CREDENTIALS_JSON（服務帳戶金鑰 JSON 內容）或
+#       GOOGLE_APPLICATION_CREDENTIALS（金鑰檔路徑）——本地就有私鑰，直接簽章
+#     - GCS_USE_ADC=true——改用 Cloud Run/GCE 附加的服務帳戶（Application
+#       Default Credentials），不需要金鑰檔，但附加身分沒有私鑰，簽名網址要
+#       改呼叫 IAM SignBlob API 遠端簽章，該服務帳戶需要額外兩個 IAM 設定：
+#       1) 對「自己」授予 roles/iam.serviceAccountTokenCreator（自我模擬）
+#       2) 對目標 bucket 授予 roles/storage.objectAdmin（或至少
+#          objectCreator + objectViewer）
+#       且專案需啟用 iamcredentials.googleapis.com（IAM Service Account
+#       Credentials API）。gcloud 設定範例：
+#         gcloud services enable iamcredentials.googleapis.com --project=$PROJECT_ID
+#         gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL \
+#           --member="serviceAccount:$SA_EMAIL" --role="roles/iam.serviceAccountTokenCreator"
+#         gsutil iam ch serviceAccount:$SA_EMAIL:roles/storage.objectAdmin gs://$BUCKET
 #
 # 多組都設定時，用 STORAGE_BACKEND=oss|s3|gcs 明確指定要用哪個；沒指定則依 oss → s3
 # → gcs 的順序，自動選第一個「憑證齊全」的當作啟用的後端。
@@ -88,7 +99,8 @@ def _gcs_put(data: bytes, key: str) -> Optional[str]:
     bucket_name = os.environ.get("GCS_BUCKET_NAME", "")
     creds_json  = os.environ.get("GCS_CREDENTIALS_JSON", "")
     creds_path  = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
-    if not bucket_name or not (creds_json or creds_path):
+    use_adc     = str(os.environ.get("GCS_USE_ADC", "false")).lower() in ("true", "1", "yes")
+    if not bucket_name or not (creds_json or creds_path or use_adc):
         return None
     try:
         from datetime import timedelta
@@ -100,10 +112,27 @@ def _gcs_put(data: bytes, key: str) -> Optional[str]:
                 credentials = service_account.Credentials.from_service_account_info(info)
                 _gcs_client_cache = gcs_storage.Client(credentials=credentials, project=info.get("project_id"))
             else:
+                # creds_path（GOOGLE_APPLICATION_CREDENTIALS 金鑰檔）或 use_adc（純附加
+                # 服務帳戶）都讓 google-cloud-storage 自己走 google.auth.default() 解析身分
                 _gcs_client_cache = gcs_storage.Client()
         blob = _gcs_client_cache.bucket(bucket_name).blob(key)
         blob.upload_from_string(data)
-        return blob.generate_signed_url(version="v4", expiration=timedelta(seconds=_SIGNED_URL_EXPIRE))
+        if creds_json or creds_path:
+            # 本地就有私鑰（服務帳戶金鑰內容／檔案），可以直接簽章
+            return blob.generate_signed_url(version="v4", expiration=timedelta(seconds=_SIGNED_URL_EXPIRE))
+        # use_adc：Cloud Run/GCE 附加的服務帳戶沒有私鑰，改呼叫 IAM SignBlob API
+        # 遠端簽章——該服務帳戶需要對自己有 roles/iam.serviceAccountTokenCreator
+        # （見上方環境變數說明的 gcloud 設定範例），否則這裡會拋權限錯誤
+        import google.auth
+        import google.auth.transport.requests
+        adc_credentials, _ = google.auth.default()
+        adc_credentials.refresh(google.auth.transport.requests.Request())
+        return blob.generate_signed_url(
+            version="v4", expiration=timedelta(seconds=_SIGNED_URL_EXPIRE),
+            credentials=adc_credentials,
+            service_account_email=adc_credentials.service_account_email,
+            access_token=adc_credentials.token,
+        )
     except Exception as e:
         print(f"[storage:gcs] upload error [{key}]: {e}")
         return None

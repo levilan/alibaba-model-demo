@@ -199,15 +199,39 @@ python app.py
 |---|---|
 | 阿里雲 OSS | `OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET` |
 | AWS S3 | `S3_ACCESS_KEY_ID`、`S3_SECRET_ACCESS_KEY`、`S3_BUCKET_NAME`（可選 `S3_REGION`，預設 `us-east-1`；`S3_ENDPOINT` 供 S3 相容服務使用） |
-| GCP GCS | `GCS_BUCKET_NAME` + 服務帳戶憑證（`GCS_CREDENTIALS_JSON` 直接放 JSON 內容，或 `GOOGLE_APPLICATION_CREDENTIALS` 指向掛載的金鑰檔路徑） |
+| GCP GCS | `GCS_BUCKET_NAME` + 下列其中一種身分（見下方說明） |
 
 三組都沒設定，或設定了但上傳失敗，都會自動退回寫入本機 `outputs/` 目錄。若同時設
 定了多組，預設依 OSS → S3 → GCS 的順序，選第一個「憑證齊全」的啟用；也可以用
 `STORAGE_BACKEND=oss` / `s3` / `gcs` 明確指定要用哪一個。
 
-> GCS 簽名網址需要服務帳戶的私鑰在本地簽署，所以刻意不支援 Cloud Run/GCE 掛載的
-> 附加服務帳戶身分（那種身分沒有私鑰）——部署在 GCP 上時，仍請另外建立一組服務
-> 帳戶 JSON 金鑰給這個功能使用。
+### GCS 的兩種身分設定方式
+
+**方式一：服務帳戶金鑰**（`GCS_CREDENTIALS_JSON` 直接放金鑰 JSON 內容，或
+`GOOGLE_APPLICATION_CREDENTIALS` 指向掛載的金鑰檔路徑）——本地就有私鑰可以直接簽
+署，設定最簡單，但要另外管理一份長期有效的金鑰。
+
+**方式二：`GCS_USE_ADC=true`**，改用部署環境本身附加的服務帳戶（Cloud Run 的
+Service Account、GCE 的附加身分），不需要額外建立、保管任何金鑰檔。缺點是附加身
+分沒有私鑰，簽名網址得改呼叫 IAM SignBlob API 遠端簽章，需要多做兩件 IAM 設定：
+
+1. 該服務帳戶要能「模擬自己」（signBlob 是這樣運作的）：
+   ```bash
+   gcloud services enable iamcredentials.googleapis.com --project=$PROJECT_ID
+   gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL \
+     --member="serviceAccount:$SA_EMAIL" \
+     --role="roles/iam.serviceAccountTokenCreator"
+   ```
+2. 該服務帳戶要有目標 bucket 的物件讀寫權限：
+   ```bash
+   gsutil iam ch serviceAccount:$SA_EMAIL:roles/storage.objectAdmin gs://$BUCKET
+   ```
+   `$SA_EMAIL` 是 Cloud Run 服務（或 GCE 執行個體）綁定的服務帳戶信箱；沒有另外指
+   定的話預設是 Compute Engine 預設服務帳戶
+   `PROJECT_NUMBER-compute@developer.gserviceaccount.com`。
+
+兩種方式擇一即可，`GCS_CREDENTIALS_JSON`/`GOOGLE_APPLICATION_CREDENTIALS` 其中一個
+有值時一律優先於 `GCS_USE_ADC`。
 
 ---
 

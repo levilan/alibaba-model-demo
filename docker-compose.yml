@@ -20,4 +20,5 @@ services:
       - S3_ENDPOINT=${S3_ENDPOINT:-}
       - GCS_BUCKET_NAME=${GCS_BUCKET_NAME:-}
       - GCS_CREDENTIALS_JSON=${GCS_CREDENTIALS_JSON:-}
+      - GCS_USE_ADC=${GCS_USE_ADC:-}
     restart: unless-stopped
