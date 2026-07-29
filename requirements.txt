@@ -10,3 +10,5 @@ websockets==16.0
 aiohttp==3.13.5
 pydantic==2.13.4
 oss2==2.19.1
+boto3==1.43.58
+google-cloud-storage==3.13.0

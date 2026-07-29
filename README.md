@@ -189,6 +189,28 @@ python app.py
 
 ---
 
+## 雲端物件儲存（選用）
+
+生成的圖片/影片預設寫入容器本機的 `outputs/` 目錄。若部署在無狀態、多實例的環境
+（例如 GCP Cloud Run）本機磁碟不可靠，可設定以下任一組環境變數，改把檔案上傳到
+雲端物件儲存、以簽名網址（有效期 7 天）提供下載：
+
+| 後端 | 需要的環境變數 |
+|---|---|
+| 阿里雲 OSS | `OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET` |
+| AWS S3 | `S3_ACCESS_KEY_ID`、`S3_SECRET_ACCESS_KEY`、`S3_BUCKET_NAME`（可選 `S3_REGION`，預設 `us-east-1`；`S3_ENDPOINT` 供 S3 相容服務使用） |
+| GCP GCS | `GCS_BUCKET_NAME` + 服務帳戶憑證（`GCS_CREDENTIALS_JSON` 直接放 JSON 內容，或 `GOOGLE_APPLICATION_CREDENTIALS` 指向掛載的金鑰檔路徑） |
+
+三組都沒設定，或設定了但上傳失敗，都會自動退回寫入本機 `outputs/` 目錄。若同時設
+定了多組，預設依 OSS → S3 → GCS 的順序，選第一個「憑證齊全」的啟用；也可以用
+`STORAGE_BACKEND=oss` / `s3` / `gcs` 明確指定要用哪一個。
+
+> GCS 簽名網址需要服務帳戶的私鑰在本地簽署，所以刻意不支援 Cloud Run/GCE 掛載的
+> 附加服務帳戶身分（那種身分沒有私鑰）——部署在 GCP 上時，仍請另外建立一組服務
+> 帳戶 JSON 金鑰給這個功能使用。
+
+---
+
 ## 主要依賴套件
 
 | 套件 | 版本 |
@@ -205,3 +227,5 @@ python app.py
 | aiohttp | 3.13.5 |
 | pydantic | 2.13.4 |
 | oss2 | 2.19.1 |
+| boto3 | 1.43.58 |
+| google-cloud-storage | 3.13.0 |

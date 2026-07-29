@@ -20,31 +20,112 @@ from pydantic import BaseModel
 
 from openai import AsyncOpenAI, OpenAI
 
-# ─── OSS Storage ─────────────────────────────────────────────
-import oss2
+# ─── Cloud Object Storage ─────────────────────────────────────────
+# 容器化部署（尤其像 GCP Cloud Run 這種無狀態、多實例的環境）不能依賴本機磁碟保存
+# 產出的圖片/影片——同一個檔案下一次請求可能落在別的實例上，本機路徑就讀不到了。
+# 這裡支援阿里雲 OSS / AWS S3 / GCP GCS 三選一，設定好對應環境變數即可啟用，產出的
+# 檔案會上傳到雲端物件儲存、回傳一個有效期 7 天的簽名網址，取代本機路徑；三個都沒
+# 設定時（或上傳失敗時）呼叫端會自動退回寫入本機磁碟（見 _save_image_bytes 等）。
+#
+# 環境變數：
+#   OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET             阿里雲 OSS
+#   S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY / S3_BUCKET_NAME
+#     [S3_REGION，預設 us-east-1] [S3_ENDPOINT，S3 相容服務才需要]   AWS S3
+#   GCS_BUCKET_NAME + (GCS_CREDENTIALS_JSON 內容 或 GOOGLE_APPLICATION_CREDENTIALS 檔案路徑)
+#     GCS 簽名網址需要服務帳戶的私鑰才能本地簽署，故意不支援 Cloud Run/GCE 掛載的
+#     附加服務帳戶（那種身分沒有私鑰，簽名網址需要額外開 IAM SignBlob 權限）——
+#     部署在 GCP 上時，仍請另外建立一組服務帳戶 JSON 金鑰給這個功能用             GCP GCS
+#
+# 多組都設定時，用 STORAGE_BACKEND=oss|s3|gcs 明確指定要用哪個；沒指定則依 oss → s3
+# → gcs 的順序，自動選第一個「憑證齊全」的當作啟用的後端。
+_SIGNED_URL_EXPIRE = 7 * 24 * 3600  # 7 天預簽名網址，三個後端共用
+
 _OSS_BUCKET_NAME = "aimodel-oss"
 _OSS_ENDPOINT    = "https://oss-ap-southeast-1.aliyuncs.com"
-_OSS_URL_EXPIRE  = 7 * 24 * 3600  # 7 天預簽名 URL
 
-def _oss_bucket() -> Optional[oss2.Bucket]:
+def _oss_put(data: bytes, key: str) -> Optional[str]:
     ak = os.environ.get("OSS_ACCESS_KEY_ID", "")
     sk = os.environ.get("OSS_ACCESS_KEY_SECRET", "")
     if not ak or not sk:
         return None
-    auth = oss2.Auth(ak, sk)
-    return oss2.Bucket(auth, _OSS_ENDPOINT, _OSS_BUCKET_NAME)
-
-def _oss_put(data: bytes, key: str) -> Optional[str]:
-    """上傳至 OSS，回傳預簽名 URL；失敗回傳 None。"""
     try:
-        bkt = _oss_bucket()
-        if bkt is None:
-            return None
+        import oss2
+        bkt = oss2.Bucket(oss2.Auth(ak, sk), _OSS_ENDPOINT, _OSS_BUCKET_NAME)
         bkt.put_object(key, data)
-        return bkt.sign_url("GET", key, _OSS_URL_EXPIRE)
+        return bkt.sign_url("GET", key, _SIGNED_URL_EXPIRE)
     except Exception as e:
-        print(f"OSS upload error [{key}]: {e}")
+        print(f"[storage:oss] upload error [{key}]: {e}")
         return None
+
+_s3_client_cache = None
+
+def _s3_put(data: bytes, key: str) -> Optional[str]:
+    global _s3_client_cache
+    ak     = os.environ.get("S3_ACCESS_KEY_ID", "")
+    sk     = os.environ.get("S3_SECRET_ACCESS_KEY", "")
+    bucket = os.environ.get("S3_BUCKET_NAME", "")
+    if not ak or not sk or not bucket:
+        return None
+    try:
+        if _s3_client_cache is None:
+            import boto3
+            _s3_client_cache = boto3.client(
+                "s3", aws_access_key_id=ak, aws_secret_access_key=sk,
+                region_name=os.environ.get("S3_REGION", "us-east-1"),
+                endpoint_url=os.environ.get("S3_ENDPOINT") or None,
+            )
+        _s3_client_cache.put_object(Bucket=bucket, Key=key, Body=data)
+        return _s3_client_cache.generate_presigned_url(
+            "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=_SIGNED_URL_EXPIRE)
+    except Exception as e:
+        print(f"[storage:s3] upload error [{key}]: {e}")
+        return None
+
+_gcs_client_cache = None
+
+def _gcs_put(data: bytes, key: str) -> Optional[str]:
+    global _gcs_client_cache
+    bucket_name = os.environ.get("GCS_BUCKET_NAME", "")
+    creds_json  = os.environ.get("GCS_CREDENTIALS_JSON", "")
+    creds_path  = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+    if not bucket_name or not (creds_json or creds_path):
+        return None
+    try:
+        from datetime import timedelta
+        from google.cloud import storage as gcs_storage
+        if _gcs_client_cache is None:
+            if creds_json:
+                from google.oauth2 import service_account
+                info = json.loads(creds_json)
+                credentials = service_account.Credentials.from_service_account_info(info)
+                _gcs_client_cache = gcs_storage.Client(credentials=credentials, project=info.get("project_id"))
+            else:
+                _gcs_client_cache = gcs_storage.Client()
+        blob = _gcs_client_cache.bucket(bucket_name).blob(key)
+        blob.upload_from_string(data)
+        return blob.generate_signed_url(version="v4", expiration=timedelta(seconds=_SIGNED_URL_EXPIRE))
+    except Exception as e:
+        print(f"[storage:gcs] upload error [{key}]: {e}")
+        return None
+
+_STORAGE_BACKENDS = {"oss": _oss_put, "s3": _s3_put, "gcs": _gcs_put}
+
+def _cloud_put(data: bytes, key: str) -> Optional[str]:
+    """依 STORAGE_BACKEND 指定，或依序偵測 oss/s3/gcs 憑證是否齊全，上傳到雲端物件
+    儲存並回傳簽名網址；沒有任何後端可用（或上傳失敗）時回傳 None，呼叫端會退回
+    寫入本機磁碟。"""
+    forced = os.environ.get("STORAGE_BACKEND", "").strip().lower()
+    if forced:
+        put_fn = _STORAGE_BACKENDS.get(forced)
+        if put_fn is None:
+            print(f"[storage] 未知的 STORAGE_BACKEND={forced!r}（可用：{', '.join(_STORAGE_BACKENDS)}），退回本機磁碟")
+            return None
+        return put_fn(data, key)
+    for put_fn in _STORAGE_BACKENDS.values():
+        url = put_fn(data, key)
+        if url:
+            return url
+    return None
 
 # ─── App Setup ────────────────────────────────────────────────
 app = FastAPI(title="NenAI Testing Platform")
@@ -807,9 +888,9 @@ async def _save_image_bytes(data: bytes, ext: str) -> Optional[str]:
     try:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         name = f"img_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
-        oss_url = _oss_put(data, f"images/{name}")
-        if oss_url:
-            return oss_url
+        cloud_url = _cloud_put(data, f"images/{name}")
+        if cloud_url:
+            return cloud_url
         fp = OUTPUT_IMG_DIR / name
         fp.write_bytes(data)
         return f"/outputs/images/{fp.name}"
@@ -1045,9 +1126,9 @@ async def _save_video_bytes(data: bytes) -> Optional[str]:
     try:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         name = f"vid_{ts}_{uuid.uuid4().hex[:6]}.mp4"
-        oss_url = _oss_put(data, f"videos/{name}")
-        if oss_url:
-            return oss_url
+        cloud_url = _cloud_put(data, f"videos/{name}")
+        if cloud_url:
+            return cloud_url
         fp = OUTPUT_VID_DIR / name
         fp.write_bytes(data)
         return f"/outputs/videos/{fp.name}"
@@ -1553,9 +1634,9 @@ async def _async_download_image(url: str) -> Optional[str]:
         async with httpx.AsyncClient() as client:
             r = await client.get(url, timeout=30)
             if r.status_code == 200:
-                oss_url = _oss_put(r.content, f"images/{name}")
-                if oss_url:
-                    return oss_url
+                cloud_url = _cloud_put(r.content, f"images/{name}")
+                if cloud_url:
+                    return cloud_url
                 fp = OUTPUT_IMG_DIR / name
                 fp.write_bytes(r.content)
                 return f"/outputs/images/{fp.name}"
@@ -1571,9 +1652,9 @@ async def _async_download_video(url: str) -> Optional[str]:
             async with client.stream('GET', url, timeout=120) as r:
                 if r.status_code == 200:
                     data = b"".join([chunk async for chunk in r.aiter_bytes(8192)])
-                    oss_url = _oss_put(data, f"videos/{name}")
-                    if oss_url:
-                        return oss_url
+                    cloud_url = _cloud_put(data, f"videos/{name}")
+                    if cloud_url:
+                        return cloud_url
                     fp = OUTPUT_VID_DIR / name
                     fp.write_bytes(data)
                     return f"/outputs/videos/{fp.name}"
