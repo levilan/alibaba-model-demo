@@ -1,0 +1,51 @@
+name: Deploy to Cloud Run
+
+# 推上 nenai 分支就自動建置並部署到 GCP Cloud Run 的正式環境
+# （服務 nenai-testing-platform，專案 ai-model-hub-newapi，us-east5 / 哥倫布）。
+# 需要的 GitHub Secrets 見下方 GCP_SA_KEY 的說明。
+on:
+  push:
+    branches:
+      - nenai
+
+env:
+  GCP_PROJECT_ID: ai-model-hub-newapi
+  GCP_REGION: us-east5
+  SERVICE_NAME: nenai-testing-platform
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # GCP_SA_KEY：專案 Settings → Secrets and variables → Actions → New repository
+      # secret，把服務帳戶金鑰 JSON 的完整內容貼進去（跟本機部署用的同一把，
+      # levi-601@ai-model-hub-newapi.iam.gserviceaccount.com，roles/editor）
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "${{ env.SERVICE_NAME }}" \
+            --source . \
+            --project="${{ env.GCP_PROJECT_ID }}" \
+            --region="${{ env.GCP_REGION }}" \
+            --platform=managed \
+            --allow-unauthenticated \
+            --memory=1Gi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=5 \
+            --execution-environment=gen2 \
+            --timeout=300 \
+            --quiet

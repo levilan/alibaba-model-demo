@@ -1004,6 +1004,7 @@ async function sendImage() {
     btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg> 生成中...';
     showLoading('圖片生成中，請稍候...');
 
+    const startTime = Date.now();
     try {
         let res;
         if (taskType === 't2i') {
@@ -1023,6 +1024,7 @@ async function sendImage() {
         }
 
         if (res.success && res.images?.length) {
+            const elapsed = fmtElapsed(Date.now() - startTime);
             const gallery = document.getElementById('imageResults');
             gallery.querySelector('.empty-state')?.remove();
             res.images.forEach(img => {
@@ -1031,7 +1033,7 @@ async function sendImage() {
                 card.innerHTML = `
                     <img src="${src}" alt="Generated" loading="lazy" onclick="openLightbox('${src}')">
                     <div class="img-card-footer">
-                        <span class="img-model-tag">${res.model}</span>
+                        <span class="img-model-tag">${res.model}（耗時 ${elapsed}）</span>
                         <a href="${src}" download class="img-dl">下載</a>
                     </div>`;
                 if (img.actual_prompt) {
@@ -1075,6 +1077,7 @@ async function sendVideo() {
     btn.disabled = true;
     btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg> 提交中...';
 
+    const startTime = Date.now();
     try {
         let res;
         if (taskType === 't2v') {
@@ -1177,7 +1180,7 @@ async function sendVideo() {
             addVideoTask(res.task_id, model, prompt, res.status);
             toast('任務已提交，輪詢中...', 'info');
         } else if (res.success && res.video_url) {
-            addVideoResult(model, prompt, res.local_path || res.video_url);
+            addVideoResult(model, prompt, res.local_path || res.video_url, false, fmtElapsed(Date.now() - startTime));
             TaskHistory.save('video', model, prompt, res.local_path || res.video_url);
             toast('影片生成完成！', 'success');
         } else {
@@ -1213,12 +1216,12 @@ function addVideoTask(taskId, model, prompt, status) {
     pollVideo(taskId, startTime);
 }
 
-function addVideoResult(model, prompt, src, isHistory = false) {
+function addVideoResult(model, prompt, src, isHistory = false, elapsed = null) {
     const cont = document.getElementById('videoResults');
     cont.querySelector('.empty-state')?.remove();
     const card = el('div', { className: 'video-task-card' });
     card.innerHTML = `
-        <div class="vtc-header"><span class="vtc-model">${model}</span><span class="vtc-status succeeded">SUCCEEDED</span></div>
+        <div class="vtc-header"><span class="vtc-model">${model}</span>${elapsed ? `<span class="vtc-timer">(耗時 ${elapsed})</span>` : ''}<span class="vtc-status succeeded">SUCCEEDED</span></div>
         <div class="vtc-prompt">${prompt.substring(0, 120)}</div>
         <video class="video-player" controls src="${src}"></video>
         <div class="video-card-actions">
@@ -1485,6 +1488,13 @@ function hideLoading() {
 // ── Utils ─────────────────────────────────────────────────────
 function el(tag, props = {}) {
     return Object.assign(document.createElement(tag), props);
+}
+
+// 圖片/影片結果卡片共用的「耗時」顯示格式，跟影片任務輪詢的計時器（pollVideo）
+// 保持一致：60 秒內顯示整數秒，超過則顯示 分m秒s
+function fmtElapsed(ms) {
+    const sec = Math.floor(ms / 1000);
+    return sec >= 60 ? `${Math.floor(sec / 60)}m${sec % 60}s` : `${sec}s`;
 }
 
 
