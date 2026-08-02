@@ -594,27 +594,28 @@ input[type="range"]::-webkit-slider-thumb {
 /* ─── Voice Panel ─────────────────────────────────────────────── */
 .voice-result {
     margin-top: 16px;
-    background: var(--surface);
+    background: var(--bg-white);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
+    width: 100%;
 }
 .voice-result-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 10px 14px;
-    background: var(--surface-2);
+    background: var(--bg-aside);
     border-bottom: 1px solid var(--border);
     font-size: 13px;
     font-weight: 500;
-    color: var(--text-secondary);
+    color: var(--text-sub);
 }
 .voice-result-text {
     padding: 14px;
     font-size: 14px;
     line-height: 1.75;
-    color: var(--text-primary);
+    color: var(--text-body);
     white-space: pre-wrap;
     word-break: break-word;
     min-height: 60px;
@@ -625,9 +626,10 @@ input[type="range"]::-webkit-slider-thumb {
     color: var(--text-muted);
     border-top: 1px solid var(--border);
 }
-audio {
-    accent-color: var(--accent);
-    background: var(--surface-2);
+.voice-result audio {
+    display: block;
+    margin: 0 14px 14px;
+    width: calc(100% - 28px);
 }
 
 /* ── Image Edit Multi-upload ── */

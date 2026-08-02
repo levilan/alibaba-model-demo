@@ -25,7 +25,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbo
 
 // ── State ─────────────────────────────────────────────────────
 let apiKey = sessionStorage.getItem('nenai_api_key') || '';
-let models = { text: [], image: [], video: [], muleai: [] };
+let models = { text: [], image: [], video: [], muleai: [], voice: { asr: [], tts: [] } };
 let refFiles = [];
 let editRefFiles = [];  // for video editing reference images
 let imgRefFiles = [];   // for image edit reference images (up to 9)
@@ -343,6 +343,7 @@ function populateSelectors() {
     onImgTaskChange();
     onVidTaskChange();
     onMuleaiModelChange();
+    onVoiceTaskChange();
 }
 
 function populateSelect(id, list, filterFn = null) {
@@ -1385,6 +1386,151 @@ function renderMuleaiImgThumbs() {
         </div>`).join('');
     if (countEl) countEl.textContent = `${muleaiImgRefFiles.length} / 9 張`;
     if (addBtn) addBtn.style.display = muleaiImgRefFiles.length >= 9 ? 'none' : '';
+}
+
+// ── Voice (ASR / TTS) ─────────────────────────────────────────
+let voiceAsrFile = null;
+
+function onVoiceTaskChange() {
+    const t = document.getElementById('voiceTaskType').value;
+    populateSelect('voiceModel', models.voice?.[t] || []);
+    document.getElementById('voiceAsrUploadSection').style.display = t === 'asr' ? '' : 'none';
+    document.getElementById('voiceTtsSettingsSection').style.display = t === 'tts' ? '' : 'none';
+    document.getElementById('voiceAsrPromptPanel').style.display = t === 'asr' ? '' : 'none';
+    document.getElementById('voiceTtsPromptPanel').style.display = t === 'tts' ? '' : 'none';
+    onVoiceModelChange();
+}
+
+function onVoiceModelChange() {
+    // 目前 ASR/TTS 模型不需要依模型切換的額外欄位，保留這個 hook 供未來擴充。
+}
+
+function onVoiceAsrFileChange(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    voiceAsrFile = file;
+    document.getElementById('voiceAsrFileName').textContent = file.name;
+    document.getElementById('voiceAsrLabel').innerHTML = `已選擇：${file.name}`;
+    document.getElementById('voiceAsrIcon').textContent = '✅';
+    document.getElementById('voiceAsrClearBtn').style.display = '';
+}
+
+function clearVoiceAsrFile() {
+    voiceAsrFile = null;
+    document.getElementById('voiceAsrFileInput').value = '';
+    document.getElementById('voiceAsrFileName').textContent = '尚未選擇音檔';
+    document.getElementById('voiceAsrLabel').innerHTML = '上傳音檔<br><span style="font-size:11px;color:var(--text-muted)">支援 WAV / MP3 / OGG 等常見格式</span>';
+    document.getElementById('voiceAsrIcon').textContent = '🎙';
+    document.getElementById('voiceAsrClearBtn').style.display = 'none';
+}
+
+function addVoiceResultCard(title) {
+    const area = document.getElementById('voiceResults');
+    area.querySelector('.empty-state')?.remove();
+    const card = el('div', { className: 'voice-result' });
+    card.innerHTML = `<div class="voice-result-header"><span>${title}</span></div>`;
+    area.insertBefore(card, area.firstChild);
+    return card;
+}
+
+async function sendVoiceAsr() {
+    const model = document.getElementById('voiceModel').value;
+    if (!voiceAsrFile) { toast('請先上傳音檔', 'error'); return; }
+
+    const btn = document.getElementById('voiceAsrSendBtn');
+    btn.disabled = true;
+    showLoading('語音辨識中，請稍候...');
+    const startTime = Date.now();
+    const isStreaming = model.includes('streaming');
+
+    const card = addVoiceResultCard(`${model}（辨識中…）`);
+    const textEl = el('div', { className: 'voice-result-text', textContent: '' });
+    card.appendChild(textEl);
+
+    try {
+        if (isStreaming) {
+            const fd = new FormData();
+            fd.append('model', model);
+            fd.append('audio', voiceAsrFile);
+            const resp = await fetch('/api/voice/asr/stream', { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}` }, body: fd });
+            if (resp.status === 401) { handleLogout(); throw new Error('Unauthorized'); }
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '', fullText = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n\n');
+                buffer = lines.pop();
+                for (const line of lines) {
+                    if (!line.startsWith('data:')) continue;
+                    const payload = line.slice(5).trim();
+                    if (!payload) continue;
+                    try {
+                        const evt = JSON.parse(payload);
+                        if (evt.type === 'error') throw new Error(evt.error || '串流辨識失敗');
+                        const delta = evt.text ?? evt.delta ?? '';
+                        if (delta) { fullText += delta; textEl.textContent = fullText; }
+                    } catch (parseErr) { /* 忽略無法解析的中繼事件 */ }
+                }
+            }
+            card.querySelector('.voice-result-header span').textContent = `${model}（耗時 ${fmtElapsed(Date.now() - startTime)}）`;
+            toast('語音辨識完成！', 'success');
+        } else {
+            const fd = new FormData();
+            fd.append('model', model);
+            fd.append('audio', voiceAsrFile);
+            const res = await apiPostForm('/api/voice/asr', fd);
+            if (res.success) {
+                textEl.textContent = res.text || '（無辨識結果）';
+                card.querySelector('.voice-result-header span').textContent = `${model}（耗時 ${fmtElapsed(Date.now() - startTime)}）`;
+                toast('語音辨識完成！', 'success');
+            } else {
+                throw new Error(res.error || '辨識失敗');
+            }
+        }
+    } catch (e) {
+        card.querySelector('.voice-result-header span').textContent = `${model}（失敗）`;
+        textEl.textContent = `錯誤：${e.message}`;
+        toast(`錯誤：${e.message}`, 'error');
+    }
+    hideLoading();
+    btn.disabled = false;
+}
+
+async function sendVoiceTts() {
+    const model  = document.getElementById('voiceModel').value;
+    const text   = document.getElementById('voiceTtsText').value.trim();
+    const voice  = document.getElementById('voiceTtsVoice').value.trim();
+    const format = document.getElementById('voiceTtsFormat').value;
+    if (!text) { toast('請輸入文字內容', 'error'); return; }
+
+    const btn = document.getElementById('voiceTtsSendBtn');
+    btn.disabled = true;
+    showLoading('語音合成中，請稍候...');
+    const startTime = Date.now();
+
+    try {
+        const res = await apiPost('/api/voice/tts', { model, text, voice, format });
+        if (res.success && res.audio_url) {
+            const elapsed = fmtElapsed(Date.now() - startTime);
+            const card = addVoiceResultCard(`${model}（耗時 ${elapsed}）`);
+            const audioEl = el('audio', { controls: true });
+            audioEl.src = res.audio_url;
+            card.appendChild(audioEl);
+            const meta = el('div', { className: 'voice-result-meta' });
+            meta.innerHTML = `<a href="${res.audio_url}" download>下載音檔</a>`;
+            card.appendChild(meta);
+            toast('語音合成完成！', 'success');
+        } else {
+            toast(res.error || '合成失敗', 'error');
+        }
+    } catch (e) {
+        toast(`錯誤：${e.message}`, 'error');
+    }
+    hideLoading();
+    btn.disabled = false;
 }
 
 // ── API helpers ───────────────────────────────────────────────

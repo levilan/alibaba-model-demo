@@ -51,6 +51,7 @@ python app.py
 | 圖片生成 | 文生圖 (T2I) 與圖像編輯 (I2I)，支援多張參考圖、點擊放大預覽 |
 | 影片生成 | 文生影片 / 圖生影片 / 參考生影片 / 視頻編輯 / 動作動畫，含即時輪詢進度與配音 |
 | NenAI Spicy | Wan 2.7 I2V Spicy、Z-Image Spicy、圖像編輯 Spicy、圖像換臉 |
+| 語音模型 | 語音辨識 (ASR，含串流) 與語音合成 (TTS) |
 | AI Canvas | 節點式視覺化畫布（`/canvas`），可拖拉連線組合文字／圖片／影片／圖像編輯／MuleAI 節點，串接多個模型呼叫 |
 
 ---
@@ -170,6 +171,17 @@ python app.py
 | z-image-spicy | Z-Image Spicy | 圖片生成 | 文字 prompt |
 | qwen-image-edit-spicy | 圖像編輯 Spicy | 圖像編輯 | prompt + 來源圖 |
 | face-swap | 圖像換臉 | 圖像換臉 | 來源圖 + 換臉參考圖（無需 prompt）|
+
+### 語音模型
+
+| 模型 ID | 名稱 | 分類 | 功能 |
+|---|---|---|---|
+| qwen-audio-3.0-asr-flash | Qwen Audio 3.0 ASR Flash | 語音辨識 | 上傳完整音檔，一次回傳逐字稿 |
+| qwen-audio-3.0-asr-flash-streaming | Qwen Audio 3.0 ASR Flash（串流） | 語音辨識 | SSE 串流回傳中間辨識結果 |
+| qwen-audio-3.0-tts-plus | Qwen Audio 3.0 TTS Plus | 語音合成 | 高品質語音合成 |
+| qwen-audio-3.0-tts-flash | Qwen Audio 3.0 TTS Flash | 語音合成 | 極速語音合成 |
+
+> 走 NenAI 網關的 OpenAI 相容 `/v1/audio/transcriptions`（ASR）與 `/v1/audio/speech`（TTS）端點。
 
 ---
 

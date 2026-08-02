@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=4">
+    <link rel="stylesheet" href="/static/css/style.css?v=5">
     <link rel="icon" type="image/png" href="/static/img/logo.png">
 </head>
 <body>
@@ -73,6 +73,10 @@
 <button class="tab-btn" data-tab="muleai" onclick="switchTab('muleai')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                 NenAI Spicy
+            </button>
+            <button class="tab-btn" data-tab="voice" onclick="switchTab('voice')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+                語音模型
             </button>
             <button class="tab-btn" onclick="location.href='/canvas'">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.2 7.2L11 16M15.8 7.2L13 16"/></svg>
@@ -638,6 +642,97 @@
         </div>
     </section>
 
+    <!-- ── Tab: Voice ─────────────────────────────────────── -->
+    <section id="tab-voice" class="tab-content">
+        <aside class="panel-sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">基本設定</div>
+                <div class="form-group">
+                    <label class="form-label">任務類型</label>
+                    <select id="voiceTaskType" class="select-input" onchange="onVoiceTaskChange()">
+                        <option value="asr">語音辨識 (ASR)</option>
+                        <option value="tts">語音合成 (TTS)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">模型</label>
+                    <select id="voiceModel" class="select-input" onchange="onVoiceModelChange()"></select>
+                </div>
+            </div>
+
+            <div class="sidebar-section" id="voiceAsrUploadSection">
+                <div class="sidebar-section-title">音檔上傳</div>
+                <div class="upload-zone" id="voiceAsrUpZone" onclick="document.getElementById('voiceAsrFileInput').click()">
+                    <input type="file" id="voiceAsrFileInput" accept="audio/*" style="display:none" onchange="onVoiceAsrFileChange(event)">
+                    <div class="upload-zone-icon" id="voiceAsrIcon">🎙</div>
+                    <p id="voiceAsrLabel">上傳音檔<br><span style="font-size:11px;color:var(--text-muted)">支援 WAV / MP3 / OGG 等常見格式</span></p>
+                </div>
+                <button class="btn btn-ghost btn-sm" id="voiceAsrClearBtn" style="display:none;margin-top:6px;width:100%" onclick="clearVoiceAsrFile()">清除音檔</button>
+            </div>
+
+            <div class="sidebar-section" id="voiceTtsSettingsSection" style="display:none">
+                <div class="sidebar-section-title">語音設定</div>
+                <div class="form-group">
+                    <label class="form-label">音色 (voice)</label>
+                    <input type="text" id="voiceTtsVoice" value="" placeholder="留空 = 使用預設音色">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">輸出格式</label>
+                    <select id="voiceTtsFormat" class="select-input">
+                        <option value="mp3">MP3</option>
+                        <option value="wav">WAV</option>
+                        <option value="opus">OPUS</option>
+                        <option value="flac">FLAC</option>
+                    </select>
+                </div>
+            </div>
+        </aside>
+
+        <div class="panel-main">
+            <div class="prompt-panel" id="voiceAsrPromptPanel">
+                <div class="prompt-row">
+                    <div class="prompt-col">
+                        <div class="form-group" style="margin-bottom:0">
+                            <label class="form-label">已選音檔</label>
+                            <div id="voiceAsrFileName" style="font-size:0.8rem;color:var(--text-muted)">尚未選擇音檔</div>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;justify-content:flex-end">
+                        <button id="voiceAsrSendBtn" class="btn btn-primary" onclick="sendVoiceAsr()" style="height:40px">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+                            開始辨識
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="prompt-panel" id="voiceTtsPromptPanel" style="display:none">
+                <div class="prompt-row">
+                    <div class="prompt-col">
+                        <div class="form-group" style="margin-bottom:0">
+                            <label class="form-label">文字內容</label>
+                            <textarea id="voiceTtsText" class="textarea-input" rows="2" placeholder="輸入要合成的文字內容..." onkeydown="if((event.ctrlKey || event.metaKey) && event.key==='Enter'){event.preventDefault();sendVoiceTts();}"></textarea>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;justify-content:flex-end">
+                        <button id="voiceTtsSendBtn" class="btn btn-primary" onclick="sendVoiceTts()" style="height:40px">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+                            生成語音
+                        </button>
+                    </div>
+                </div>
+                <div class="chat-actions-row" style="padding-top:8px;">
+                    <span style="font-size:0.75rem;color:var(--text-muted)">Ctrl+Enter 快速發送</span>
+                </div>
+            </div>
+            <div id="voiceResults" class="results-area" style="flex:1;flex-direction:column;align-items:stretch">
+                <div class="empty-state" style="width:100%">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+                    <p>辨識/合成結果將顯示在此處</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
 </div>
 
 <!-- Lightbox -->
@@ -659,6 +754,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=26"></script>
+<script src="/static/js/app.js?v=27"></script>
 </body>
 </html>

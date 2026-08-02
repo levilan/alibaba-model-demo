@@ -167,14 +167,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-NENAI_BASE          = "https://nen.com.tw"
+NENAI_BASE          = os.environ.get("NENAI_BASE", "https://nen.com.tw")
 BASE_URL_COMPATIBLE = f"{NENAI_BASE}/v1"
 NENAI_V1            = f"{NENAI_BASE}/v1"
 
 UPLOAD_DIR      = Path(__file__).parent / "static" / "uploads"
 OUTPUT_IMG_DIR  = Path(__file__).parent / "outputs" / "images"
 OUTPUT_VID_DIR  = Path(__file__).parent / "outputs" / "videos"
-for d in (UPLOAD_DIR, OUTPUT_IMG_DIR, OUTPUT_VID_DIR):
+OUTPUT_AUD_DIR  = Path(__file__).parent / "outputs" / "audio"
+for d in (UPLOAD_DIR, OUTPUT_IMG_DIR, OUTPUT_VID_DIR, OUTPUT_AUD_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 # 靜態檔案掛載
@@ -441,6 +442,20 @@ MODELS = {
         {"id": "qwen-image-edit-spicy",   "name": "圖像編輯 Spicy",     "group": "圖像編輯", "desc": "Spicy 圖像編輯模型 (prompt + 來源圖)"},
         {"id": "face-swap",               "name": "圖像換臉",            "group": "圖像換臉", "desc": "換臉模型 (來源圖 + 換臉參考圖)"},
     ],
+    "voice": {
+        "asr": [
+            {"id": "qwen-audio-3.0-asr-flash", "name": "Qwen Audio 3.0 ASR Flash", "group": "語音辨識",
+             "desc": "極速語音辨識，上傳完整音檔一次回傳逐字稿"},
+            {"id": "qwen-audio-3.0-asr-flash-streaming", "name": "Qwen Audio 3.0 ASR Flash（串流）", "group": "語音辨識",
+             "desc": "串流語音辨識，逐字回傳中間辨識結果"},
+        ],
+        "tts": [
+            {"id": "qwen-audio-3.0-tts-plus", "name": "Qwen Audio 3.0 TTS Plus", "group": "語音合成",
+             "desc": "高品質語音合成"},
+            {"id": "qwen-audio-3.0-tts-flash", "name": "Qwen Audio 3.0 TTS Flash", "group": "語音合成",
+             "desc": "極速語音合成"},
+        ],
+    },
 }
 
 
@@ -1644,6 +1659,127 @@ async def video_status_debug(task_id: str, api_key: str = Depends(get_api_key)):
         resp = await client.get(f"{NENAI_V1}/videos/{task_id}",
                                 headers={"Authorization": f"Bearer {api_key}"})
         return {"http_status": resp.status_code, "raw": resp.json()}
+
+# ─── API: Voice (ASR / TTS) ─────────────────────────────────────────
+# NenAI 網關對音訊的支援走 OpenAI 相容的 /v1/audio/transcriptions（ASR）與
+# /v1/audio/speech（TTS），跟其他模型家族一樣用同一把 API key 直接轉發。
+@app.post("/api/voice/asr")
+async def voice_asr(request: Request, api_key: str = Depends(get_api_key)):
+    form = await request.form()
+    model = str(form.get("model", "qwen-audio-3.0-asr-flash"))
+    audio_file = form.get("audio")
+    if not audio_file or not hasattr(audio_file, "read"):
+        raise HTTPException(status_code=400, detail="缺少音檔")
+    filename = getattr(audio_file, "filename", None) or "audio.wav"
+    content_type = getattr(audio_file, "content_type", None) or mimetypes.guess_type(filename)[0] or "audio/wav"
+    audio_bytes = await audio_file.read()
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{NENAI_V1}/audio/transcriptions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                data={"model": model},
+                files={"file": (filename, audio_bytes, content_type)},
+            )
+            rj = resp.json()
+            if resp.status_code != 200:
+                return JSONResponse(status_code=resp.status_code,
+                                    content={"error": rj.get("error", {}).get("message", resp.text)})
+            return {"success": True, "text": rj.get("text", ""), "model": model}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/voice/asr/stream")
+async def voice_asr_stream(request: Request, api_key: str = Depends(get_api_key)):
+    """串流語音辨識——上游以 SSE 逐步回傳中間辨識結果，這裡原封不動轉發給前端。"""
+    form = await request.form()
+    model = str(form.get("model", "qwen-audio-3.0-asr-flash-streaming"))
+    audio_file = form.get("audio")
+    if not audio_file or not hasattr(audio_file, "read"):
+        raise HTTPException(status_code=400, detail="缺少音檔")
+    filename = getattr(audio_file, "filename", None) or "audio.wav"
+    content_type = getattr(audio_file, "content_type", None) or mimetypes.guess_type(filename)[0] or "audio/wav"
+    audio_bytes = await audio_file.read()
+
+    async def generate() -> AsyncGenerator[str, None]:
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                    "POST", f"{NENAI_V1}/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    data={"model": model, "stream": "true"},
+                    files={"file": (filename, audio_bytes, content_type)},
+                ) as resp:
+                    if resp.status_code != 200:
+                        err = await resp.aread()
+                        yield f"data: {json.dumps({'type': 'error', 'error': err.decode(errors='ignore')})}\n\n"
+                        return
+                    # 上游對「整檔上傳」的請求目前一律回傳單一 JSON（即使帶 stream=true 也一樣，
+                    # 只有真正的即時分段音訊輸入才會回真 SSE）——兩種情況都要能處理，避免真的
+                    # 收到 SSE 以外的格式時前端什麼都收不到、看起來像卡住。
+                    if "text/event-stream" in (resp.headers.get("content-type") or ""):
+                        async for line in resp.aiter_lines():
+                            if not line or not line.startswith("data:"):
+                                continue
+                            payload = line[len("data:"):].strip()
+                            if payload == "[DONE]":
+                                break
+                            yield f"data: {payload}\n\n"
+                    else:
+                        body = await resp.aread()
+                        try:
+                            rj = json.loads(body)
+                        except Exception:
+                            rj = {"error": body.decode(errors="ignore")}
+                        yield f"data: {json.dumps(rj)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+class VoiceTtsRequest(BaseModel):
+    model: str = "qwen-audio-3.0-tts-flash"
+    text: str = ""
+    voice: str = ""
+    format: str = "mp3"
+
+@app.post("/api/voice/tts")
+async def voice_tts(data: VoiceTtsRequest, api_key: str = Depends(get_api_key)):
+    if not data.text:
+        raise HTTPException(status_code=400, detail="Text is required")
+    # voice 留空則不帶這個欄位，讓上游使用預設音色——qwen-audio-3.0-tts 系列實測不吃
+    # Qwen-TTS（Cherry/Ethan…）或 CosyVoice 慣用的音色名稱，帶了反而整個請求失敗。
+    payload = {"model": data.model, "input": data.text, "response_format": data.format}
+    if data.voice:
+        payload["voice"] = data.voice
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{NENAI_V1}/audio/speech",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=payload,
+            )
+            if resp.status_code != 200:
+                try:
+                    rj = resp.json()
+                    err = rj.get("error", {}).get("message", resp.text)
+                except Exception:
+                    err = resp.text
+                return JSONResponse(status_code=resp.status_code, content={"error": err})
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            ext = data.format if data.format in ("mp3", "wav", "opus", "flac") else "mp3"
+            name = f"tts_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
+            cloud_url = _cloud_put(resp.content, f"audio/{name}")
+            if cloud_url:
+                audio_url = cloud_url
+            else:
+                fp = OUTPUT_AUD_DIR / name
+                fp.write_bytes(resp.content)
+                audio_url = f"/outputs/audio/{fp.name}"
+            return {"success": True, "audio_url": audio_url, "model": data.model}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ─── Helpers ──────────────────────────────────────────────────────
 def _handle_video_create_response(resp: httpx.Response, model: str) -> dict:
