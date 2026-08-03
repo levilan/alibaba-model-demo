@@ -709,11 +709,26 @@
                            oninput="document.getElementById('voiceTtsVolumeVal').textContent=this.value">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">語言提示 (language_hints)</label>
-                    <div style="display:flex;gap:14px;font-size:0.8rem;color:var(--text-body)">
-                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="voiceTtsLangZh" checked> 中文 (zh)</label>
-                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="voiceTtsLangEn"> 英文 (en)</label>
-                    </div>
+                    <label class="form-label" data-tip="上游目前只會處理陣列第一個值，所以這裡是單選">語言提示 (language_hints)</label>
+                    <select id="voiceTtsLangHint" class="select-input">
+                        <option value="">不指定</option>
+                        <option value="zh" selected>中文 (zh)</option>
+                        <option value="en">英語 (en)</option>
+                        <option value="fr">法語 (fr)</option>
+                        <option value="de">德語 (de)</option>
+                        <option value="ja">日語 (ja)</option>
+                        <option value="ko">韓語 (ko)</option>
+                        <option value="ru">俄語 (ru)</option>
+                        <option value="pt">葡萄牙語 (pt)</option>
+                        <option value="th">泰語 (th)</option>
+                        <option value="id">印尼語 (id)</option>
+                        <option value="vi">越南語 (vi)</option>
+                        <option value="es">西班牙語 (es)</option>
+                        <option value="it">意大利語 (it)</option>
+                        <option value="ms">馬來西亞語 (ms)</option>
+                        <option value="fil">菲律賓語 (fil)</option>
+                        <option value="ar">阿拉伯語 (ar)</option>
+                    </select>
                 </div>
             </div>
         </aside>
@@ -784,6 +799,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=28"></script>
+<script src="/static/js/app.js?v=29"></script>
 </body>
 </html>

@@ -1769,7 +1769,8 @@ async def voice_tts(data: VoiceTtsRequest, api_key: str = Depends(get_api_key)):
     if data.volume is not None:
         metadata["volume"] = data.volume
     if data.language_hints:
-        metadata["language_hints"] = data.language_hints
+        # 上游文件明載這個欄位雖然是陣列，目前版本卻只處理第一個元素，帶多個值沒意義
+        metadata["language_hints"] = data.language_hints[:1]
     if metadata:
         payload["metadata"] = metadata
     try:

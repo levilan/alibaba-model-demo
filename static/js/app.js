@@ -1509,9 +1509,9 @@ async function sendVoiceTts() {
     const sampleRateRaw = document.getElementById('voiceTtsSampleRate').value;
     const sampleRate   = sampleRateRaw ? parseInt(sampleRateRaw) : null;
     const volume       = parseInt(document.getElementById('voiceTtsVolume').value);
-    const languageHints = [];
-    if (document.getElementById('voiceTtsLangZh').checked) languageHints.push('zh');
-    if (document.getElementById('voiceTtsLangEn').checked) languageHints.push('en');
+    // language_hints 上游目前只處理陣列第一個值，這裡固定只送一個
+    const langHint = document.getElementById('voiceTtsLangHint').value;
+    const languageHints = langHint ? [langHint] : [];
     if (!text) { toast('請輸入文字內容', 'error'); return; }
 
     const btn = document.getElementById('voiceTtsSendBtn');
