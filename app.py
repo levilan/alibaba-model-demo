@@ -187,7 +187,8 @@ app.mount("/outputs", StaticFiles(directory=Path(__file__).parent / "outputs"), 
 MODELS = {
     "text": [
         # ── 旗艦 ──────────────────────────────────────────────────
-        {"id": "qwen3.7-max",        "name": "Qwen3.7 Max",      "group": "旗艦",   "desc": "最新旗艦，最強推理",     "thinking": True},
+        {"id": "qwen3.8-max",        "name": "Qwen3.8 Max",      "group": "旗艦",   "desc": "最新旗艦，最強推理",     "thinking": True},
+        {"id": "qwen3.7-max",        "name": "Qwen3.7 Max",      "group": "旗艦",   "desc": "前代旗艦，強推理",       "thinking": True},
         {"id": "qwen3.6-max-preview","name": "Qwen3.6 Max",     "group": "旗艦",   "desc": "新一代旗艦，強推理",     "thinking": True},
         # ── 均衡 ──────────────────────────────────────────────────
         {"id": "qwen3.6-plus",       "name": "Qwen3.6 Plus",     "group": "均衡",   "desc": "1M context，性價比最佳", "thinking": True},
@@ -1743,39 +1744,66 @@ class VoiceTtsRequest(BaseModel):
     text: str = ""
     voice: str = ""
     format: str = "mp3"
+    instructions: str = ""                      # 語氣/情緒風格描述，CosyVoice v3 專屬
+    sample_rate: Optional[int] = None
+    volume: Optional[int] = None
+    language_hints: List[str] = []
 
 @app.post("/api/voice/tts")
 async def voice_tts(data: VoiceTtsRequest, api_key: str = Depends(get_api_key)):
     if not data.text:
         raise HTTPException(status_code=400, detail="Text is required")
-    # voice 留空則不帶這個欄位，讓上游使用預設音色——qwen-audio-3.0-tts 系列實測不吃
-    # Qwen-TTS（Cherry/Ethan…）或 CosyVoice 慣用的音色名稱，帶了反而整個請求失敗。
-    payload = {"model": data.model, "input": data.text, "response_format": data.format}
+    # qwen-audio-3.0-tts 系列實際上不是走 OpenAI 相容的 /v1/audio/speech（那個 endpoint
+    # 收 voice 一律回錯），而是走 DashScope 風格的 /v1/services/audio/tts/SpeechSynthesizer，
+    # 回傳一段 JSON（output.audio.url 是簽名過的 OSS 下載網址，data 通常是空字串），
+    # 且 voice 要用 CosyVoice v3 的音色 id（例如 longanlingxin、loongjohn），不是
+    # Qwen-TTS 的 Cherry/Ethan 那套；voice 留空則使用上游預設音色。
+    payload: dict = {"model": data.model, "input": data.text, "response_format": data.format}
     if data.voice:
         payload["voice"] = data.voice
+    if data.instructions:
+        payload["instructions"] = data.instructions
+    metadata: dict = {}
+    if data.sample_rate is not None:
+        metadata["sample_rate"] = data.sample_rate
+    if data.volume is not None:
+        metadata["volume"] = data.volume
+    if data.language_hints:
+        metadata["language_hints"] = data.language_hints
+    if metadata:
+        payload["metadata"] = metadata
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(
-                f"{NENAI_V1}/audio/speech",
+                f"{NENAI_V1}/services/audio/tts/SpeechSynthesizer",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json=payload,
             )
-            if resp.status_code != 200:
-                try:
-                    rj = resp.json()
-                    err = rj.get("error", {}).get("message", resp.text)
-                except Exception:
-                    err = resp.text
-                return JSONResponse(status_code=resp.status_code, content={"error": err})
+            rj = resp.json()
+            if resp.status_code != 200 or "error" in rj:
+                err = rj.get("error", {}).get("message", resp.text) if isinstance(rj.get("error"), dict) else rj.get("error", resp.text)
+                return JSONResponse(status_code=resp.status_code if resp.status_code != 200 else 500,
+                                    content={"error": err})
+            audio_info = rj.get("output", {}).get("audio", {})
+            audio_url_src = audio_info.get("url")
+            b64_data = audio_info.get("data")
+            if audio_url_src:
+                dl = await client.get(audio_url_src, timeout=60.0)
+                audio_bytes = dl.content
+            elif b64_data:
+                audio_bytes = base64.b64decode(b64_data)
+            else:
+                return JSONResponse(status_code=500, content={"error": f"上游未回傳音訊：{rj}"})
+
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             ext = data.format if data.format in ("mp3", "wav", "opus", "flac") else "mp3"
             name = f"tts_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
-            cloud_url = _cloud_put(resp.content, f"audio/{name}")
+            cloud_url = _cloud_put(audio_bytes, f"audio/{name}")
             if cloud_url:
                 audio_url = cloud_url
             else:
                 fp = OUTPUT_AUD_DIR / name
-                fp.write_bytes(resp.content)
+                fp.write_bytes(audio_bytes)
                 audio_url = f"/outputs/audio/{fp.name}"
             return {"success": True, "audio_url": audio_url, "model": data.model}
     except Exception as e:

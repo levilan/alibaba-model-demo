@@ -674,7 +674,7 @@
                 <div class="sidebar-section-title">語音設定</div>
                 <div class="form-group">
                     <label class="form-label">音色 (voice)</label>
-                    <input type="text" id="voiceTtsVoice" value="" placeholder="留空 = 使用預設音色">
+                    <input type="text" id="voiceTtsVoice" value="" placeholder="例如：longanlingxin、loongjohn（留空 = 預設音色）">
                 </div>
                 <div class="form-group">
                     <label class="form-label">輸出格式</label>
@@ -684,6 +684,36 @@
                         <option value="opus">OPUS</option>
                         <option value="flac">FLAC</option>
                     </select>
+                </div>
+            </div>
+
+            <div class="sidebar-section" id="voiceTtsAdvancedSection" style="display:none">
+                <div class="sidebar-section-title">進階參數（選填）</div>
+                <div class="form-group">
+                    <label class="form-label" data-tip="描述語氣、情緒、語速等說話風格，CosyVoice v3 音色專屬">語氣風格描述 (instructions)</label>
+                    <textarea id="voiceTtsInstructions" class="textarea-input" rows="2" placeholder="例如：聲音成熟低沉、語速偏慢、帶有一絲從容的優越感"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">取樣率 (sample_rate)</label>
+                    <select id="voiceTtsSampleRate" class="select-input">
+                        <option value="">預設</option>
+                        <option value="16000">16000 Hz</option>
+                        <option value="22050">22050 Hz</option>
+                        <option value="24000" selected>24000 Hz</option>
+                        <option value="44100">44100 Hz</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">音量 (volume) <span class="param-val" id="voiceTtsVolumeVal">50</span></label>
+                    <input type="range" id="voiceTtsVolume" min="0" max="100" step="1" value="50"
+                           oninput="document.getElementById('voiceTtsVolumeVal').textContent=this.value">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">語言提示 (language_hints)</label>
+                    <div style="display:flex;gap:14px;font-size:0.8rem;color:var(--text-body)">
+                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="voiceTtsLangZh" checked> 中文 (zh)</label>
+                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="voiceTtsLangEn"> 英文 (en)</label>
+                    </div>
                 </div>
             </div>
         </aside>
@@ -754,6 +784,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=27"></script>
+<script src="/static/js/app.js?v=28"></script>
 </body>
 </html>

@@ -1396,6 +1396,7 @@ function onVoiceTaskChange() {
     populateSelect('voiceModel', models.voice?.[t] || []);
     document.getElementById('voiceAsrUploadSection').style.display = t === 'asr' ? '' : 'none';
     document.getElementById('voiceTtsSettingsSection').style.display = t === 'tts' ? '' : 'none';
+    document.getElementById('voiceTtsAdvancedSection').style.display = t === 'tts' ? '' : 'none';
     document.getElementById('voiceAsrPromptPanel').style.display = t === 'asr' ? '' : 'none';
     document.getElementById('voiceTtsPromptPanel').style.display = t === 'tts' ? '' : 'none';
     onVoiceModelChange();
@@ -1500,10 +1501,17 @@ async function sendVoiceAsr() {
 }
 
 async function sendVoiceTts() {
-    const model  = document.getElementById('voiceModel').value;
-    const text   = document.getElementById('voiceTtsText').value.trim();
-    const voice  = document.getElementById('voiceTtsVoice').value.trim();
-    const format = document.getElementById('voiceTtsFormat').value;
+    const model        = document.getElementById('voiceModel').value;
+    const text         = document.getElementById('voiceTtsText').value.trim();
+    const voice        = document.getElementById('voiceTtsVoice').value.trim();
+    const format       = document.getElementById('voiceTtsFormat').value;
+    const instructions = document.getElementById('voiceTtsInstructions').value.trim();
+    const sampleRateRaw = document.getElementById('voiceTtsSampleRate').value;
+    const sampleRate   = sampleRateRaw ? parseInt(sampleRateRaw) : null;
+    const volume       = parseInt(document.getElementById('voiceTtsVolume').value);
+    const languageHints = [];
+    if (document.getElementById('voiceTtsLangZh').checked) languageHints.push('zh');
+    if (document.getElementById('voiceTtsLangEn').checked) languageHints.push('en');
     if (!text) { toast('請輸入文字內容', 'error'); return; }
 
     const btn = document.getElementById('voiceTtsSendBtn');
@@ -1512,7 +1520,9 @@ async function sendVoiceTts() {
     const startTime = Date.now();
 
     try {
-        const res = await apiPost('/api/voice/tts', { model, text, voice, format });
+        const body = { model, text, voice, format, instructions, volume, language_hints: languageHints };
+        if (sampleRate !== null) body.sample_rate = sampleRate;
+        const res = await apiPost('/api/voice/tts', body);
         if (res.success && res.audio_url) {
             const elapsed = fmtElapsed(Date.now() - startTime);
             const card = addVoiceResultCard(`${model}（耗時 ${elapsed}）`);

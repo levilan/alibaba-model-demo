@@ -62,6 +62,7 @@ python app.py
 
 | 模型 ID | 名稱 | 分類 | Thinking |
 |---|---|---|---|
+| qwen3.8-max | Qwen3.8 Max | 旗艦 | ✓ |
 | qwen3.7-max | Qwen3.7 Max | 旗艦 | ✓ |
 | qwen3.6-max-preview | Qwen3.6 Max | 旗艦 | ✓ |
 | qwen3.7-plus | Qwen3.7 Plus | 均衡 | ✓ |
@@ -181,7 +182,7 @@ python app.py
 | qwen-audio-3.0-tts-plus | Qwen Audio 3.0 TTS Plus | 語音合成 | 高品質語音合成 |
 | qwen-audio-3.0-tts-flash | Qwen Audio 3.0 TTS Flash | 語音合成 | 極速語音合成 |
 
-> 走 NenAI 網關的 OpenAI 相容 `/v1/audio/transcriptions`（ASR）與 `/v1/audio/speech`（TTS）端點。
+> ASR 走 NenAI 網關 OpenAI 相容的 `/v1/audio/transcriptions`；TTS 走 DashScope 風格的 `/v1/services/audio/tts/SpeechSynthesizer`（回傳 JSON，音檔網址在 `output.audio.url`），支援選填的 `voice`（CosyVoice v3 音色 id，例如 `longanlingxin`、`loongjohn`）、`instructions`（語氣風格描述）與 `sample_rate`/`volume`/`language_hints`（`metadata` 子欄位）。
 
 ---
 
