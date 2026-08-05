@@ -247,11 +247,21 @@
                     <label class="form-label" data-tip="生成圖片的寬高像素（寬*高）。1024*1024 正方形適合頭像，1280*720 適合橫幅，720*1280 適合手機壁紙">尺寸</label>
                     <select id="imageSize" class="select-input"></select>
                 </div>
+                <!-- Gemini 圖片模型不支援 size 參數，改用「自然語言注入 prompt」的方式控制比例（僅 T2I） -->
+                <div class="form-group" id="imgAspectRatioGroup" style="display:none">
+                    <label class="form-label" data-tip="Gemini 圖片模型不支援結構化的尺寸參數，這裡是透過在 prompt 裡加入自然語言指示來影響輸出比例，並非官方保證的精確控制">圖片比例</label>
+                    <select id="imageAspectRatio" class="select-input"></select>
+                </div>
                 <!-- 生成張數（僅 T2I 顯示，依模型 max_n 動態調整） -->
                 <div class="form-group" id="imgNGroup">
-                    <label class="form-label" data-tip="一次請求同時生成多少張圖片（1～4 張）。多張生成方便比較不同結果，選出最滿意的版本">生成張數 <span class="param-val" id="imgNVal">1</span></label>
+                    <label class="form-label" data-tip="一次請求同時生成多少張圖片（1～4 張）。多張生成方便比較不同結果，選出最滿意的版本" id="imgNLabel">生成張數 <span class="param-val" id="imgNVal">1</span></label>
                     <input type="range" id="imgN" min="1" max="4" step="1" value="1"
                            oninput="document.getElementById('imgNVal').textContent=this.value">
+                </div>
+                <!-- 萬相 2.7 組圖模式：開啟後張數上限變成 12，實際張數由模型決定、不保證等於設定值 -->
+                <div class="toggle-row" id="imgSequentialGroup" style="display:none">
+                    <label data-tip="開啟後進入組圖模式，一次生成一組風格/角色連貫的故事圖組，張數上限提高到 12（實際張數由模型決定）">組圖模式</label>
+                    <label class="toggle"><input type="checkbox" id="imgEnableSequential" onchange="onImgSequentialToggle()"><span class="toggle-slider"></span></label>
                 </div>
                 <div class="toggle-row" id="imgPromptExtendGroup">
                     <label data-tip="啟用後模型自動擴充提示詞，補充更多場景、光線、風格等細節描述，通常能顯著提升圖片品質和豐富度">Prompt Extend</label>
@@ -277,6 +287,36 @@
                     </label>
                     <input type="range" id="imgRefStrength" min="0" max="1" step="0.05" value="0.5"
                            oninput="document.getElementById('refStrVal').textContent=this.value">
+                </div>
+            </div>
+            <!-- GPT Image 系列專屬參數（T2I/I2I 皆適用），已實測確認 quality/background/output_format 三個 OpenAI 標準參數有效 -->
+            <div class="sidebar-section" id="imgGptParamsSection" style="display:none">
+                <div class="sidebar-section-title">GPT Image 參數</div>
+                <div class="form-group">
+                    <label class="form-label" data-tip="圖片生成品質，影響細節與耗時，high 品質更好但速度較慢">品質 (quality)</label>
+                    <select id="imgQuality" class="select-input">
+                        <option value="">auto（自動）</option>
+                        <option value="low">low</option>
+                        <option value="medium">medium</option>
+                        <option value="high">high</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-tip="transparent 會輸出去背的透明背景圖，適合做素材；搭配 output_format 建議選 PNG 或 WEBP（JPEG 不支援透明）">背景 (background)</label>
+                    <select id="imgBackground" class="select-input">
+                        <option value="">auto（自動）</option>
+                        <option value="opaque">opaque（不透明）</option>
+                        <option value="transparent">transparent（透明）</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">輸出格式 (output_format)</label>
+                    <select id="imgOutputFormat" class="select-input">
+                        <option value="">預設</option>
+                        <option value="png">PNG</option>
+                        <option value="jpeg">JPEG</option>
+                        <option value="webp">WEBP</option>
+                    </select>
                 </div>
             </div>
             <div id="imgUploadSection" class="sidebar-section hidden">
@@ -834,6 +874,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=32"></script>
+<script src="/static/js/app.js?v=33"></script>
 </body>
 </html>

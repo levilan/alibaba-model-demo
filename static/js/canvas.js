@@ -100,7 +100,13 @@
     // 瀏覽器記憶體裡的 Blob 資料已經不存在，存下去也是無效網址。
     function _restoreGenResult(node, cv) {
         if (!cv) return;
-        if (cv.imageUrl) { node.imageUrl = cv.imageUrl; setPreviewImage(node, cv.imageUrl); if (node.statusEl) node.statusEl.textContent = '完成'; }
+        // 組圖模式（enable_sequential）存的是多張圖片網址；優先判斷這個，否則落回單張圖片
+        if (cv.imageUrls && cv.imageUrls.length) {
+            node.imageUrls = cv.imageUrls; node.imageUrl = cv.imageUrls[0];
+            setPreviewImageGallery(node, cv.imageUrls); if (node.statusEl) node.statusEl.textContent = '完成';
+        } else if (cv.imageUrl) {
+            node.imageUrl = cv.imageUrl; setPreviewImage(node, cv.imageUrl); if (node.statusEl) node.statusEl.textContent = '完成';
+        }
         if (cv.videoUrl) { node.videoUrl = cv.videoUrl; setPreviewVideo(node, cv.videoUrl); if (node.statusEl) node.statusEl.textContent = '完成'; }
         if (cv.audioUrl) { node.audioUrl = cv.audioUrl; setPreviewAudio(node, cv.audioUrl); if (node.statusEl) node.statusEl.textContent = '完成'; }
     }
@@ -168,6 +174,15 @@
     function buildSelect(values, current, onChange) {
         const sel = el('select');
         sel.innerHTML = values.map(v => `<option value="${v}"${v === current ? ' selected' : ''}>${v}</option>`).join('');
+        sel.addEventListener('mousedown', (e) => e.stopPropagation());
+        sel.addEventListener('change', () => onChange(sel.value));
+        return sel;
+    }
+
+    // 跟 buildSelect 一樣，但選項需要「值跟顯示文字不同」時使用（例如空字串值要顯示成「auto（自動）」）
+    function buildLabeledSelect(options, current, onChange) {
+        const sel = el('select');
+        sel.innerHTML = options.map(([v, label]) => `<option value="${v}"${v === current ? ' selected' : ''}>${label}</option>`).join('');
         sel.addEventListener('mousedown', (e) => e.stopPropagation());
         sel.addEventListener('change', () => onChange(sel.value));
         return sel;
@@ -418,6 +433,9 @@
 
     function _clearProgressTimer(node) {
         if (node._progressTimer) { clearInterval(node._progressTimer); node._progressTimer = null; }
+        // 每個 setPreview* 函式開頭都會呼叫這個，順便把組圖模式專用的 grid 排版
+        // class 清掉，避免切回單張圖片/影片/音檔時排版殘留成網格樣式
+        node._previewBox.classList.remove('cv-preview-grid');
     }
 
     // 圖片/影片生成都是「送出後輪詢」，後端沒有真正的百分比可回報——用指數趨緩
@@ -488,6 +506,27 @@
         dl.href = url; dl.download = 'image.png'; dl.target = '_blank';
         dl.addEventListener('mousedown', (e) => e.stopPropagation());
         node._previewBox.appendChild(dl);
+    }
+
+    // 萬相 2.7「組圖模式」（enable_sequential）一次會回多張連貫圖片，用簡單的
+    // 兩欄網格排版全部顯示，每張各自可放大/下載，而不是只顯示第一張。
+    function setPreviewImageGallery(node, urls) {
+        _clearProgressTimer(node);
+        node._previewBox.innerHTML = '';
+        node._previewBox.classList.add('cv-preview-grid');
+        urls.forEach((url, i) => {
+            const item = el('div', 'cv-gallery-item');
+            const img = el('img');
+            img.src = url;
+            img.addEventListener('mousedown', (e) => e.stopPropagation());
+            img.addEventListener('click', () => openLightbox('image', url));
+            item.appendChild(img);
+            const dl = el('a', 'cv-dl-btn cv-gallery-dl', '⬇');
+            dl.href = url; dl.download = `image_${i + 1}.png`; dl.target = '_blank';
+            dl.addEventListener('mousedown', (e) => e.stopPropagation());
+            item.appendChild(dl);
+            node._previewBox.appendChild(item);
+        });
     }
 
     function setPreviewVideo(node, url) {
@@ -890,8 +929,13 @@
         this.addOutput('image', 'image');
         this.refSlots = [1];
         const models = getModelsFor('image', 't2i');
-        this.properties = { model: (models[0] && models[0].id) || '', prompt: '', size: '1024*1024', status: '' };
+        this.properties = {
+            model: (models[0] && models[0].id) || '', prompt: '', size: '1024*1024', status: '',
+            aspect_ratio: '', enable_sequential: false, seq_n: 4,
+            quality: '', background: '', output_format: '',
+        };
         this.imageUrl = null;
+        this.imageUrls = null;
         this._contentHeight = 470;
         this.size = [320, 470];
         this.color = '#1f3a2e'; this.bgcolor = '#2a2a2a';
@@ -904,8 +948,27 @@
                 <label>Prompt<span class="cv-hint">（若連接文字節點會優先使用其輸出）</span></label>
                 <textarea placeholder="輸入文字…"></textarea>
                 <div class="cv-cam-prefix-hint" style="display:none"></div>
-                <label>尺寸</label>
-                <div class="cv-size-slot"></div>
+                <div class="cv-size-group">
+                    <label>尺寸</label>
+                    <div class="cv-size-slot"></div>
+                </div>
+                <div class="cv-ar-group" style="display:none">
+                    <label>圖片比例<span class="cv-hint">（Gemini 專用，靠 prompt 文字模擬控制）</span></label>
+                    <div class="cv-ar-slot"></div>
+                </div>
+                <label class="cv-check-row cv-seq-row" style="display:none"><input type="checkbox" class="cv-seq-check"> 組圖模式（一次生成連貫故事圖組）</label>
+                <div class="cv-seq-n-group" style="display:none">
+                    <label>最大張數（實際張數由模型決定）<span class="cv-dur-val cv-seq-n-val">4</span></label>
+                    <input type="range" class="cv-seq-n-slider" min="1" max="12" step="1" value="4">
+                </div>
+                <div class="cv-gpt-group" style="display:none">
+                    <label>品質 (quality)</label>
+                    <div class="cv-quality-slot"></div>
+                    <label>背景 (background)</label>
+                    <div class="cv-bg-slot"></div>
+                    <label>輸出格式 (output_format)</label>
+                    <div class="cv-fmt-slot"></div>
+                </div>
                 <button class="cv-add-ref-btn">+ 新增參考圖輸入</button>
                 <button class="cv-generate">▶ 生成圖片</button>
                 <div class="cv-status"></div>
@@ -916,6 +979,22 @@
         this.statusEl = panel.querySelector('.cv-status');
         this.modeHintEl = panel.querySelector('.cv-mode-hint');
         this.camHintEl = panel.querySelector('.cv-cam-prefix-hint');
+        this.seqCheck = panel.querySelector('.cv-seq-check');
+        this.seqCheck.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.seqCheck.addEventListener('change', () => {
+            // wireConfigOverlay() 執行後 .cv-controls（含 .cv-seq-n-group）已經搬到
+            // this._configOverlay，不再是 panel 的子節點，這裡不能用建構子當時的
+            // panel 變數查詢，要用當下真正裝著表單的容器
+            this.properties.enable_sequential = this.seqCheck.checked;
+            const container = this._configOverlay || this._domPanel;
+            container.querySelector('.cv-seq-n-group').style.display = this.seqCheck.checked ? '' : 'none';
+        });
+        this.seqNSlider = panel.querySelector('.cv-seq-n-slider');
+        this.seqNValEl = panel.querySelector('.cv-seq-n-val');
+        this.seqNSlider.addEventListener('input', () => {
+            this.properties.seq_n = parseInt(this.seqNSlider.value);
+            this.seqNValEl.textContent = this.seqNSlider.value;
+        });
         panel.querySelector('.cv-add-ref-btn').addEventListener('click', () => this._addRefSlot());
         panel.querySelector('.cv-generate').addEventListener('click', () => this.generate());
 
@@ -923,6 +1002,7 @@
             this.properties.model = v;
             const sizes = sizesForModel('image', v);
             this._rebuildSizeSelect(sizes);
+            this._syncModelExtras();
         });
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
         this._rebuildSizeSelect(sizesForModel('image', this.properties.model));
@@ -930,6 +1010,7 @@
         panel.appendChild(buildPreview(this));
         wireConfigOverlay(this, panel);
         attachNodeChrome(this);
+        this._syncModelExtras();
     }
     ImageGenNode.title = '圖片 Image';
     ImageGenNode.prototype._addRefSlot = function () {
@@ -954,6 +1035,58 @@
         this.sizeSelect = buildSelect(sizes, this.properties.size, (v) => { this.properties.size = v; });
         slot.appendChild(this.sizeSelect);
     };
+    // Gemini 的「圖片比例」、萬相 2.7 的「組圖模式」、GPT Image 的 quality/
+    // background/output_format 都是依目前選到的模型（且部分僅限 T2I）才顯示，
+    // 集中在這裡統一處理可見性與選單重建，供建構子/模型切換/連線變化/還原共用。
+    ImageGenNode.prototype._syncModelExtras = function () {
+        const mode = this._detectMode();
+        const modelInfo = getModelsFor('image', mode).find(m => m.id === this.properties.model) || {};
+        const container = this._configOverlay || this._domPanel;
+
+        // Gemini 圖片模型不支援 size 參數，隱藏尺寸選單（跟主測試台一致）
+        container.querySelector('.cv-size-group').style.display = modelInfo.no_size ? 'none' : '';
+
+        const arGroup = container.querySelector('.cv-ar-group');
+        const aspectRatios = (mode === 't2i' && modelInfo.aspect_ratios) || [];
+        arGroup.style.display = aspectRatios.length ? '' : 'none';
+        if (aspectRatios.length) {
+            if (!aspectRatios.includes(this.properties.aspect_ratio)) this.properties.aspect_ratio = aspectRatios[0];
+            const slot = container.querySelector('.cv-ar-slot');
+            slot.innerHTML = '';
+            this.arSelect = buildSelect(aspectRatios, this.properties.aspect_ratio, (v) => { this.properties.aspect_ratio = v; });
+            slot.appendChild(this.arSelect);
+        }
+
+        const supportsSeq = mode === 't2i' && !!modelInfo.supports_sequential;
+        container.querySelector('.cv-seq-row').style.display = supportsSeq ? '' : 'none';
+        if (!supportsSeq) this.properties.enable_sequential = false;
+        this.seqCheck.checked = this.properties.enable_sequential;
+        container.querySelector('.cv-seq-n-group').style.display =
+            (supportsSeq && this.properties.enable_sequential) ? '' : 'none';
+
+        const gptGroup = container.querySelector('.cv-gpt-group');
+        gptGroup.style.display = modelInfo.supports_gpt_params ? '' : 'none';
+        if (modelInfo.supports_gpt_params) {
+            const qSlot = container.querySelector('.cv-quality-slot');
+            qSlot.innerHTML = '';
+            this.qualitySelect = buildLabeledSelect(
+                [['', 'auto（自動）'], ['low', 'low'], ['medium', 'medium'], ['high', 'high']],
+                this.properties.quality, (v) => { this.properties.quality = v; });
+            qSlot.appendChild(this.qualitySelect);
+            const bgSlot = container.querySelector('.cv-bg-slot');
+            bgSlot.innerHTML = '';
+            this.backgroundSelect = buildLabeledSelect(
+                [['', 'auto（自動）'], ['opaque', 'opaque（不透明）'], ['transparent', 'transparent（透明）']],
+                this.properties.background, (v) => { this.properties.background = v; });
+            bgSlot.appendChild(this.backgroundSelect);
+            const fmtSlot = container.querySelector('.cv-fmt-slot');
+            fmtSlot.innerHTML = '';
+            this.outputFormatSelect = buildLabeledSelect(
+                [['', '預設'], ['png', 'PNG'], ['jpeg', 'JPEG'], ['webp', 'WEBP']],
+                this.properties.output_format, (v) => { this.properties.output_format = v; });
+            fmtSlot.appendChild(this.outputFormatSelect);
+        }
+    };
     ImageGenNode.prototype._detectMode = function () {
         return this.refSlots.some(i => !!this.getInputNode(i)) ? 'i2i' : 't2i';
     };
@@ -972,6 +1105,7 @@
         if (!values.includes(this.properties.model)) this.properties.model = values[0] || '';
         this.modelSelect.innerHTML = values.map(v => `<option value="${v}"${v === this.properties.model ? ' selected' : ''}>${v}</option>`).join('');
         this._rebuildSizeSelect(sizesForModel('image', this.properties.model));
+        this._syncModelExtras();
         this.modeHintEl.textContent = mode === 'i2i' ? '（參考圖生成圖像）' : '（文生圖）';
     };
     ImageGenNode.prototype.generate = async function () {
@@ -993,21 +1127,34 @@
                 fd.append('prompt', prompt);
                 fd.append('size', this.properties.size);
                 fd.append('n', '1');
+                if (this.properties.quality) fd.append('quality', this.properties.quality);
+                if (this.properties.background) fd.append('background', this.properties.background);
+                if (this.properties.output_format) fd.append('output_format', this.properties.output_format);
                 for (let i = 0; i < refUrls.length; i++) {
                     fd.append(`image_${i + 1}`, await fetchAsBlob(refUrls[i]), `ref${i + 1}.png`);
                 }
                 res = await apiFetch('/api/image/edit', { method: 'POST', body: fd });
             } else {
-                res = await apiFetch('/api/image/generate', {
-                    method: 'POST',
-                    body: JSON.stringify({ model: this.properties.model, prompt, size: this.properties.size, n: 1 }),
-                });
+                const body = { model: this.properties.model, prompt, size: this.properties.size, n: 1 };
+                if (this.properties.aspect_ratio) body.aspect_ratio = this.properties.aspect_ratio;
+                if (this.properties.enable_sequential) {
+                    body.enable_sequential = true;
+                    body.n = this.properties.seq_n;
+                }
+                if (this.properties.quality) body.quality = this.properties.quality;
+                if (this.properties.background) body.background = this.properties.background;
+                if (this.properties.output_format) body.output_format = this.properties.output_format;
+                res = await apiFetch('/api/image/generate', { method: 'POST', body: JSON.stringify(body) });
             }
             const data = await res.json();
             if (!res.ok || !data.images || !data.images.length) throw new Error((data.error && (data.error.message || data.error)) || '生成失敗');
-            this.imageUrl = data.images[0].local_path || data.images[0].url;
-            this.statusEl.textContent = '完成';
-            setPreviewImage(this, this.imageUrl);
+            const urls = data.images.map(img => img.local_path || img.url);
+            this.imageUrl = urls[0];
+            this.imageUrls = urls.length > 1 ? urls : null;
+            this.statusEl.textContent = urls.length > 1 ? `完成（共 ${urls.length} 張）` : '完成';
+            if (urls.length > 1) setPreviewImageGallery(this, urls); else setPreviewImage(this, this.imageUrl);
+            // 輸出插槽固定是單張圖片，組圖模式下只往下游傳第一張，其餘的張只能在
+            // 節點內的圖庫預覽/下載，這是既有 image 輸出型別（單一字串網址）的限制
             this.setOutputData(0, this.imageUrl);
         } catch (e) {
             this.statusEl.textContent = '錯誤：' + e.message;
@@ -1016,13 +1163,15 @@
         }
     };
     ImageGenNode.prototype.onSerialize = function (o) {
-        o.cv = { imageUrl: this.imageUrl || null };
+        o.cv = { imageUrl: this.imageUrl || null, imageUrls: this.imageUrls || null };
     };
     ImageGenNode.prototype.onConfigure = function (o) {
         this.textarea.value = this.properties.prompt || '';
+        this.refSlots = _collectRefSlots(this);
         if (this.modelSelect) this.modelSelect.value = this.properties.model;
         this._rebuildSizeSelect(sizesForModel('image', this.properties.model));
-        this.refSlots = _collectRefSlots(this);
+        this._syncModelExtras();
+        if (this.seqNSlider) { this.seqNSlider.value = this.properties.seq_n; this.seqNValEl.textContent = this.properties.seq_n; }
         _restoreGenResult(this, o.cv);
     };
     ImageGenNode.prototype.onRemoved = sharedOnRemoved;
@@ -1423,7 +1572,10 @@
         this.addInput('prompt', 'string');
         this.addOutput('image', 'image');
         const models = getModelsFor('image', 'i2i');
-        this.properties = { model: (models[0] && models[0].id) || '', prompt: '', size: '1024*1024', status: '' };
+        this.properties = {
+            model: (models[0] && models[0].id) || '', prompt: '', size: '1024*1024', status: '',
+            quality: '', background: '', output_format: '',
+        };
         this.imageUrl = null;
         this._contentHeight = 470;
         this.size = [320, 470];
@@ -1436,6 +1588,14 @@
                 <div class="cv-select-slot"></div>
                 <label>Prompt<span class="cv-hint">（若連接文字節點會優先使用其輸出）</span></label>
                 <textarea placeholder="輸入編輯指示…"></textarea>
+                <div class="cv-gpt-group" style="display:none">
+                    <label>品質 (quality)</label>
+                    <div class="cv-quality-slot"></div>
+                    <label>背景 (background)</label>
+                    <div class="cv-bg-slot"></div>
+                    <label>輸出格式 (output_format)</label>
+                    <div class="cv-fmt-slot"></div>
+                </div>
                 <button class="cv-generate">▶ 編輯圖片</button>
                 <div class="cv-status"></div>
             </div>`;
@@ -1445,14 +1605,46 @@
         this.statusEl = panel.querySelector('.cv-status');
         panel.querySelector('.cv-generate').addEventListener('click', () => this.generate());
 
-        this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => { this.properties.model = v; });
+        this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => {
+            this.properties.model = v;
+            this._syncModelExtras();
+        });
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
 
         panel.appendChild(buildPreview(this));
         wireConfigOverlay(this, panel);
         attachNodeChrome(this);
+        this._syncModelExtras();
     }
     ImageEditNode.title = '圖像編輯 Editing';
+    // GPT Image（gpt-image-2/1.5）額外支援 quality/background/output_format 三個
+    // OpenAI 標準參數，其他模型（萬相/千問）沒有，靠 supports_gpt_params 判斷顯示
+    ImageEditNode.prototype._syncModelExtras = function () {
+        const modelInfo = getModelsFor('image', 'i2i').find(m => m.id === this.properties.model) || {};
+        const container = this._configOverlay || this._domPanel;
+        const gptGroup = container.querySelector('.cv-gpt-group');
+        gptGroup.style.display = modelInfo.supports_gpt_params ? '' : 'none';
+        if (modelInfo.supports_gpt_params) {
+            const qSlot = container.querySelector('.cv-quality-slot');
+            qSlot.innerHTML = '';
+            this.qualitySelect = buildLabeledSelect(
+                [['', 'auto（自動）'], ['low', 'low'], ['medium', 'medium'], ['high', 'high']],
+                this.properties.quality, (v) => { this.properties.quality = v; });
+            qSlot.appendChild(this.qualitySelect);
+            const bgSlot = container.querySelector('.cv-bg-slot');
+            bgSlot.innerHTML = '';
+            this.backgroundSelect = buildLabeledSelect(
+                [['', 'auto（自動）'], ['opaque', 'opaque（不透明）'], ['transparent', 'transparent（透明）']],
+                this.properties.background, (v) => { this.properties.background = v; });
+            bgSlot.appendChild(this.backgroundSelect);
+            const fmtSlot = container.querySelector('.cv-fmt-slot');
+            fmtSlot.innerHTML = '';
+            this.outputFormatSelect = buildLabeledSelect(
+                [['', '預設'], ['png', 'PNG'], ['jpeg', 'JPEG'], ['webp', 'WEBP']],
+                this.properties.output_format, (v) => { this.properties.output_format = v; });
+            fmtSlot.appendChild(this.outputFormatSelect);
+        }
+    };
     ImageEditNode.prototype.onExecute = function () {
         _syncPromptTextarea(this, this.textarea, 1);
         this.setOutputData(0, this.imageUrl);
@@ -1473,6 +1665,9 @@
             fd.append('prompt', prompt);
             fd.append('size', this.properties.size);
             fd.append('n', '1');
+            if (this.properties.quality) fd.append('quality', this.properties.quality);
+            if (this.properties.background) fd.append('background', this.properties.background);
+            if (this.properties.output_format) fd.append('output_format', this.properties.output_format);
             fd.append('image_1', await fetchAsBlob(srcImage), 'source.png');
             const res = await apiFetch('/api/image/edit', { method: 'POST', body: fd });
             const data = await res.json();
@@ -1493,6 +1688,7 @@
     ImageEditNode.prototype.onConfigure = function (o) {
         this.textarea.value = this.properties.prompt || '';
         if (this.modelSelect) this.modelSelect.value = this.properties.model;
+        this._syncModelExtras();
         _restoreGenResult(this, o.cv);
     };
     ImageEditNode.prototype.onRemoved = sharedOnRemoved;

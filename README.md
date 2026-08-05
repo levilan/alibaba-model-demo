@@ -87,10 +87,14 @@ python app.py
 |---|---|---|
 | qwen-image-2.0-pro | 千問圖像 2.0 Pro | 千問文生圖 |
 | qwen-image-2.0 | 千問圖像 2.0 | 千問文生圖 |
-| qwen-image-max | 千問圖像 Max | 千問文生圖 |
-| qwen-image-plus | 千問圖像 Plus | 千問文生圖 |
+| wan2.7-image-pro | 萬相 2.7 Image Pro | 萬相文生圖 |
+| wan2.7-image | 萬相 2.7 Image | 萬相文生圖 |
 | wan2.6-t2i | 萬相 2.6 T2I | 萬相文生圖 |
 | z-image-turbo | Z-Image Turbo | Z-Image |
+| MAI-Image-2.5 | MAI-Image-2.5 | MAI Image |
+| MAI-Image-2.5-Flash | MAI-Image-2.5-Flash | MAI Image |
+
+> `wan2.7-image-pro`／`wan2.7-image` 額外支援 `enable_sequential`（組圖模式：一次生成一組風格/角色連貫的故事圖組，開啟後 `n` 上限由 4 提高到 12，實際張數由模型決定）；`wan2.7-image-pro` 純文生圖情境下另支援 2K（`2048*2048`）、4K（`4096*4096`）高解析度輸出，其餘情境上游僅支援到 2K。
 
 **圖像編輯 (I2I)**
 
@@ -99,21 +103,23 @@ python app.py
 | wan2.7-image-pro | 萬相 2.7 Image Pro | 萬相圖像編輯 |
 | wan2.7-image | 萬相 2.7 Image | 萬相圖像編輯 |
 | wan2.6-image | 萬相 2.6 Image | 萬相圖像編輯 |
-| qwen-image-edit-max | 千問圖像編輯 Max | 千問圖像編輯 |
-| qwen-image-edit-plus | 千問圖像編輯 Plus | 千問圖像編輯 |
 | qwen-image-2.0-pro（編輯） | 千問圖像 2.0 Pro | 千問圖像編輯 |
 | qwen-image-2.0（編輯） | 千問圖像 2.0 | 千問圖像編輯 |
+| MAI-Image-2.5（編輯） | MAI-Image-2.5 | MAI Image |
+| MAI-Image-2.5-Flash（編輯） | MAI-Image-2.5-Flash | MAI Image |
 
 > qwen-image-2.0 系列為生成與編輯融合模型：最多 3 張參考圖、可一次輸出 1–6 張，並以 `prompt_extend` 取代 `ref_strength` 參數。
 
-**GPT Image（文生圖，尺寸格式為 `WIDTHxHEIGHT`）**
+**GPT Image（文生圖 + 圖像編輯，尺寸格式為 `WIDTHxHEIGHT`）**
 
 | 模型 ID | 名稱 |
 |---|---|
 | gpt-image-2 | GPT Image 2（OpenAI 旗艦圖像模型） |
 | gpt-image-1.5 | GPT Image 1.5（OpenAI 前代圖像模型） |
 
-**Gemini Image（文生圖，走 `/v1/chat/completions` + `modalities`，不支援自訂尺寸）**
+> 額外支援 OpenAI 標準的 `quality`（`auto`/`low`/`medium`/`high`）、`background`（`auto`/`opaque`/`transparent`，透明背景輸出）、`output_format`（`png`/`jpeg`/`webp`）三個參數。
+
+**Gemini Image（文生圖 + 圖像編輯，走 `/v1/chat/completions` + `modalities`，不支援結構化的 `size` 參數）**
 
 | 模型 ID | 名稱 |
 |---|---|
@@ -121,6 +127,8 @@ python app.py
 | gemini-3.1-flash-image | Gemini 3.1 Flash Image（速度與品質平衡） |
 | gemini-2.5-flash-image | Gemini 2.5 Flash Image（穩定版） |
 | gemini-3.1-flash-lite-image | Gemini 3.1 Flash Lite Image（輕量極速） |
+
+> T2I 支援「圖片比例」選項（1:1/16:9/9:16/4:3/3:4）。實測過 Gemini 官方的結構化 `imageConfig.aspectRatio` 參數在這個網關上會被靜默忽略，因此改用「在 prompt 文字裡以自然語言要求比例」的權宜做法（例如 `Generate an image with aspect ratio 16:9 depicting: ...`），並非官方保證的精確控制。網關上 `gemini-3-pro-image-preview`、`gemini-3.1-flash-image-preview` 這兩個 preview 版模型已下線（實測回 404），故不列入清單。
 
 圖片輸出支援點擊放大預覽（lightbox）。
 
@@ -199,9 +207,9 @@ TTS 的音色 (`voice`) 在主測試台與 AI Canvas 都是下拉選單、依選
 | 節點 | 說明 |
 |---|---|
 | 文字 Text | 手動輸入 prompt，或選模型做真正的文字生成；若連接圖片輸入則可改用「分析圖片」 |
-| 圖片 Image | 文生圖 (t2i)；若連接參考圖輸入則自動切換為圖像生成 (i2i) |
+| 圖片 Image | 文生圖 (t2i)；若連接參考圖輸入則自動切換為圖像生成 (i2i)。跟主測試台圖片分頁同步支援：Gemini 系列的「圖片比例」選項、萬相 2.7 的組圖模式（`enable_sequential`，一次生成最多 12 張連貫圖組，多張結果以網格顯示）與 2K/4K 解析度、GPT Image 的 quality/background/output_format 三個參數 |
 | 影片 Video | 依連接的圖片組合自動切換 t2v / i2v（首尾幀）/ r2v（最多 6 張參考圖） |
-| 圖像編輯 Editing | 圖像編輯 (i2i)，需連接一張來源圖片 |
+| 圖像編輯 Editing | 圖像編輯 (i2i)，需連接一張來源圖片；GPT Image 系列同樣支援 quality/background/output_format |
 | 語音 TTS | 呼叫語音模型分頁同一套 `/api/voice/tts`，可接文字節點輸出或手動輸入；依選擇的模型（qwen-audio-3.0-tts-* / gemini-*-tts）動態顯示或隱藏 CosyVoice 專屬的進階參數 |
 | MuleAI Spicy | 對應 NenAI Spicy 四個模型，依選擇的模型動態切換必填輸入與輸出型別（image/video） |
 

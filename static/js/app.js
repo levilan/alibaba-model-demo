@@ -439,20 +439,44 @@ function onImgModelChange() {
         "1024*768": "1024×768 (4:3)", "768*1024": "768×1024 (3:4)",
         "960*1280": "960×1280 (3:4)", "1280*960": "1280×960 (4:3)",
         "960*1696": "960×1696 (9:16)", "1696*960": "1696×960 (16:9)",
+        "2048*2048": "2048×2048 (2K)", "4096*4096": "4096×4096 (4K)",
     };
     sizeEl.innerHTML = sizes.map(s =>
         `<option value="${s}"${s === currentSize ? ' selected' : ''}>${sizeLabels[s] || s}</option>`
     ).join('');
 
+    // 圖片比例（僅 Gemini T2I 支援，用自然語言注入 prompt 的方式模擬比例控制）
+    const aspectRatioGroup = document.getElementById('imgAspectRatioGroup');
+    const aspectRatios = modelInfo.aspect_ratios || [];
+    aspectRatioGroup.style.display = aspectRatios.length ? '' : 'none';
+    if (aspectRatios.length) {
+        const arEl = document.getElementById('imageAspectRatio');
+        const currentAr = arEl.value;
+        arEl.innerHTML = aspectRatios.map(r =>
+            `<option value="${r}"${r === currentAr ? ' selected' : ''}>${r}</option>`
+        ).join('');
+    }
+
     // 更新張數上限（i2i 模式下，僅 max_n > 1 的模型如 qwen-image-2.0 系列才顯示張數選擇）
     const maxN = modelInfo.max_n || 4;
     const nSlider = document.getElementById('imgN');
-    nSlider.max = maxN;
-    if (parseInt(nSlider.value) > maxN) {
-        nSlider.value = maxN;
-        document.getElementById('imgNVal').textContent = maxN;
+    const sequentialChecked = document.getElementById('imgEnableSequential').checked;
+    if (!sequentialChecked) {
+        nSlider.max = maxN;
+        if (parseInt(nSlider.value) > maxN) {
+            nSlider.value = maxN;
+            document.getElementById('imgNVal').textContent = maxN;
+        }
     }
     document.getElementById('imgNGroup').style.display = (maxN > 1) ? '' : 'none';
+
+    // 萬相 2.7 組圖模式（enable_sequential）僅 T2I 支援
+    const sequentialGroup = document.getElementById('imgSequentialGroup');
+    sequentialGroup.style.display = (t === 't2i' && modelInfo.supports_sequential) ? '' : 'none';
+    if (!modelInfo.supports_sequential) {
+        document.getElementById('imgEnableSequential').checked = false;
+        onImgSequentialToggle();
+    }
 
     // ref_strength 僅 Wan 圖像編輯系列支援，qwen-image-2.0 系列無此參數
     document.getElementById('imgRefStrengthGroup').style.display =
@@ -462,10 +486,30 @@ function onImgModelChange() {
     document.getElementById('imgPromptExtendGroup').style.display =
         (t === 't2i' || modelInfo.fusion_edit) ? '' : 'none';
 
+    // GPT Image 專屬參數（quality/background/output_format），T2I/I2I 皆適用
+    document.getElementById('imgGptParamsSection').style.display = modelInfo.supports_gpt_params ? '' : 'none';
+
     // 參考圖張數上限（qwen-image-2.0 系列最多 3 張，其餘模型最多 9 張）
     imgMaxRef = modelInfo.max_ref || 9;
     if (imgRefFiles.length > imgMaxRef) imgRefFiles = imgRefFiles.slice(0, imgMaxRef);
     renderImgThumbs();
+}
+
+// 組圖模式開啟時，n 上限由 4 提高到 12（實際生成張數由模型決定、不保證等於設定值）
+function onImgSequentialToggle() {
+    const on = document.getElementById('imgEnableSequential').checked;
+    const nSlider = document.getElementById('imgN');
+    const modelId = document.getElementById('imageModel').value;
+    const modelInfo = models.image.find(m => m.id === modelId && m.type === 't2i') || {};
+    const maxN = on ? 12 : (modelInfo.max_n || 4);
+    nSlider.max = maxN;
+    if (parseInt(nSlider.value) > maxN) {
+        nSlider.value = maxN;
+        document.getElementById('imgNVal').textContent = maxN;
+    }
+    document.getElementById('imgNLabel').innerHTML =
+        (on ? '最大張數（組圖模式，實際張數由模型決定）' : '生成張數') +
+        ` <span class="param-val" id="imgNVal">${nSlider.value}</span>`;
 }
 
 // ── Video 任務/模型切換 ────────────────────────────────────────
@@ -1047,6 +1091,14 @@ async function sendImage() {
     const imgSeedRaw  = document.getElementById('imgSeed').value.trim();
     const imgSeed     = imgSeedRaw !== '' ? parseInt(imgSeedRaw) : null;
     const refStrength = parseFloat(document.getElementById('imgRefStrength').value);
+    const aspectRatio = document.getElementById('imgAspectRatioGroup').style.display !== 'none'
+        ? document.getElementById('imageAspectRatio').value : '';
+    const enableSequential = document.getElementById('imgSequentialGroup').style.display !== 'none'
+        && document.getElementById('imgEnableSequential').checked;
+    const gptParamsVisible = document.getElementById('imgGptParamsSection').style.display !== 'none';
+    const quality      = gptParamsVisible ? document.getElementById('imgQuality').value : '';
+    const background   = gptParamsVisible ? document.getElementById('imgBackground').value : '';
+    const outputFormat = gptParamsVisible ? document.getElementById('imgOutputFormat').value : '';
 
     if (!prompt) { toast('請輸入 Prompt', 'error'); return; }
 
@@ -1061,6 +1113,11 @@ async function sendImage() {
         if (taskType === 't2i') {
             const body = { model, prompt, negative_prompt: negPrompt, size, n, prompt_extend: extend, watermark };
             if (imgSeed !== null) body.seed = imgSeed;
+            if (aspectRatio) body.aspect_ratio = aspectRatio;
+            if (enableSequential) body.enable_sequential = true;
+            if (quality) body.quality = quality;
+            if (background) body.background = background;
+            if (outputFormat) body.output_format = outputFormat;
             res = await apiPost('/api/image/generate', body);
         } else {
             if (!imgRefFiles.length) { toast('請先上傳至少一張參考圖片', 'error'); hideLoading(); btn.disabled = false; btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg> 生成'; return; }
@@ -1070,6 +1127,9 @@ async function sendImage() {
             fd.append('watermark', watermark); fd.append('ref_strength', refStrength);
             fd.append('n', n); fd.append('prompt_extend', extend);
             if (imgSeed !== null) fd.append('seed', imgSeed);
+            if (quality) fd.append('quality', quality);
+            if (background) fd.append('background', background);
+            if (outputFormat) fd.append('output_format', outputFormat);
             imgRefFiles.forEach((f, i) => fd.append(`image_${i + 1}`, f));
             res = await apiPostForm('/api/image/edit', fd);
         }

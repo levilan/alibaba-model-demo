@@ -189,6 +189,17 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
 .cv-preview audio { width: calc(100% - 24px); margin: 12px; }
 .cv-preview .cv-empty { opacity: 0.5; }
 
+/* 萬相組圖模式：多張圖片用兩欄網格顯示，取代單張置中的預設排版 */
+.cv-preview.cv-preview-grid {
+    flex-wrap: wrap; align-items: flex-start; justify-content: flex-start;
+    gap: 6px; padding: 8px; overflow-y: auto;
+}
+.cv-preview-grid .cv-gallery-item { position: relative; width: calc(50% - 3px); flex-shrink: 0; }
+.cv-preview-grid .cv-gallery-item img {
+    width: 100%; max-height: none; display: block; border-radius: 8px; cursor: zoom-in;
+}
+.cv-preview-grid .cv-gallery-dl { position: absolute; top: 4px; right: 4px; padding: 3px 7px; font-size: 11px; }
+
 /* ── Lightbox：點擊預覽圖/影片後全螢幕放大顯示 ─────────────── */
 .cv-lightbox {
     position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.88);

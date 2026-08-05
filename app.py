@@ -292,15 +292,20 @@ MODELS = {
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
         # ── 萬相文生圖 ────────────────────────────────────────────
+        # enable_sequential：組圖模式（連貫故事圖組），開啟時 n 上限由 4 變 12，
+        # 實際張數由模型決定、不保證等於 n。wan2.7-image-pro 純文生圖情境下額外
+        # 支援 2048*2048（2K）與 4096*4096（4K）高解析度，其餘情境上游僅支援到 2K。
         {
             "id": "wan2.7-image-pro", "name": "萬相 2.7 Image Pro", "group": "萬相文生圖",
             "desc": "旗艦文生圖，細節與畫質更佳", "type": "t2i", "max_n": 4,
-            "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960","960*1696","1696*960"],
+            "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960","960*1696","1696*960","2048*2048","4096*4096"],
+            "supports_sequential": True,
         },
         {
             "id": "wan2.7-image", "name": "萬相 2.7 Image", "group": "萬相文生圖",
             "desc": "標準文生圖", "type": "t2i", "max_n": 4,
             "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960","960*1696","1696*960"],
+            "supports_sequential": True,
         },
         {
             "id": "wan2.6-t2i", "name": "萬相 2.6 T2I", "group": "萬相文生圖",
@@ -353,44 +358,53 @@ MODELS = {
             "no_ref_strength": True, "fusion_edit": True,
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
-        # ── GPT Image（尺寸格式為 WIDTHxHEIGHT，與其他模型的 WIDTH*HEIGHT 不同）──
+        # ── GPT Image（尺寸格式為 WIDTHxHEIGHT，與其他模型的 WIDTH*HEIGHT 不同；
+        #    supports_gpt_params 標記這個家族額外支援 OpenAI 標準的 quality/
+        #    background/output_format 三個參數，已實測確認皆有效）──
         {
             "id": "gpt-image-2", "name": "GPT Image 2", "group": "GPT Image",
             "desc": "OpenAI 旗艦圖像模型", "type": "t2i", "max_n": 4,
-            "sizes": ["1024x1024","1536x1024","1024x1536"],
+            "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
         },
         {
             "id": "gpt-image-1.5", "name": "GPT Image 1.5", "group": "GPT Image",
             "desc": "OpenAI 前代圖像模型", "type": "t2i", "max_n": 4,
-            "sizes": ["1024x1024","1536x1024","1024x1536"],
+            "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
         },
-        # ── Gemini Image（走 /v1/chat/completions + modalities，不支援 size 參數）──
+        # ── Gemini Image（走 /v1/chat/completions + modalities，不支援 size 參數；
+        #    aspect_ratio 走「自然語言注入 prompt」而非結構化欄位——實測過
+        #    imageConfig/aspect_ratio/generationConfig 這些結構化參數在這個
+        #    網關上一律被靜默忽略，直接在 prompt 文字裡要求比例反而有效）──
         {
             "id": "gemini-3-pro-image", "name": "Gemini 3 Pro Image", "group": "Gemini Image",
             "desc": "Google 旗艦圖像生成，畫質最佳", "type": "t2i", "max_n": 4, "no_size": True,
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
         },
         {
             "id": "gemini-3.1-flash-image", "name": "Gemini 3.1 Flash Image", "group": "Gemini Image",
             "desc": "速度與品質平衡，建議日常使用", "type": "t2i", "max_n": 4, "no_size": True,
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
         },
         {
             "id": "gemini-2.5-flash-image", "name": "Gemini 2.5 Flash Image", "group": "Gemini Image",
             "desc": "穩定版，較成熟的圖像模型", "type": "t2i", "max_n": 4, "no_size": True,
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
         },
         {
             "id": "gemini-3.1-flash-lite-image", "name": "Gemini 3.1 Flash Lite Image", "group": "Gemini Image",
             "desc": "輕量極速圖像生成", "type": "t2i", "max_n": 4, "no_size": True,
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
         },
         # ── GPT Image 編輯（沿用一般 /v1/images/edits 流程）──────────
         {
             "id": "gpt-image-2", "name": "GPT Image 2（編輯）", "group": "GPT Image",
             "desc": "OpenAI 旗艦圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True,
-            "sizes": ["1024x1024","1536x1024","1024x1536"],
+            "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
         },
         {
             "id": "gpt-image-1.5", "name": "GPT Image 1.5（編輯）", "group": "GPT Image",
             "desc": "OpenAI 前代圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True,
-            "sizes": ["1024x1024","1536x1024","1024x1536"],
+            "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
         },
         # ── MAI Image 編輯（Azure OpenAI 管道，沿用一般 /v1/images/edits 流程，不支援 ref_strength）──
         {
@@ -1016,12 +1030,19 @@ async def _extract_images_from_data(data_list: list) -> list:
 _GEMINI_IMAGE_MAX_RETRIES = 2
 
 async def _generate_gemini_chat_image(model: str, prompt: str, n: int, api_key: str,
-                                       image_files: Optional[list] = None) -> dict:
+                                       image_files: Optional[list] = None,
+                                       aspect_ratio: Optional[str] = None) -> dict:
     if image_files:
         content: Any = [{"type": "text", "text": f"Edit the image(s) as follows: {prompt}"}]
         for fname, fbytes, ftype in image_files:
             b64 = base64.b64encode(fbytes).decode()
             content.append({"type": "image_url", "image_url": {"url": f"data:{ftype};base64,{b64}"}})
+    elif aspect_ratio:
+        # 實測過結構化的 imageConfig/aspect_ratio/generationConfig 欄位在這個網關上
+        # 一律被靜默忽略（回傳圖片永遠是預設比例），改成直接在 prompt 文字裡用自然
+        # 語言要求比例才有效——這不是 Gemini 官方 API 的正規做法，是繞過網關限制
+        # 的權宜之計，未來若網關支援結構化參數應優先改用那個。
+        content = f"Generate an image with aspect ratio {aspect_ratio} depicting: {prompt}"
     else:
         content = f"Generate an image depicting: {prompt}"
     payload = {
@@ -1056,6 +1077,13 @@ async def _generate_gemini_chat_image(model: str, prompt: str, n: int, api_key: 
             "error": f"模型未回傳圖片，改用純文字回覆（重試 {_GEMINI_IMAGE_MAX_RETRIES} 次仍失敗）：{preview}"
         })
 
+# qwen-image-2.0 系列為「生成與編輯融合模型」：最多 3 張參考圖、可輸出 1-6 張，且不支援 ref_strength 參數
+_QWEN2_EDIT_MODELS = {"qwen-image-2.0-pro", "qwen-image-2.0"}
+# GPT Image 系列額外支援 OpenAI 標準的 quality/background/output_format 三個參數（已實測確認有效）
+_GPT_IMAGE_MODELS = {"gpt-image-2", "gpt-image-1.5"}
+# 支援組圖模式（enable_sequential）與更高解析度的萬相 2.7 系列
+_WAN27_IMAGE_MODELS = {"wan2.7-image-pro", "wan2.7-image"}
+
 # ─── API: Image Generate (T2I) ────────────────────────────────────
 class ImageGenerateRequest(BaseModel):
     model: str = "z-image-turbo"
@@ -1066,6 +1094,11 @@ class ImageGenerateRequest(BaseModel):
     prompt_extend: bool = False
     watermark: bool = False
     seed: Optional[int] = None
+    aspect_ratio: Optional[str] = None       # 僅 Gemini 圖片模型使用
+    quality: Optional[str] = None            # 僅 GPT Image 使用：auto/low/medium/high
+    background: Optional[str] = None         # 僅 GPT Image 使用：auto/opaque/transparent
+    output_format: Optional[str] = None      # 僅 GPT Image 使用：png/jpeg/webp
+    enable_sequential: bool = False          # 僅萬相 2.7 使用：組圖模式
 
 @app.post("/api/image/generate")
 async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_api_key)):
@@ -1074,7 +1107,8 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
 
     if data.model in _GEMINI_CHAT_IMAGE_MODELS:
         try:
-            return await _generate_gemini_chat_image(data.model, data.prompt, data.n, api_key)
+            return await _generate_gemini_chat_image(data.model, data.prompt, data.n, api_key,
+                                                       aspect_ratio=data.aspect_ratio)
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -1087,6 +1121,15 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
         payload["watermark"] = True
     if data.seed is not None:
         payload["seed"] = data.seed
+    if data.model in _GPT_IMAGE_MODELS:
+        if data.quality:
+            payload["quality"] = data.quality
+        if data.background:
+            payload["background"] = data.background
+        if data.output_format:
+            payload["output_format"] = data.output_format
+    if data.model in _WAN27_IMAGE_MODELS and data.enable_sequential:
+        payload["enable_sequential"] = True
 
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
@@ -1106,8 +1149,6 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# qwen-image-2.0 系列為「生成與編輯融合模型」：最多 3 張參考圖、可輸出 1-6 張，且不支援 ref_strength 參數
-_QWEN2_EDIT_MODELS = {"qwen-image-2.0-pro", "qwen-image-2.0"}
 # GPT Image 系列的 /images/edits 不接受 ref_strength 參數，帶入會被上游拒絕（400 Unknown parameter）
 _NO_REF_STRENGTH_EDIT_MODELS = _QWEN2_EDIT_MODELS | {"gpt-image-2", "gpt-image-1.5", "MAI-Image-2.5", "MAI-Image-2.5-Flash"}
 
@@ -1133,6 +1174,9 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
     except ValueError:
         n = 1
     n = max(1, min(6, n)) if is_qwen2_edit else 1
+    quality       = form.get("quality", "")
+    background    = form.get("background", "")
+    output_format = form.get("output_format", "")
 
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
@@ -1178,6 +1222,13 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
             form_data["watermark"] = "true"
         if seed is not None:
             form_data["seed"] = str(seed)
+        if model in _GPT_IMAGE_MODELS:
+            if quality:
+                form_data["quality"] = quality
+            if background:
+                form_data["background"] = background
+            if output_format:
+                form_data["output_format"] = output_format
 
         files = [(("image" if i == 0 else f"image_{i+1}"), (fname, fbytes, ftype))
                  for i, (fname, fbytes, ftype) in enumerate(image_files)]
