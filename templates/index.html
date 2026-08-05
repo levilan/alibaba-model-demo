@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=6">
+    <link rel="stylesheet" href="/static/css/style.css?v=7">
     <link rel="icon" type="image/png" href="/static/img/logo.png">
     <script>
         // 在 CSS 套用前就先決定 light/dark，避免登入畫面先閃一下錯的主題再跳回來
@@ -138,7 +138,7 @@
                 <div class="sidebar-section-title">模型設定</div>
                 <div class="form-group">
                     <label class="form-label" data-tip="選擇 AI 語言模型。Max 系列推理能力最強，Plus 性價比均衡，Flash 速度最快成本最低，DeepSeek 為第三方深度推理模型">模型</label>
-                    <select id="textModel" class="select-input"></select>
+                    <select id="textModel" class="select-input" onchange="onTextModelChange()"></select>
                 </div>
                 <div class="form-group">
                     <label class="form-label" data-tip="系統指令，設定 AI 的角色、背景知識和回答風格。例如：「你是一位專業的程式工程師，請以繁體中文回答」">System Prompt</label>
@@ -193,9 +193,23 @@
                     <textarea id="textStop" class="textarea-input" rows="2"
                               placeholder="例：\n結束\n---"></textarea>
                 </div>
-                <div class="toggle-row">
-                    <label data-tip="啟用後模型會先進行內部推理（Chain-of-Thought），再給出回答，大幅提升複雜問題的準確性，但會消耗更多 tokens 且速度較慢">思考模式</label>
+                <div class="toggle-row" id="textThinkingGroup">
+                    <label data-tip="啟用後模型會先進行內部推理（Chain-of-Thought），再給出回答，大幅提升複雜問題的準確性，但會消耗更多 tokens 且速度較慢。思考過程會顯示在回答上方">思考模式</label>
                     <label class="toggle"><input type="checkbox" id="textThinking"><span class="toggle-slider"></span></label>
+                </div>
+                <!-- GPT 系列用 reasoning_effort 字串控制推理強度，跟其他家族的「思考模式」
+                     開關是完全不同的機制（送 enable_thinking 給 GPT 會直接 400），
+                     兩組欄位互斥顯示，依 onTextModelChange() 判斷 -->
+                <div class="form-group" id="textReasoningEffortGroup" style="display:none">
+                    <label class="form-label" data-tip="GPT 系列專屬的推理強度控制。higher 會讓模型思考更久、答案品質可能更好，但耗時與 token 成本也更高；none 幾乎不思考、最快最省">推理強度 (reasoning_effort)</label>
+                    <select id="textReasoningEffort" class="select-input">
+                        <option value="">預設</option>
+                        <option value="none">none（幾乎不思考）</option>
+                        <option value="low">low</option>
+                        <option value="medium">medium</option>
+                        <option value="high">high</option>
+                        <option value="xhigh">xhigh（思考最久）</option>
+                    </select>
                 </div>
                 <div class="toggle-row">
                     <label data-tip="啟用後文字逐步顯示（如打字效果），可即時看到生成過程；停用則等待完整回應後一次顯示">串流輸出 (Stream)</label>
@@ -874,6 +888,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=33"></script>
+<script src="/static/js/app.js?v=34"></script>
 </body>
 </html>

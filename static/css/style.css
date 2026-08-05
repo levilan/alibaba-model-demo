@@ -418,6 +418,26 @@ input[type="range"]::-webkit-slider-thumb {
 .msg-meta { font-size: 0.72rem; color: var(--text-muted); margin-top: 6px; display: flex; justify-content: space-between; }
 .streaming-cursor::after { content: '▋'; animation: blink 0.7s infinite; color: var(--ali-orange); font-size: 0.7em; }
 
+/* ─── 思考過程（reasoning_content）───────────────────────────────
+   DeepSeek/GLM/Qwen 開啟思考模式、或 GPT reasoning_effort 較高時，上游
+   會額外回傳一段跟正式回答分開的思考過程文字，用可收合的區塊、跟正式
+   回答視覺上明確區隔（縮小、斜體、左邊界線），避免使用者誤以為那是答案本身 */
+.msg-reasoning {
+    margin-bottom: 8px; padding: 8px 10px 8px 12px;
+    border-left: 3px solid var(--border); background: var(--bg-aside);
+    border-radius: var(--radius-sm);
+    font-size: 0.78rem; font-style: italic; color: var(--text-sub);
+    white-space: pre-wrap; word-break: break-word;
+}
+.msg-reasoning summary {
+    cursor: pointer; font-style: normal; font-weight: 500;
+    color: var(--text-muted); list-style: none; user-select: none;
+}
+.msg-reasoning summary::-webkit-details-marker { display: none; }
+.msg-reasoning summary::before { content: '▸ '; }
+.msg-reasoning[open] summary::before { content: '▾ '; }
+.msg-reasoning .msg-reasoning-body { margin-top: 6px; }
+
 .chat-input-bar {
     border-top: 1px solid var(--border);
     background: var(--bg-white);

@@ -390,10 +390,23 @@ function clearMuleaiAudio() {
 function populateSelectors() {
     populateSelect('textModel', models.text);
     populateSelect('muleaiModel', models.muleai || []);
+    onTextModelChange();
     onImgTaskChange();
     onVidTaskChange();
     onMuleaiModelChange();
     onVoiceTaskChange();
+}
+
+// 「思考模式」（enable_thinking 布林值）跟 GPT 的「推理強度」（reasoning_effort
+// 字串）是兩種互斥的機制：Qwen/DeepSeek/GLM 用前者，GPT 用後者，送錯機制給錯的
+// 家族會直接 400（例如對 GPT 送 enable_thinking 會回 "Unknown parameter"）。
+// Claude/Gemini 兩組都不支援（Claude 送了沒反應，Gemini 一律無條件思考關不掉），
+// 所以兩個欄位都隱藏。
+function onTextModelChange() {
+    const modelId = document.getElementById('textModel').value;
+    const modelInfo = models.text.find(m => m.id === modelId) || {};
+    document.getElementById('textThinkingGroup').style.display = modelInfo.thinking ? '' : 'none';
+    document.getElementById('textReasoningEffortGroup').style.display = modelInfo.reasoning_effort ? '' : 'none';
 }
 
 function populateSelect(id, list, filterFn = null) {
@@ -975,6 +988,7 @@ async function sendText() {
     const stopRaw           = document.getElementById('textStop').value.trim();
     const stop              = stopRaw ? stopRaw.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 4) : [];
     const enableThinking    = document.getElementById('textThinking').checked;
+    const reasoningEffort   = document.getElementById('textReasoningEffort').value;
     const useStream         = document.getElementById('textStream').checked;
     const modelInfo         = models.text.find(m => m.id === model);
 
@@ -993,6 +1007,19 @@ async function sendText() {
     output.appendChild(aDiv);
     output.scrollTop = output.scrollHeight;
 
+    // 思考過程（reasoning_content）跟正式回答是分開的兩股文字，用獨立的可收合區塊
+    // 顯示、且第一次收到內容時才插入 DOM——大多數模型/情境完全不會有這段內容
+    let reasoningEl = null, reasoningBodyEl = null, reasoningFull = '';
+    const ensureReasoningEl = () => {
+        if (reasoningEl) return;
+        reasoningEl = el('details', { className: 'msg-reasoning', open: true });
+        const summary = el('summary', { textContent: '思考過程' });
+        reasoningBodyEl = el('div', { className: 'msg-reasoning-body' });
+        reasoningEl.appendChild(summary);
+        reasoningEl.appendChild(reasoningBodyEl);
+        aDiv.insertBefore(reasoningEl, contentDiv);
+    };
+
     const btn = document.getElementById('textSendBtn');
     btn.disabled = true;
     document.getElementById('textPrompt').value = '';
@@ -1003,11 +1030,12 @@ async function sendText() {
             temperature, top_p: topP, max_tokens: maxTokens,
             presence_penalty: presencePenalty, frequency_penalty: frequencyPenalty,
             stream: useStream,
-            enable_thinking: enableThinking && modelInfo?.thinking,
+            enable_thinking: enableThinking && !!modelInfo?.thinking,
         };
         if (topK > 0) body.top_k = topK;
         if (seed !== null) body.seed = seed;
         if (stop.length > 0) body.stop = stop;
+        if (reasoningEffort && modelInfo?.reasoning_effort) body.reasoning_effort = reasoningEffort;
 
         const startTime = Date.now();
         const res = await fetch('/api/text/generate', {
@@ -1024,6 +1052,11 @@ async function sendText() {
             if (data.error) {
                 contentDiv.textContent = '⚠ 錯誤：' + data.error;
             } else {
+                if (data.reasoning_content) {
+                    ensureReasoningEl();
+                    reasoningEl.open = false;
+                    reasoningBodyEl.textContent = data.reasoning_content;
+                }
                 contentDiv.textContent = data.content || '';
                 const meta = el('div', { className: 'msg-meta' });
                 meta.innerHTML = '<span>' + model + ' (耗時 ' + elapsed + 's)</span><span>' + new Date().toLocaleTimeString() + '</span>';
@@ -1046,7 +1079,13 @@ async function sendText() {
                     if (!line.startsWith('data: ')) continue;
                     try {
                         const d = JSON.parse(line.slice(6));
-                        if (d.content) {
+                        if (d.reasoning) {
+                            ensureReasoningEl();
+                            reasoningFull += d.reasoning;
+                            reasoningBodyEl.textContent = reasoningFull;
+                            output.scrollTop = output.scrollHeight;
+                        } else if (d.content) {
+                            if (reasoningEl) reasoningEl.open = false; // 開始輸出正式回答，收合思考過程
                             full += d.content;
                             contentDiv.textContent = full;
                             output.scrollTop = output.scrollHeight;

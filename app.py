@@ -244,12 +244,16 @@ MODELS = {
         # ── 角色 ──────────────────────────────────────────────────
         {"id": "qwen-plus-character", "name": "Qwen Plus Character","group": "角色", "desc": "角色扮演，Plus 品質",   "thinking": False},
         # ── 第三方 ────────────────────────────────────────────────
-        {"id": "deepseek-v4-pro",    "name": "DeepSeek V4 Pro",  "group": "第三方", "desc": "最新旗艦推理",           "thinking": False},
-        {"id": "deepseek-v4-flash",  "name": "DeepSeek V4 Flash","group": "第三方", "desc": "最新極速推理",           "thinking": False},
-        {"id": "deepseek-v3.2",      "name": "DeepSeek V3.2",    "group": "第三方", "desc": "前代深度推理",           "thinking": False},
-        {"id": "glm-5.1",            "name": "GLM 5.1",          "group": "第三方", "desc": "智譜 GLM 前一版",        "thinking": False},
-        {"id": "glm-5.2",            "name": "GLM 5.2",          "group": "第三方", "desc": "智譜 GLM 最新版",        "thinking": False},
-        # ── Claude ────────────────────────────────────────────────
+        # DeepSeek/GLM 實測都支援 enable_thinking 開關（會回傳獨立的 reasoning_content
+        # 思考過程），DeepSeek V4 系列預設就是思考模式開啟，enable_thinking:false 可關閉
+        {"id": "deepseek-v4-pro",    "name": "DeepSeek V4 Pro",  "group": "第三方", "desc": "最新旗艦推理",           "thinking": True},
+        {"id": "deepseek-v4-flash",  "name": "DeepSeek V4 Flash","group": "第三方", "desc": "最新極速推理",           "thinking": True},
+        {"id": "deepseek-v3.2",      "name": "DeepSeek V3.2",    "group": "第三方", "desc": "前代深度推理",           "thinking": True},
+        {"id": "glm-5.1",            "name": "GLM 5.1",          "group": "第三方", "desc": "智譜 GLM 前一版",        "thinking": True},
+        {"id": "glm-5.2",            "name": "GLM 5.2",          "group": "第三方", "desc": "智譜 GLM 最新版",        "thinking": True},
+        # ── Claude（實測過 enable_thinking 與 Anthropic 原生 thinking 參數在這個
+        #    網關上都不會回傳任何思考過程，thinking 一律維持 False；temperature/
+        #    top_p 也不能送，Bedrock 後端會直接回 400 "temperature is deprecated"）──
         {"id": "claude-opus-4-8",             "name": "Claude Opus 4.8",   "group": "Claude", "desc": "旗艦，最強推理",   "thinking": False},
         {"id": "claude-opus-4-7",             "name": "Claude Opus 4.7",   "group": "Claude", "desc": "前代旗艦",         "thinking": False},
         {"id": "claude-opus-4-6",             "name": "Claude Opus 4.6",   "group": "Claude", "desc": "前代旗艦",         "thinking": False},
@@ -260,17 +264,24 @@ MODELS = {
         {"id": "claude-sonnet-4-5-20250929",  "name": "Claude Sonnet 4.5", "group": "Claude", "desc": "前代均衡模型",     "thinking": False},
         {"id": "claude-haiku-4-5-20251001",   "name": "Claude Haiku 4.5",  "group": "Claude", "desc": "極速模型",         "thinking": False},
         {"id": "claude-fable-5",              "name": "Claude Fable 5",    "group": "Claude", "desc": "創意寫作模型",     "thinking": False},
-        # ── GPT ───────────────────────────────────────────────────
-        {"id": "gpt-5.6-terra", "name": "GPT 5.6 Terra", "group": "GPT", "desc": "最新特化模型", "thinking": False},
-        {"id": "gpt-5.6-sol",   "name": "GPT 5.6 Sol",   "group": "GPT", "desc": "最新特化模型", "thinking": False},
-        {"id": "gpt-5.6-luna",  "name": "GPT 5.6 Luna",  "group": "GPT", "desc": "最新特化模型", "thinking": False},
-        {"id": "gpt-5.5",       "name": "GPT 5.5",       "group": "GPT", "desc": "均衡模型",     "thinking": False},
-        {"id": "gpt-5.4",       "name": "GPT 5.4",       "group": "GPT", "desc": "均衡模型",     "thinking": False},
-        {"id": "gpt-5.4-mini",  "name": "GPT 5.4 Mini",  "group": "GPT", "desc": "輕量極速",     "thinking": False},
-        {"id": "gpt-5.4-nano",  "name": "GPT 5.4 Nano",  "group": "GPT", "desc": "超輕量極速",   "thinking": False},
-        {"id": "gpt-5.2",       "name": "GPT 5.2",       "group": "GPT", "desc": "前代均衡模型", "thinking": False},
-        {"id": "gpt-5-mini",    "name": "GPT 5 Mini",    "group": "GPT", "desc": "前代輕量模型", "thinking": False},
-        # ── Gemini ────────────────────────────────────────────────
+        # ── GPT（推理強度用 reasoning_effort 字串控制，不是 enable_thinking 布林值——
+        #    實測過對 GPT 模型送 enable_thinking 會直接 400 "Unknown parameter"；
+        #    reasoning_effort 這個網關接受的枚舉是 none/low/medium/high/xhigh（不是
+        #    OpenAI 官方文件常見的 minimal/low/medium/high），reasoning_effort=none
+        #    會讓 reasoning_tokens 掉到 0，證實真的有效，但這個閘道沒有回傳可讀的
+        #    思考過程文字，只影響耗費的 token 數/延遲）──
+        {"id": "gpt-5.6-terra", "name": "GPT 5.6 Terra", "group": "GPT", "desc": "最新特化模型", "thinking": False, "reasoning_effort": True},
+        {"id": "gpt-5.6-sol",   "name": "GPT 5.6 Sol",   "group": "GPT", "desc": "最新特化模型", "thinking": False, "reasoning_effort": True},
+        {"id": "gpt-5.6-luna",  "name": "GPT 5.6 Luna",  "group": "GPT", "desc": "最新特化模型", "thinking": False, "reasoning_effort": True},
+        {"id": "gpt-5.5",       "name": "GPT 5.5",       "group": "GPT", "desc": "均衡模型",     "thinking": False, "reasoning_effort": True},
+        {"id": "gpt-5.4",       "name": "GPT 5.4",       "group": "GPT", "desc": "均衡模型",     "thinking": False, "reasoning_effort": True},
+        {"id": "gpt-5.4-mini",  "name": "GPT 5.4 Mini",  "group": "GPT", "desc": "輕量極速",     "thinking": False, "reasoning_effort": True},
+        {"id": "gpt-5.4-nano",  "name": "GPT 5.4 Nano",  "group": "GPT", "desc": "超輕量極速",   "thinking": False, "reasoning_effort": True},
+        {"id": "gpt-5.2",       "name": "GPT 5.2",       "group": "GPT", "desc": "前代均衡模型", "thinking": False, "reasoning_effort": True},
+        {"id": "gpt-5-mini",    "name": "GPT 5 Mini",    "group": "GPT", "desc": "前代輕量模型", "thinking": False, "reasoning_effort": True},
+        # ── Gemini（3.x 系列實測會無條件消耗 reasoning_tokens 思考，enable_thinking/
+        #    reasoning_effort 兩種參數都試過，沒有任何一個能讓它降到 0——這個網關上
+        #    目前無法關閉，thinking 維持 False，沒有開關讓使用者假裝能控制）──
         {"id": "gemini-3.1-pro-preview",      "name": "Gemini 3.1 Pro Preview",      "group": "Gemini", "desc": "旗艦，最強推理",   "thinking": False},
         {"id": "gemini-3.6-flash",            "name": "Gemini 3.6 Flash",            "group": "Gemini", "desc": "新一代均衡模型",   "thinking": False},
         {"id": "gemini-3.5-flash",            "name": "Gemini 3.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": False},
@@ -611,6 +622,7 @@ class TextGenerateRequest(BaseModel):
     stop: List[str] = []
     stream: bool = True
     enable_thinking: bool = False
+    reasoning_effort: Optional[str] = None  # 僅 GPT 系列支援：none/low/medium/high/xhigh
 
 
 class OmniChatRequest(BaseModel):
@@ -742,13 +754,31 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
         create_kwargs["seed"] = data.seed
     if data.stop:
         create_kwargs["stop"] = data.stop[:4]
+    # reasoning_effort 是 GPT-5 系列專屬的推理強度控制（實測這個網關接受的枚舉值是
+    # none/low/medium/high/xhigh，不是 OpenAI 官方文件常見的 minimal/low/medium/high；
+    # 帶 minimal 會被直接拒絕：400 "does not support 'minimal' with this model"），
+    # 跟 Qwen/DeepSeek/GLM 用的 enable_thinking 是完全不同的機制、參數名稱衝突
+    # 不能共用同一個開關：實測過對 GPT 模型送 enable_thinking 會直接 400
+    # "Unknown parameter"，對其他家族送 reasoning_effort 則會被忽略或報錯，
+    # 因此兩者互斥，由呼叫端（前端）依模型家族只送其中一個。
+    if data.reasoning_effort:
+        create_kwargs["reasoning_effort"] = data.reasoning_effort
 
     if not data.stream:
         try:
             user_client = OpenAI(api_key=api_key, base_url=BASE_URL_COMPATIBLE)
             resp = user_client.chat.completions.create(**create_kwargs)
-            content = resp.choices[0].message.content if resp.choices else ""
-            return {"content": content, "done": True}
+            message = resp.choices[0].message if resp.choices else None
+            content = message.content if message else ""
+            # reasoning_content（DeepSeek/GLM 等會回的思考過程）不是 openai SDK
+            # 正式定義的欄位，SDK 解析時會落在 model_extra 而不是屬性上
+            reasoning = getattr(message, "reasoning_content", None) if message else None
+            if reasoning is None and message is not None:
+                reasoning = (getattr(message, "model_extra", None) or {}).get("reasoning_content")
+            result = {"content": content, "done": True}
+            if reasoning:
+                result["reasoning_content"] = reasoning
+            return result
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -757,8 +787,16 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
             user_client = AsyncOpenAI(api_key=api_key, base_url=BASE_URL_COMPATIBLE)
             stream = await user_client.chat.completions.create(**create_kwargs)
             async for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield f"data: {json.dumps({'content': chunk.choices[0].delta.content})}\n\n"
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                reasoning = getattr(delta, "reasoning_content", None)
+                if reasoning is None:
+                    reasoning = (getattr(delta, "model_extra", None) or {}).get("reasoning_content")
+                if reasoning:
+                    yield f"data: {json.dumps({'reasoning': reasoning})}\n\n"
+                if delta.content:
+                    yield f"data: {json.dumps({'content': delta.content})}\n\n"
             yield f"data: {json.dumps({'done': True})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
