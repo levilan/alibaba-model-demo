@@ -29,6 +29,17 @@
     --red:    #F53F3F;
     --yellow: #FA8C16;
 
+    /* Theme-sensitive extras（深色模式會覆寫這幾個，其餘顏色都靠上面幾個變數自動套用）*/
+    --overlay-bg:       rgba(255,255,255,0.75);
+    --toggle-off-bg:    #D1D5DB;
+    --ghost-hover-border: #B0B7C3;
+    --scrollbar-hover:  #C1C7D0;
+    --status-pending-bg:   #FFF8E1;
+    --status-success-bg:   #E8F8F1;
+    --status-success-border: #B7EBD0;
+    --status-error-bg:     #FFF0F0;
+    --status-error-border: #FFCDD2;
+
     /* Geometry */
     --radius-sm: 4px;
     --radius:    6px;
@@ -50,6 +61,36 @@
     --header-h: 52px;
 }
 
+/* ─── Dark Mode ──────────────────────────────────────────────────
+   由 JS（app.js 的 applyTheme()）依使用者選擇（淺色/深色/自動）在 <html>
+   上設定 data-theme="light"|"dark"；「自動」會即時解析成目前系統主題再寫入，
+   所以這裡永遠只需要處理明確的 dark 這一種情況，不用另外寫 @media 版本。──── */
+:root[data-theme="dark"] {
+    --bg:           #0F1419;
+    --bg-white:     #171D27;
+    --bg-aside:     #12161F;
+    --border:       #262D3A;
+    --text-h:       #F1F3F7;
+    --text-body:    #C9CED9;
+    --text-sub:     #8A93A6;
+    --text-muted:   #5D6576;
+
+    --ali-orange-soft: #12303A;
+    --ali-orange-mid:  #1F5C6E;
+    --ali-blue-soft:   #12233A;
+
+    --shadow-card: 0 1px 4px rgba(0,0,0,0.35), 0 0 0 1px var(--border);
+    --overlay-bg:       rgba(10,13,18,0.75);
+    --toggle-off-bg:    #3A4152;
+    --ghost-hover-border: #3A4152;
+    --scrollbar-hover:  #3A4152;
+    --status-pending-bg:   #3A2E10;
+    --status-success-bg:   #123825;
+    --status-success-border: #1F5C3E;
+    --status-error-bg:     #3A1A1A;
+    --status-error-border: #6B2A2A;
+}
+
 /* ─── Reset ──────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 14px; }
@@ -63,7 +104,7 @@ img { display: block; max-width: 100%; }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #C1C7D0; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
 
 /* ─── Login Overlay ──────────────────────────────────────────── */
 .login-overlay {
@@ -71,6 +112,9 @@ img { display: block; max-width: 100%; }
     display: flex; align-items: center; justify-content: center;
     background: var(--bg);
     background-image: linear-gradient(135deg, #FFF8F4 0%, #F5F6F8 50%, #EBF4FF 100%);
+}
+:root[data-theme="dark"] .login-overlay {
+    background-image: linear-gradient(135deg, #1A1A14 0%, #0F1419 50%, #0F1A26 100%);
 }
 
 .login-card {
@@ -181,6 +225,42 @@ img { display: block; max-width: 100%; }
     flex-shrink: 0;
 }
 
+/* ─── Theme Switcher ─────────────────────────────────────────── */
+.theme-switcher { position: relative; }
+.theme-toggle-btn {
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 50%;
+    color: var(--text-sub); cursor: pointer; transition: var(--t);
+}
+.theme-toggle-btn:hover { color: var(--ali-orange); border-color: var(--ali-orange-mid); }
+.theme-menu {
+    position: absolute; top: calc(100% + 8px); right: 0;
+    width: 220px; z-index: 500;
+    background: var(--bg-white); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 0 0 1px var(--border);
+    padding: 6px; animation: fadeUp 0.15s ease;
+}
+.theme-menu-title {
+    font-size: 0.68rem; font-weight: 700; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 6px 8px 4px;
+}
+.theme-menu-item {
+    width: 100%; display: flex; align-items: center; gap: 10px;
+    padding: 8px; border: none; background: transparent; border-radius: var(--radius);
+    cursor: pointer; text-align: left; color: var(--text-sub); transition: var(--t);
+}
+.theme-menu-item:hover { background: var(--bg); }
+.theme-menu-item.active { background: var(--ali-orange-soft); color: var(--ali-orange); }
+.theme-menu-item svg:first-child { flex-shrink: 0; }
+.theme-menu-item-text { display: flex; flex-direction: column; gap: 1px; flex: 1; }
+.theme-menu-item-label { font-size: 0.82rem; font-weight: 500; color: var(--text-h); }
+.theme-menu-item.active .theme-menu-item-label { color: var(--ali-orange); }
+.theme-menu-item-desc { font-size: 0.68rem; color: var(--text-muted); }
+.theme-menu-check { flex-shrink: 0; visibility: hidden; }
+.theme-menu-item.active .theme-menu-check { visibility: visible; }
+
 /* ─── Tab Content ────────────────────────────────────────────── */
 .tab-content { display: none; height: calc(100vh - var(--header-h)); }
 .tab-content.active { display: flex; }
@@ -251,14 +331,14 @@ select.select-input {
     background-repeat: no-repeat; background-position: right 8px center;
     padding-right: 28px;
 }
-select.select-input option { background: white; }
+select.select-input option { background: var(--bg-white); color: var(--text-body); }
 textarea.textarea-input { resize: vertical; min-height: 54px; }
 
 /* Range */
 input[type="range"] {
     -webkit-appearance: none; width: 100%;
     height: 3px; border-radius: 2px;
-    background: #E0E3E8; outline: none; cursor: pointer;
+    background: var(--border); outline: none; cursor: pointer;
 }
 input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none; width: 14px; height: 14px;
@@ -273,7 +353,7 @@ input[type="range"]::-webkit-slider-thumb {
 .toggle input { display: none; }
 .toggle-slider {
     position: absolute; inset: 0;
-    background: #D1D5DB; border-radius: 10px; transition: var(--t); cursor: pointer;
+    background: var(--toggle-off-bg); border-radius: 10px; transition: var(--t); cursor: pointer;
 }
 .toggle-slider::before {
     content: ''; position: absolute;
@@ -301,7 +381,7 @@ input[type="range"]::-webkit-slider-thumb {
     background: transparent; color: var(--text-sub);
     border: 1px solid var(--border);
 }
-.btn-ghost:hover { color: var(--text-h); border-color: #B0B7C3; background: var(--bg); }
+.btn-ghost:hover { color: var(--text-h); border-color: var(--ghost-hover-border); background: var(--bg); }
 .btn-sm { padding: 5px 10px; font-size: 0.78rem; }
 .btn-full { width: 100%; justify-content: center; }
 
@@ -452,10 +532,10 @@ input[type="range"]::-webkit-slider-thumb {
     border-radius: 20px; text-transform: uppercase;
     margin-left: auto;
 }
-.vtc-status.pending  { background: #FFF8E1; color: var(--yellow); }
+.vtc-status.pending  { background: var(--status-pending-bg); color: var(--yellow); }
 .vtc-status.running  { background: var(--ali-blue-soft); color: var(--ali-blue); }
-.vtc-status.succeeded{ background: #E8F8F1; color: var(--green); }
-.vtc-status.failed   { background: #FFF0F0; color: var(--red); }
+.vtc-status.succeeded{ background: var(--status-success-bg); color: var(--green); }
+.vtc-status.failed   { background: var(--status-error-bg); color: var(--red); }
 
 .vtc-prompt { font-size: 0.82rem; color: var(--text-sub); margin-bottom: 10px; line-height: 1.5; }
 .vtc-progress { height: 3px; background: var(--border); border-radius: 2px; margin-bottom: 10px; overflow: hidden; }
@@ -510,14 +590,14 @@ input[type="range"]::-webkit-slider-thumb {
     animation: slideRight 0.2s ease;
     box-shadow: 0 2px 8px rgba(0,0,0,0.12);
 }
-.toast.success { background: #E8F8F1; color: var(--green); border-color: #B7EBD0; }
-.toast.error   { background: #FFF0F0; color: var(--red);   border-color: #FFCDD2; }
+.toast.success { background: var(--status-success-bg); color: var(--green); border-color: var(--status-success-border); }
+.toast.error   { background: var(--status-error-bg);   color: var(--red);   border-color: var(--status-error-border); }
 .toast.info    { background: var(--ali-orange-soft); color: var(--ali-orange); border-color: var(--ali-orange-mid); }
 
 /* ─── Loading ────────────────────────────────────────────────── */
 .loading-overlay {
     position: fixed; inset: 0; z-index: 900;
-    background: rgba(255,255,255,0.75); backdrop-filter: blur(4px);
+    background: var(--overlay-bg); backdrop-filter: blur(4px);
     display: flex; align-items: center; justify-content: center;
 }
 .loading-box {

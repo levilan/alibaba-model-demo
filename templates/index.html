@@ -8,8 +8,18 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=5">
+    <link rel="stylesheet" href="/static/css/style.css?v=6">
     <link rel="icon" type="image/png" href="/static/img/logo.png">
+    <script>
+        // 在 CSS 套用前就先決定 light/dark，避免登入畫面先閃一下錯的主題再跳回來
+        (function () {
+            var pref = localStorage.getItem('nenai_theme_pref') || 'auto';
+            var effective = pref === 'auto'
+                ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+                : pref;
+            document.documentElement.setAttribute('data-theme', effective);
+        })();
+    </script>
 </head>
 <body>
 
@@ -88,6 +98,30 @@
             <div class="api-key-indicator">
                 <span class="dot"></span>
                 <span id="apiKeyLabel">API Key Connected</span>
+            </div>
+            <div class="theme-switcher">
+                <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleThemeMenu()" title="外觀設定">
+                    <svg id="themeToggleIconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                    <svg id="themeToggleIconMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+                </button>
+                <div class="theme-menu hidden" id="themeMenu">
+                    <div class="theme-menu-title">外觀</div>
+                    <button class="theme-menu-item" data-theme-choice="light" onclick="setThemePref('light')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                        <span class="theme-menu-item-text"><span class="theme-menu-item-label">淺色模式</span><span class="theme-menu-item-desc">始終使用淺色主題</span></span>
+                        <svg class="theme-menu-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                    </button>
+                    <button class="theme-menu-item" data-theme-choice="dark" onclick="setThemePref('dark')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+                        <span class="theme-menu-item-text"><span class="theme-menu-item-label">深色模式</span><span class="theme-menu-item-desc">始終使用深色主題</span></span>
+                        <svg class="theme-menu-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                    </button>
+                    <button class="theme-menu-item" data-theme-choice="auto" onclick="setThemePref('auto')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                        <span class="theme-menu-item-text"><span class="theme-menu-item-label">自動模式</span><span class="theme-menu-item-desc">跟隨系統主題設定</span></span>
+                        <svg class="theme-menu-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+                    </button>
+                </div>
             </div>
             <button class="btn btn-ghost btn-sm" onclick="handleLogout()">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
@@ -799,6 +833,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=29"></script>
+<script src="/static/js/app.js?v=31"></script>
 </body>
 </html>

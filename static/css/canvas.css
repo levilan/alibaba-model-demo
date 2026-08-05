@@ -130,7 +130,8 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
 .cv-node-panel .cv-hint, .cv-config-overlay .cv-hint { text-transform: none; letter-spacing: 0; opacity: 0.75; margin-left: 2px; }
 .cv-node-panel select, .cv-config-overlay select,
 .cv-node-panel textarea, .cv-config-overlay textarea,
-.cv-node-panel input[type="number"], .cv-config-overlay input[type="number"] {
+.cv-node-panel input[type="number"], .cv-config-overlay input[type="number"],
+.cv-node-panel input[type="text"], .cv-config-overlay input[type="text"] {
     width: 100%; background: #17171a; border: 1px solid var(--cv-border); color: var(--cv-text);
     border-radius: 7px; padding: 7px 9px; font-size: 12.5px; box-sizing: border-box;
     font-family: inherit; outline: none;
@@ -185,6 +186,7 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
 .cv-preview img { cursor: zoom-in; transition: filter 0.15s; }
 .cv-preview img:hover { filter: brightness(1.05); }
 .cv-preview video { cursor: pointer; }
+.cv-preview audio { width: calc(100% - 24px); margin: 12px; }
 .cv-preview .cv-empty { opacity: 0.5; }
 
 /* ── Lightbox：點擊預覽圖/影片後全螢幕放大顯示 ─────────────── */

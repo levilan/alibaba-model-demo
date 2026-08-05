@@ -178,8 +178,58 @@ function updateOmniVoices(model) {
     sel.value = exists ? prev : data.default;
 }
 
+// ── Theme（淺色 / 深色 / 自動）───────────────────────────────────
+const THEME_STORAGE_KEY = 'nenai_theme_pref';
+const darkMediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+function getThemePref() {
+    return localStorage.getItem(THEME_STORAGE_KEY) || 'auto';
+}
+
+function resolveEffectiveTheme(pref) {
+    if (pref === 'auto') return darkMediaQuery && darkMediaQuery.matches ? 'dark' : 'light';
+    return pref;
+}
+
+function applyTheme() {
+    const pref = getThemePref();
+    const effective = resolveEffectiveTheme(pref);
+    document.documentElement.setAttribute('data-theme', effective);
+
+    document.getElementById('themeToggleIconSun').style.display = effective === 'dark' ? 'none' : '';
+    document.getElementById('themeToggleIconMoon').style.display = effective === 'dark' ? '' : 'none';
+
+    document.querySelectorAll('.theme-menu-item').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.themeChoice === pref);
+    });
+}
+
+function setThemePref(pref) {
+    localStorage.setItem(THEME_STORAGE_KEY, pref);
+    applyTheme();
+    document.getElementById('themeMenu').classList.add('hidden');
+}
+
+function toggleThemeMenu() {
+    document.getElementById('themeMenu').classList.toggle('hidden');
+}
+
+document.addEventListener('click', e => {
+    const switcher = document.querySelector('.theme-switcher');
+    if (switcher && !switcher.contains(e.target)) {
+        document.getElementById('themeMenu')?.classList.add('hidden');
+    }
+});
+
+if (darkMediaQuery) {
+    darkMediaQuery.addEventListener('change', () => {
+        if (getThemePref() === 'auto') applyTheme();
+    });
+}
+
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+    applyTheme();
     if (apiKey) attemptAutoLogin();
     updateOmniVoices(document.getElementById('omniModel')?.value || 'qwen3.5-omni-flash-realtime');
 
@@ -1403,7 +1453,17 @@ function onVoiceTaskChange() {
 }
 
 function onVoiceModelChange() {
-    // 目前 ASR/TTS 模型不需要依模型切換的額外欄位，保留這個 hook 供未來擴充。
+    const t = document.getElementById('voiceTaskType').value;
+    if (t !== 'tts') return;
+    const model = document.getElementById('voiceModel').value;
+    // Gemini TTS 走 /v1/audio/speech，只吃 model/input/voice——instructions 帶了
+    // 上游會直接回 400，sample_rate/volume/language_hints 也不支援，所以這些
+    // CosyVoice 專屬的進階欄位只在選到 qwen-audio-3.0-tts 系列時才顯示。
+    const isGemini = model.startsWith('gemini');
+    document.getElementById('voiceTtsAdvancedSection').style.display = isGemini ? 'none' : '';
+    document.getElementById('voiceTtsVoice').placeholder = isGemini
+        ? '例如：Kore（留空 = 預設音色）'
+        : '例如：longanlingxin、loongjohn（留空 = 預設音色）';
 }
 
 function onVoiceAsrFileChange(event) {

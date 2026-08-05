@@ -12,7 +12,7 @@
     }
     document.getElementById('canvasApp').style.display = '';
 
-    let MODELS = { text: [], image: [], video: [], muleai: [] };
+    let MODELS = { text: [], image: [], video: [], muleai: [], voice: { asr: [], tts: [] } };
     let graph, lgCanvas;
     const domLayer = document.getElementById('canvasApp');
 
@@ -71,6 +71,12 @@
         return (m && m.sizes) || ['1024*1024', '1280*720', '720*1280'];
     }
 
+    // MODELS.voice 跟其他分類不一樣，是巢狀的 {asr:[...], tts:[...]}，不能直接
+    // 套用假設「MODELS[category] 本身就是陣列」的 getModelsFor()。
+    function getVoiceTtsModels() {
+        return (MODELS.voice && MODELS.voice.tts) || [];
+    }
+
     // ── 專案存檔還原共用小工具 ────────────────────────────────────
     // 動態新增的「參考圖 N」插槽不是 LiteGraph 原生 properties 的一部分，配置
     // 還原後 this.inputs 陣列本身雖然會自動復原，但我們自己追蹤插槽索引用的
@@ -89,6 +95,7 @@
         if (!cv) return;
         if (cv.imageUrl) { node.imageUrl = cv.imageUrl; setPreviewImage(node, cv.imageUrl); if (node.statusEl) node.statusEl.textContent = '完成'; }
         if (cv.videoUrl) { node.videoUrl = cv.videoUrl; setPreviewVideo(node, cv.videoUrl); if (node.statusEl) node.statusEl.textContent = '完成'; }
+        if (cv.audioUrl) { node.audioUrl = cv.audioUrl; setPreviewAudio(node, cv.audioUrl); if (node.statusEl) node.statusEl.textContent = '完成'; }
     }
     // 之前發生過使用者把 prompt 節點接上後，textarea 仍顯示舊的手動輸入文字，
     // 誤以為連線生效、生成時卻其實還是用手動文字（因為看不出「目前真正會送出
@@ -192,7 +199,7 @@
         video_edit: { type: 'nenai/video_edit', label: '影片編輯 Video Edit' },
         video_animate: { type: 'nenai/video_animate', label: '動作動畫 Animate' },
         edit: { type: 'nenai/edit', label: '圖像編輯 Editing' },
-        audio: { type: 'nenai/audio', label: '語音 Audio（尚未支援）', disabled: true },
+        audio: { type: 'nenai/audio', label: '語音 TTS' },
         muleai: { type: 'nenai/muleai', label: 'MuleAI Spicy' },
     };
 
@@ -492,6 +499,19 @@
         node._previewBox.appendChild(zoom);
         const dl = el('a', 'cv-dl-btn', '⬇ 下載');
         dl.href = url; dl.download = 'video.mp4'; dl.target = '_blank';
+        dl.addEventListener('mousedown', (e) => e.stopPropagation());
+        node._previewBox.appendChild(dl);
+    }
+
+    function setPreviewAudio(node, url) {
+        _clearProgressTimer(node);
+        node._previewBox.innerHTML = '';
+        const audio = el('audio');
+        audio.src = url; audio.controls = true;
+        audio.addEventListener('mousedown', (e) => e.stopPropagation());
+        node._previewBox.appendChild(audio);
+        const dl = el('a', 'cv-dl-btn', '⬇ 下載');
+        dl.href = url; dl.download = 'audio.mp3'; dl.target = '_blank';
         dl.addEventListener('mousedown', (e) => e.stopPropagation());
         node._previewBox.appendChild(dl);
     }
@@ -1679,20 +1699,149 @@
     };
     MuleAiGenNode.prototype.onRemoved = sharedOnRemoved;
 
-    // ── Node: Audio（尚未有可用的 TTS 後端，先提供停用佔位節點） ───
-    function AudioPlaceholderNode() {
+    // ── Node: Audio / TTS（語音合成，呼叫 /api/voice/tts）──────────
+    // qwen-audio-3.0-tts 系列（CosyVoice v3）支援 instructions/sample_rate/
+    // volume/language_hints 這組進階參數；gemini-*-tts 系列走另一條上游
+    // endpoint，只吃 model/input/voice，帶了 instructions 會被上游拒絕
+    // （400），所以進階參數區塊要依選到的模型動態顯示/隱藏，跟主測試台
+    // 語音分頁（static/js/app.js 的 onVoiceModelChange）的規則一致。
+    function TtsGenNode() {
         this.addInput('text', 'string');
         this.addOutput('audio', 'audio');
-        this._contentHeight = 110;
-        this.size = [300, 110];
-        this.color = '#333'; this.bgcolor = '#2a2a2a';
+        const models = getVoiceTtsModels();
+        this.properties = {
+            model: (models[0] && models[0].id) || '', text: '', voice: '', format: 'mp3',
+            instructions: '', sample_rate: '', volume: 50, language_hints: 'zh', status: '',
+        };
+        this.audioUrl = null;
+        this._contentHeight = 460;
+        this.size = [320, 460];
+        this.color = '#2e2a1f'; this.bgcolor = '#2a2a2a';
+
         const panel = el('div');
-        panel.innerHTML = `<div class="cv-status" style="margin-top:4px">平台目前沒有可用的 TTS 後端，此節點尚未支援</div>`;
+        panel.innerHTML = `
+            <div class="cv-controls">
+                <label>模型</label>
+                <div class="cv-select-slot"></div>
+                <label>文字內容<span class="cv-hint">（若連接文字節點會優先使用其輸出）</span></label>
+                <textarea placeholder="輸入要合成的文字…"></textarea>
+                <label>音色 (voice)<span class="cv-hint cv-voice-hint"></span></label>
+                <input type="text" class="cv-voice-input" placeholder="留空 = 預設音色">
+                <label>輸出格式</label>
+                <div class="cv-format-slot"></div>
+                <div class="cv-adv-group">
+                    <label>語氣風格描述 (instructions)</label>
+                    <textarea class="cv-instructions" rows="2" placeholder="例如：聲音成熟低沉、語速偏慢"></textarea>
+                    <label>取樣率 (sample_rate)</label>
+                    <div class="cv-samplerate-slot"></div>
+                    <label>音量 (volume) <span class="cv-volume-val">50</span></label>
+                    <input type="range" class="cv-volume-slider" min="0" max="100" step="1" value="50">
+                    <label>語言提示 (language_hints)</label>
+                    <div class="cv-langhint-slot"></div>
+                </div>
+                <button class="cv-generate">▶ 生成語音</button>
+                <div class="cv-status"></div>
+            </div>`;
         attachDomPanel(this, panel);
+        this.textarea = panel.querySelector('textarea');
+        this.textarea.addEventListener('input', () => { this.properties.text = this.textarea.value; });
+        this.voiceHintEl = panel.querySelector('.cv-voice-hint');
+        this.voiceInput = panel.querySelector('.cv-voice-input');
+        this.voiceInput.value = this.properties.voice;
+        this.voiceInput.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.voiceInput.addEventListener('input', () => { this.properties.voice = this.voiceInput.value; });
+        this.advGroup = panel.querySelector('.cv-adv-group');
+        this.instructionsInput = panel.querySelector('.cv-instructions');
+        this.instructionsInput.value = this.properties.instructions;
+        this.instructionsInput.addEventListener('input', () => { this.properties.instructions = this.instructionsInput.value; });
+        this.volumeSlider = panel.querySelector('.cv-volume-slider');
+        this.volumeValEl = panel.querySelector('.cv-volume-val');
+        this.volumeSlider.addEventListener('input', () => {
+            this.properties.volume = parseInt(this.volumeSlider.value);
+            this.volumeValEl.textContent = this.volumeSlider.value;
+        });
+        this.statusEl = panel.querySelector('.cv-status');
+        panel.querySelector('.cv-generate').addEventListener('click', () => this.generate());
+
+        this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => {
+            this.properties.model = v;
+            this._syncUiForModel();
+        });
+        panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+
+        this.formatSelect = buildSelect(['mp3', 'wav', 'opus', 'flac'], this.properties.format, (v) => { this.properties.format = v; });
+        panel.querySelector('.cv-format-slot').appendChild(this.formatSelect);
+
+        this.sampleRateSelect = buildSelect(['', '16000', '22050', '24000', '44100'], this.properties.sample_rate, (v) => { this.properties.sample_rate = v; });
+        panel.querySelector('.cv-samplerate-slot').appendChild(this.sampleRateSelect);
+
+        this.langHintSelect = buildSelect(
+            ['', 'zh', 'en', 'fr', 'de', 'ja', 'ko', 'ru', 'pt', 'th', 'id', 'vi', 'es', 'it', 'ms', 'fil', 'ar'],
+            this.properties.language_hints, (v) => { this.properties.language_hints = v; }
+        );
+        panel.querySelector('.cv-langhint-slot').appendChild(this.langHintSelect);
+
+        panel.appendChild(buildPreview(this));
+        wireConfigOverlay(this, panel);
         attachNodeChrome(this);
+        this._syncUiForModel();
     }
-    AudioPlaceholderNode.title = '語音 Audio（尚未支援）';
-    AudioPlaceholderNode.prototype.onRemoved = sharedOnRemoved;
+    TtsGenNode.title = '語音 TTS';
+    TtsGenNode.prototype._syncUiForModel = function () {
+        const isGemini = (this.properties.model || '').startsWith('gemini');
+        this.advGroup.style.display = isGemini ? 'none' : '';
+        this.voiceHintEl.textContent = isGemini ? '（例如 Kore）' : '（例如 longanlingxin、loongjohn）';
+    };
+    TtsGenNode.prototype.onExecute = function () {
+        _syncPromptTextarea(this, this.textarea, 0);
+        this.setOutputData(0, this.audioUrl);
+    };
+    TtsGenNode.prototype.generate = async function () {
+        const textIn = this.getInputData(0, true);
+        const text = (textIn != null && textIn !== '') ? String(textIn) : this.properties.text;
+        if (!text) { showToast('請輸入文字內容'); return; }
+        if (!this.properties.model) { showToast('請選擇模型'); return; }
+        const isGemini = this.properties.model.startsWith('gemini');
+        this.statusEl.textContent = '生成中…';
+        setPreviewProgress(this, '生成中…', 8);
+        try {
+            const body = { model: this.properties.model, text, format: this.properties.format };
+            if (this.properties.voice) body.voice = this.properties.voice;
+            if (!isGemini) {
+                if (this.properties.instructions) body.instructions = this.properties.instructions;
+                if (this.properties.sample_rate) body.sample_rate = parseInt(this.properties.sample_rate);
+                if (this.properties.volume != null) body.volume = this.properties.volume;
+                if (this.properties.language_hints) body.language_hints = [this.properties.language_hints];
+            }
+            const res = await apiFetch('/api/voice/tts', { method: 'POST', body: JSON.stringify(body) });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || '合成失敗');
+            this.audioUrl = data.audio_url;
+            this.statusEl.textContent = '完成';
+            setPreviewAudio(this, data.audio_url);
+            this.setOutputData(0, data.audio_url);
+        } catch (e) {
+            this.statusEl.textContent = '錯誤：' + e.message;
+            setPreviewEmpty(this, '生成失敗');
+            showToast('語音合成失敗：' + e.message);
+        }
+    };
+    TtsGenNode.prototype.onSerialize = function (o) {
+        o.cv = { audioUrl: this.audioUrl || null };
+    };
+    TtsGenNode.prototype.onConfigure = function (o) {
+        this.textarea.value = this.properties.text || '';
+        this.voiceInput.value = this.properties.voice || '';
+        this.instructionsInput.value = this.properties.instructions || '';
+        if (this.modelSelect) this.modelSelect.value = this.properties.model;
+        if (this.formatSelect) this.formatSelect.value = this.properties.format;
+        if (this.sampleRateSelect) this.sampleRateSelect.value = this.properties.sample_rate || '';
+        if (this.langHintSelect) this.langHintSelect.value = this.properties.language_hints || '';
+        if (this.volumeSlider) { this.volumeSlider.value = this.properties.volume; this.volumeValEl.textContent = this.properties.volume; }
+        this._syncUiForModel();
+        _restoreGenResult(this, o.cv);
+    };
+    TtsGenNode.prototype.onRemoved = sharedOnRemoved;
 
     function registerNodeTypes() {
         LiteGraph.registerNodeType('nenai/text', TextPromptNode);
@@ -1703,7 +1852,7 @@
         LiteGraph.registerNodeType('nenai/video_edit', VideoEditNode);
         LiteGraph.registerNodeType('nenai/video_animate', VideoAnimateNode);
         LiteGraph.registerNodeType('nenai/edit', ImageEditNode);
-        LiteGraph.registerNodeType('nenai/audio', AudioPlaceholderNode);
+        LiteGraph.registerNodeType('nenai/audio', TtsGenNode);
         LiteGraph.registerNodeType('nenai/muleai', MuleAiGenNode);
     }
 

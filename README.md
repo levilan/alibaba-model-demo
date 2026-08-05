@@ -181,8 +181,11 @@ python app.py
 | qwen-audio-3.0-asr-flash-streaming | Qwen Audio 3.0 ASR Flash（串流） | 語音辨識 | SSE 串流回傳中間辨識結果 |
 | qwen-audio-3.0-tts-plus | Qwen Audio 3.0 TTS Plus | 語音合成 | 高品質語音合成 |
 | qwen-audio-3.0-tts-flash | Qwen Audio 3.0 TTS Flash | 語音合成 | 極速語音合成 |
+| gemini-2.5-pro-tts | Gemini 2.5 Pro TTS | 語音合成 (Gemini) | Google 旗艦語音合成 |
+| gemini-2.5-flash-tts | Gemini 2.5 Flash TTS | 語音合成 (Gemini) | Google 極速語音合成 |
+| gemini-3.1-flash-tts-preview | Gemini 3.1 Flash TTS Preview | 語音合成 (Gemini) | Google 新一代極速語音合成（預覽版）|
 
-> ASR 走 NenAI 網關 OpenAI 相容的 `/v1/audio/transcriptions`；TTS 走 DashScope 風格的 `/v1/services/audio/tts/SpeechSynthesizer`（回傳 JSON，音檔網址在 `output.audio.url`），支援選填的 `voice`（CosyVoice v3 音色 id，例如 `longanlingxin`、`loongjohn`）、`instructions`（語氣風格描述）與 `sample_rate`/`volume`/`language_hints`（`metadata` 子欄位）。
+> ASR 走 NenAI 網關 OpenAI 相容的 `/v1/audio/transcriptions`；`qwen-audio-3.0-tts-*` 走 DashScope 風格的 `/v1/services/audio/tts/SpeechSynthesizer`（回傳 JSON，音檔網址在 `output.audio.url`），支援選填的 `voice`（CosyVoice v3 音色 id，例如 `longanlingxin`、`loongjohn`）、`instructions`（語氣風格描述）與 `sample_rate`/`volume`/`language_hints`（`metadata` 子欄位）；`gemini-*-tts*` 則是走 OpenAI 相容的 `/v1/audio/speech`（不是 Google 原生的 `/v1/text:synthesize`，那個路徑在這個網關上會直接回錯），只吃 `model`/`input`/`voice` 三個欄位（`voice` 例如 `Kore`），不支援 `instructions`（帶了會 400），`response_format` 也會被忽略、固定回傳 WAV。
 
 ---
 
@@ -196,6 +199,7 @@ python app.py
 | 圖片 Image | 文生圖 (t2i)；若連接參考圖輸入則自動切換為圖像生成 (i2i) |
 | 影片 Video | 依連接的圖片組合自動切換 t2v / i2v（首尾幀）/ r2v（最多 6 張參考圖） |
 | 圖像編輯 Editing | 圖像編輯 (i2i)，需連接一張來源圖片 |
+| 語音 TTS | 呼叫語音模型分頁同一套 `/api/voice/tts`，可接文字節點輸出或手動輸入；依選擇的模型（qwen-audio-3.0-tts-* / gemini-*-tts）動態顯示或隱藏 CosyVoice 專屬的進階參數 |
 | MuleAI Spicy | 對應 NenAI Spicy 四個模型，依選擇的模型動態切換必填輸入與輸出型別（image/video） |
 
 節點之間可用連線傳遞文字/圖片/影片輸出，設定面板僅在節點被選取時以固定大小浮層顯示於節點下方。

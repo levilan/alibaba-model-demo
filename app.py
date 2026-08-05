@@ -452,9 +452,15 @@ MODELS = {
         ],
         "tts": [
             {"id": "qwen-audio-3.0-tts-plus", "name": "Qwen Audio 3.0 TTS Plus", "group": "語音合成",
-             "desc": "高品質語音合成"},
+             "desc": "高品質語音合成", "vendor": "qwen"},
             {"id": "qwen-audio-3.0-tts-flash", "name": "Qwen Audio 3.0 TTS Flash", "group": "語音合成",
-             "desc": "極速語音合成"},
+             "desc": "極速語音合成", "vendor": "qwen"},
+            {"id": "gemini-2.5-pro-tts", "name": "Gemini 2.5 Pro TTS", "group": "Gemini",
+             "desc": "Google 旗艦語音合成", "vendor": "gemini"},
+            {"id": "gemini-2.5-flash-tts", "name": "Gemini 2.5 Flash TTS", "group": "Gemini",
+             "desc": "Google 極速語音合成", "vendor": "gemini"},
+            {"id": "gemini-3.1-flash-tts-preview", "name": "Gemini 3.1 Flash TTS Preview", "group": "Gemini",
+             "desc": "Google 新一代極速語音合成（預覽版）", "vendor": "gemini"},
         ],
     },
 }
@@ -1753,51 +1759,76 @@ class VoiceTtsRequest(BaseModel):
 async def voice_tts(data: VoiceTtsRequest, api_key: str = Depends(get_api_key)):
     if not data.text:
         raise HTTPException(status_code=400, detail="Text is required")
-    # qwen-audio-3.0-tts 系列實際上不是走 OpenAI 相容的 /v1/audio/speech（那個 endpoint
-    # 收 voice 一律回錯），而是走 DashScope 風格的 /v1/services/audio/tts/SpeechSynthesizer，
-    # 回傳一段 JSON（output.audio.url 是簽名過的 OSS 下載網址，data 通常是空字串），
-    # 且 voice 要用 CosyVoice v3 的音色 id（例如 longanlingxin、loongjohn），不是
-    # Qwen-TTS 的 Cherry/Ethan 那套；voice 留空則使用上游預設音色。
-    payload: dict = {"model": data.model, "input": data.text, "response_format": data.format}
-    if data.voice:
-        payload["voice"] = data.voice
-    if data.instructions:
-        payload["instructions"] = data.instructions
-    metadata: dict = {}
-    if data.sample_rate is not None:
-        metadata["sample_rate"] = data.sample_rate
-    if data.volume is not None:
-        metadata["volume"] = data.volume
-    if data.language_hints:
-        # 上游文件明載這個欄位雖然是陣列，目前版本卻只處理第一個元素，帶多個值沒意義
-        metadata["language_hints"] = data.language_hints[:1]
-    if metadata:
-        payload["metadata"] = metadata
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
-                f"{NENAI_V1}/services/audio/tts/SpeechSynthesizer",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json=payload,
-            )
-            rj = resp.json()
-            if resp.status_code != 200 or "error" in rj:
-                err = rj.get("error", {}).get("message", resp.text) if isinstance(rj.get("error"), dict) else rj.get("error", resp.text)
-                return JSONResponse(status_code=resp.status_code if resp.status_code != 200 else 500,
-                                    content={"error": err})
-            audio_info = rj.get("output", {}).get("audio", {})
-            audio_url_src = audio_info.get("url")
-            b64_data = audio_info.get("data")
-            if audio_url_src:
-                dl = await client.get(audio_url_src, timeout=60.0)
-                audio_bytes = dl.content
-            elif b64_data:
-                audio_bytes = base64.b64decode(b64_data)
+            if data.model.startswith("gemini"):
+                # Gemini TTS 系列實測是走 OpenAI 相容的 /v1/audio/speech（不是 Google 原生
+                # 那套 /v1/text:synthesize——那個路徑在這個網關上會直接回錯），只吃
+                # model/input/voice 三個欄位，instructions 帶了會被上游拒絕（400），
+                # response_format 也會被忽略，永遠固定回傳 audio/wav。
+                payload: dict = {"model": data.model, "input": data.text}
+                if data.voice:
+                    payload["voice"] = data.voice
+                resp = await client.post(
+                    f"{NENAI_V1}/audio/speech",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json=payload,
+                )
+                if resp.status_code != 200:
+                    try:
+                        rj = resp.json()
+                        err = rj.get("error", {}).get("message", resp.text)
+                    except Exception:
+                        err = resp.text
+                    return JSONResponse(status_code=resp.status_code, content={"error": err})
+                audio_bytes = resp.content
+                ext = "wav"
             else:
-                return JSONResponse(status_code=500, content={"error": f"上游未回傳音訊：{rj}"})
+                # qwen-audio-3.0-tts 系列實際上不是走 OpenAI 相容的 /v1/audio/speech（那個
+                # endpoint 收 voice 一律回錯），而是走 DashScope 風格的
+                # /v1/services/audio/tts/SpeechSynthesizer，回傳一段 JSON（output.audio.url
+                # 是簽名過的 OSS 下載網址，data 通常是空字串），且 voice 要用 CosyVoice v3
+                # 的音色 id（例如 longanlingxin、loongjohn），不是 Qwen-TTS 的 Cherry/Ethan
+                # 那套；voice 留空則使用上游預設音色。
+                payload = {"model": data.model, "input": data.text, "response_format": data.format}
+                if data.voice:
+                    payload["voice"] = data.voice
+                if data.instructions:
+                    payload["instructions"] = data.instructions
+                metadata: dict = {}
+                if data.sample_rate is not None:
+                    metadata["sample_rate"] = data.sample_rate
+                if data.volume is not None:
+                    metadata["volume"] = data.volume
+                if data.language_hints:
+                    # 上游文件明載這個欄位雖然是陣列，目前版本卻只處理第一個元素，帶多個值沒意義
+                    metadata["language_hints"] = data.language_hints[:1]
+                if metadata:
+                    payload["metadata"] = metadata
+
+                resp = await client.post(
+                    f"{NENAI_V1}/services/audio/tts/SpeechSynthesizer",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json=payload,
+                )
+                rj = resp.json()
+                if resp.status_code != 200 or "error" in rj:
+                    err = rj.get("error", {}).get("message", resp.text) if isinstance(rj.get("error"), dict) else rj.get("error", resp.text)
+                    return JSONResponse(status_code=resp.status_code if resp.status_code != 200 else 500,
+                                        content={"error": err})
+                audio_info = rj.get("output", {}).get("audio", {})
+                audio_url_src = audio_info.get("url")
+                b64_data = audio_info.get("data")
+                if audio_url_src:
+                    dl = await client.get(audio_url_src, timeout=60.0)
+                    audio_bytes = dl.content
+                elif b64_data:
+                    audio_bytes = base64.b64decode(b64_data)
+                else:
+                    return JSONResponse(status_code=500, content={"error": f"上游未回傳音訊：{rj}"})
+                ext = data.format if data.format in ("mp3", "wav", "opus", "flac") else "mp3"
 
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            ext = data.format if data.format in ("mp3", "wav", "opus", "flac") else "mp3"
             name = f"tts_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
             cloud_url = _cloud_put(audio_bytes, f"audio/{name}")
             if cloud_url:
