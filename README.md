@@ -185,6 +185,9 @@ python app.py
 | gemini-2.5-flash-tts | Gemini 2.5 Flash TTS | 語音合成 (Gemini) | Google 極速語音合成 |
 | gemini-3.1-flash-tts-preview | Gemini 3.1 Flash TTS Preview | 語音合成 (Gemini) | Google 新一代極速語音合成（預覽版）|
 
+TTS 的音色 (`voice`) 在主測試台與 AI Canvas 都是下拉選單、依選到的模型動態重建（`app.py` 的 `MODELS["voice"]["tts"][*].voices`）：
+`qwen-audio-3.0-tts-plus`／`qwen-audio-3.0-tts-flash` 各自只支援自己專屬的官方音色（詳見 [Qwen-Audio-TTS 音色列表](https://www.alibabacloud.com/help/en/model-studio/qwen-audio-tts-voice-list)），不可混用；3 個 `gemini-*-tts` 模型則共用 [Gemini 官方 30 個音色](https://ai.google.dev/gemini-api/docs/speech-generation)。全部選單都可留空使用上游預設音色。
+
 > ASR 走 NenAI 網關 OpenAI 相容的 `/v1/audio/transcriptions`；`qwen-audio-3.0-tts-*` 走 DashScope 風格的 `/v1/services/audio/tts/SpeechSynthesizer`（回傳 JSON，音檔網址在 `output.audio.url`），支援選填的 `voice`（CosyVoice v3 音色 id，例如 `longanlingxin`、`loongjohn`）、`instructions`（語氣風格描述）與 `sample_rate`/`volume`/`language_hints`（`metadata` 子欄位）；`gemini-*-tts*` 則是走 OpenAI 相容的 `/v1/audio/speech`（不是 Google 原生的 `/v1/text:synthesize`，那個路徑在這個網關上會直接回錯），只吃 `model`/`input`/`voice` 三個欄位（`voice` 例如 `Kore`），不支援 `instructions`（帶了會 400），`response_format` 也會被忽略、固定回傳 WAV。
 
 ---

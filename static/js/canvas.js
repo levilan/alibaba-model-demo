@@ -77,6 +77,13 @@
         return (MODELS.voice && MODELS.voice.tts) || [];
     }
 
+    // qwen 的兩個 TTS 模型各自只支援自己專屬的音色清單，不能混用；3 個 gemini
+    // 模型則共用同一組官方音色（見 app.py 的 _GEMINI_TTS_VOICES）。
+    function voicesForTtsModel(modelId) {
+        const m = getVoiceTtsModels().find(x => x.id === modelId);
+        return (m && m.voices) || [];
+    }
+
     // ── 專案存檔還原共用小工具 ────────────────────────────────────
     // 動態新增的「參考圖 N」插槽不是 LiteGraph 原生 properties 的一部分，配置
     // 還原後 this.inputs 陣列本身雖然會自動復原，但我們自己追蹤插槽索引用的
@@ -1725,8 +1732,8 @@
                 <div class="cv-select-slot"></div>
                 <label>文字內容<span class="cv-hint">（若連接文字節點會優先使用其輸出）</span></label>
                 <textarea placeholder="輸入要合成的文字…"></textarea>
-                <label>音色 (voice)<span class="cv-hint cv-voice-hint"></span></label>
-                <input type="text" class="cv-voice-input" placeholder="留空 = 預設音色">
+                <label>音色 (voice)</label>
+                <div class="cv-voice-slot"></div>
                 <label>輸出格式</label>
                 <div class="cv-format-slot"></div>
                 <div class="cv-adv-group">
@@ -1745,11 +1752,7 @@
         attachDomPanel(this, panel);
         this.textarea = panel.querySelector('textarea');
         this.textarea.addEventListener('input', () => { this.properties.text = this.textarea.value; });
-        this.voiceHintEl = panel.querySelector('.cv-voice-hint');
-        this.voiceInput = panel.querySelector('.cv-voice-input');
-        this.voiceInput.value = this.properties.voice;
-        this.voiceInput.addEventListener('mousedown', (e) => e.stopPropagation());
-        this.voiceInput.addEventListener('input', () => { this.properties.voice = this.voiceInput.value; });
+        this.voiceSlot = panel.querySelector('.cv-voice-slot');
         this.advGroup = panel.querySelector('.cv-adv-group');
         this.instructionsInput = panel.querySelector('.cv-instructions');
         this.instructionsInput.value = this.properties.instructions;
@@ -1787,10 +1790,22 @@
         this._syncUiForModel();
     }
     TtsGenNode.title = '語音 TTS';
+    TtsGenNode.prototype._rebuildVoiceSelect = function () {
+        const voices = voicesForTtsModel(this.properties.model);
+        if (!voices.some(v => v.id === this.properties.voice)) this.properties.voice = '';
+        this.voiceSlot.innerHTML = '';
+        const sel = el('select');
+        sel.innerHTML = '<option value="">留空 = 預設音色</option>' +
+            voices.map(v => `<option value="${v.id}"${v.id === this.properties.voice ? ' selected' : ''}>${v.name} — ${v.desc}</option>`).join('');
+        sel.addEventListener('mousedown', (e) => e.stopPropagation());
+        sel.addEventListener('change', () => { this.properties.voice = sel.value; });
+        this.voiceSlot.appendChild(sel);
+        this.voiceSelect = sel;
+    };
     TtsGenNode.prototype._syncUiForModel = function () {
         const isGemini = (this.properties.model || '').startsWith('gemini');
         this.advGroup.style.display = isGemini ? 'none' : '';
-        this.voiceHintEl.textContent = isGemini ? '（例如 Kore）' : '（例如 longanlingxin、loongjohn）';
+        this._rebuildVoiceSelect();
     };
     TtsGenNode.prototype.onExecute = function () {
         _syncPromptTextarea(this, this.textarea, 0);
@@ -1831,7 +1846,6 @@
     };
     TtsGenNode.prototype.onConfigure = function (o) {
         this.textarea.value = this.properties.text || '';
-        this.voiceInput.value = this.properties.voice || '';
         this.instructionsInput.value = this.properties.instructions || '';
         if (this.modelSelect) this.modelSelect.value = this.properties.model;
         if (this.formatSelect) this.formatSelect.value = this.properties.format;

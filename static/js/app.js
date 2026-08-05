@@ -1461,9 +1461,14 @@ function onVoiceModelChange() {
     // CosyVoice 專屬的進階欄位只在選到 qwen-audio-3.0-tts 系列時才顯示。
     const isGemini = model.startsWith('gemini');
     document.getElementById('voiceTtsAdvancedSection').style.display = isGemini ? 'none' : '';
-    document.getElementById('voiceTtsVoice').placeholder = isGemini
-        ? '例如：Kore（留空 = 預設音色）'
-        : '例如：longanlingxin、loongjohn（留空 = 預設音色）';
+
+    // 音色下拉選單依選到的模型重建——qwen 的兩個模型各自只支援自己專屬的音色，
+    // 不能混用；3 個 gemini 模型則共用同一組 30 個官方音色。
+    const modelInfo = (models.voice?.tts || []).find(m => m.id === model);
+    const voices = (modelInfo && modelInfo.voices) || [];
+    const voiceSel = document.getElementById('voiceTtsVoice');
+    voiceSel.innerHTML = '<option value="">留空 = 預設音色</option>' +
+        voices.map(v => `<option value="${v.id}">${v.name} — ${v.desc}</option>`).join('');
 }
 
 function onVoiceAsrFileChange(event) {

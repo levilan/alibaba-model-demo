@@ -182,6 +182,47 @@ for d in (UPLOAD_DIR, OUTPUT_IMG_DIR, OUTPUT_VID_DIR, OUTPUT_AUD_DIR):
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 app.mount("/outputs", StaticFiles(directory=Path(__file__).parent / "outputs"), name="outputs")
 
+# ─── TTS 音色清單 ───────────────────────────────────────────────
+# 來源：qwen-audio-3.0-tts-* 官方音色列表（每個模型支援的音色不同，不可混用）
+# https://www.alibabacloud.com/help/en/model-studio/qwen-audio-tts-voice-list
+_QWEN_TTS_PLUS_VOICES = [
+    {"id": "longanlingxin", "name": "Longan Lingxin", "desc": "溫暖有同理心，25 歲，中文/英文"},
+    {"id": "longanlufeng",  "name": "Longan Lufeng",  "desc": "開朗活潑，25 歲，中文/英文"},
+]
+_QWEN_TTS_FLASH_VOICES = [
+    {"id": "longanfengyue",   "name": "Longan Fengyue",  "desc": "自然親切，30 歲，中文/英文"},
+    {"id": "longanyuanfei",   "name": "Longan Yuanfei",  "desc": "高傲典雅，30 歲，中文/英文"},
+    {"id": "longanlingxi",    "name": "Longan Lingxi",   "desc": "可愛甜美，25 歲，中文/英文"},
+    {"id": "longanxiaoxin",   "name": "Longan Xiaoxin",  "desc": "友善活潑，22 歲，中文/英文"},
+    {"id": "longanhuan_v3.6", "name": "Longan Huan",     "desc": "25 歲，中文/英文"},
+    {"id": "longjielidou_v3.6", "name": "Longjie Lidou", "desc": "天真男孩，5 歲，中文/英文"},
+    {"id": "longpaopao_v3.6",   "name": "Long Paopao",   "desc": "軟萌可愛，5 歲，中文/英文"},
+    {"id": "longhuohuo_v3.6",   "name": "Long Huohuo",   "desc": "調皮男孩，8 歲，中文/英文"},
+    {"id": "longchuanshu_v3.6", "name": "Long Chuanshu", "desc": "川普大叔，40 歲，中文/英文"},
+    {"id": "loongmary",      "name": "loongmary",  "desc": "溫暖英式口音，20 歲，英文"},
+    {"id": "loongeva_v3.6",  "name": "loongeva",   "desc": "聰慧優雅，28 歲，英文"},
+    {"id": "loongjohn",      "name": "loongJohn",  "desc": "沉穩親切美式口音，28 歲，英文"},
+]
+# 來源：Google Gemini TTS 官方音色列表（3 個 gemini-*-tts 模型共用同一組 30 個音色）
+# https://ai.google.dev/gemini-api/docs/speech-generation
+_GEMINI_TTS_VOICES = [
+    {"id": "Zephyr", "name": "Zephyr", "desc": "Bright"}, {"id": "Puck", "name": "Puck", "desc": "Upbeat"},
+    {"id": "Charon", "name": "Charon", "desc": "Informative"}, {"id": "Kore", "name": "Kore", "desc": "Firm"},
+    {"id": "Fenrir", "name": "Fenrir", "desc": "Excitable"}, {"id": "Leda", "name": "Leda", "desc": "Youthful"},
+    {"id": "Orus", "name": "Orus", "desc": "Firm"}, {"id": "Aoede", "name": "Aoede", "desc": "Breezy"},
+    {"id": "Callirrhoe", "name": "Callirrhoe", "desc": "Easy-going"}, {"id": "Autonoe", "name": "Autonoe", "desc": "Bright"},
+    {"id": "Enceladus", "name": "Enceladus", "desc": "Breathy"}, {"id": "Iapetus", "name": "Iapetus", "desc": "Clear"},
+    {"id": "Umbriel", "name": "Umbriel", "desc": "Easy-going"}, {"id": "Algieba", "name": "Algieba", "desc": "Smooth"},
+    {"id": "Despina", "name": "Despina", "desc": "Smooth"}, {"id": "Erinome", "name": "Erinome", "desc": "Clear"},
+    {"id": "Algenib", "name": "Algenib", "desc": "Gravelly"}, {"id": "Rasalgethi", "name": "Rasalgethi", "desc": "Informative"},
+    {"id": "Laomedeia", "name": "Laomedeia", "desc": "Upbeat"}, {"id": "Achernar", "name": "Achernar", "desc": "Soft"},
+    {"id": "Alnilam", "name": "Alnilam", "desc": "Firm"}, {"id": "Schedar", "name": "Schedar", "desc": "Even"},
+    {"id": "Gacrux", "name": "Gacrux", "desc": "Mature"}, {"id": "Pulcherrima", "name": "Pulcherrima", "desc": "Forward"},
+    {"id": "Achird", "name": "Achird", "desc": "Friendly"}, {"id": "Zubenelgenubi", "name": "Zubenelgenubi", "desc": "Casual"},
+    {"id": "Vindemiatrix", "name": "Vindemiatrix", "desc": "Gentle"}, {"id": "Sadachbia", "name": "Sadachbia", "desc": "Lively"},
+    {"id": "Sadaltager", "name": "Sadaltager", "desc": "Knowledgeable"}, {"id": "Sulafat", "name": "Sulafat", "desc": "Warm"},
+]
+
 # ─── Model Registry ───────────────────────────────────────────
 # sizes: 支援的尺寸清單；max_n: 最大生成張數；audio: 支援配音；min/max_dur: 影片時長範圍
 MODELS = {
@@ -452,15 +493,15 @@ MODELS = {
         ],
         "tts": [
             {"id": "qwen-audio-3.0-tts-plus", "name": "Qwen Audio 3.0 TTS Plus", "group": "語音合成",
-             "desc": "高品質語音合成", "vendor": "qwen"},
+             "desc": "高品質語音合成", "vendor": "qwen", "voices": _QWEN_TTS_PLUS_VOICES},
             {"id": "qwen-audio-3.0-tts-flash", "name": "Qwen Audio 3.0 TTS Flash", "group": "語音合成",
-             "desc": "極速語音合成", "vendor": "qwen"},
+             "desc": "極速語音合成", "vendor": "qwen", "voices": _QWEN_TTS_FLASH_VOICES},
             {"id": "gemini-2.5-pro-tts", "name": "Gemini 2.5 Pro TTS", "group": "Gemini",
-             "desc": "Google 旗艦語音合成", "vendor": "gemini"},
+             "desc": "Google 旗艦語音合成", "vendor": "gemini", "voices": _GEMINI_TTS_VOICES},
             {"id": "gemini-2.5-flash-tts", "name": "Gemini 2.5 Flash TTS", "group": "Gemini",
-             "desc": "Google 極速語音合成", "vendor": "gemini"},
+             "desc": "Google 極速語音合成", "vendor": "gemini", "voices": _GEMINI_TTS_VOICES},
             {"id": "gemini-3.1-flash-tts-preview", "name": "Gemini 3.1 Flash TTS Preview", "group": "Gemini",
-             "desc": "Google 新一代極速語音合成（預覽版）", "vendor": "gemini"},
+             "desc": "Google 新一代極速語音合成（預覽版）", "vendor": "gemini", "voices": _GEMINI_TTS_VOICES},
         ],
     },
 }
@@ -480,6 +521,10 @@ def get_api_key(request: Request) -> str:
 
 
 # ─── Pages ────────────────────────────────────────────────────────
+@app.get("/robots.txt")
+async def robots_txt():
+    return FileResponse(Path(__file__).parent / "static" / "robots.txt", media_type="text/plain")
+
 @app.get("/")
 async def index():
     return FileResponse(Path(__file__).parent / "templates" / "index.html")

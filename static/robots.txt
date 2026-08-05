@@ -1,0 +1,21 @@
+# NenAI Testing Platform — 這是需要 API Key 登入才能使用的內部測試工具，
+# 沒有公開的文字內容頁面；這份 robots.txt 主要是明確表態退出 AI 訓練/內容擷取。
+
+User-agent: *
+Allow: /
+
+# OpenAI
+User-agent: GPTBot
+Disallow: /
+
+# Anthropic
+User-agent: ClaudeBot
+Disallow: /
+
+# Common Crawl（多數公開訓練集的源頭）
+User-agent: CCBot
+Disallow: /
+
+# Google（訓練專用 UA，擋了不影響 Google 搜尋索引）
+User-agent: Google-Extended
+Disallow: /
