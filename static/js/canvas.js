@@ -1184,6 +1184,8 @@
         this.addInput('prompt', 'string');
         this.addInput('first_frame', 'image');
         this.addInput('last_frame', 'image');
+        this.addInput('來源影片(延伸)', 'video');
+        this.clipSlot = 3;
         this.addOutput('video', 'video');
         this.refSlots = [];
         this._addRefSlot();
@@ -1191,8 +1193,9 @@
         const models = getModelsFor('video', 't2v');
         this.properties = { model: (models[0] && models[0].id) || '', prompt: '', resolution: '720P', duration: 5, status: '' };
         this.videoUrl = null;
-        this._contentHeight = 560;
-        this.size = [320, 560];
+        this.localClipUrl = null;
+        this._contentHeight = 620;
+        this.size = [320, 620];
         this.color = '#1f2f3a'; this.bgcolor = '#2a2a2a';
 
         const panel = el('div');
@@ -1206,6 +1209,9 @@
                 <div class="cv-res-slot"></div>
                 <label>時長（秒）<span class="cv-dur-val">5</span></label>
                 <input type="range" class="cv-dur-slider" min="2" max="15" step="1" value="5">
+                <label>影片延伸<span class="cv-hint">（接影片節點輸出或上傳片段，取代首幀圖片；上游片段需 ≤9.9 秒）</span></label>
+                <input type="file" class="cv-clip-file" accept="video/*" style="display:none">
+                <button class="cv-add-ref-btn cv-clip-upload-btn">選擇影片片段</button>
                 <button class="cv-add-ref-btn">+ 新增參考圖輸入</button>
                 <button class="cv-generate cv-submit-btn">▶ 生成影片</button>
                 <div class="cv-status"></div>
@@ -1215,7 +1221,13 @@
         this.textarea.addEventListener('input', () => { this.properties.prompt = this.textarea.value; });
         this.statusEl = panel.querySelector('.cv-status');
         this.modeHintEl = panel.querySelector('.cv-mode-hint');
-        panel.querySelector('.cv-add-ref-btn').addEventListener('click', () => this._addRefSlot());
+        this.clipFileInput = panel.querySelector('.cv-clip-file');
+        this.clipUploadBtn = panel.querySelector('.cv-clip-upload-btn');
+        this.clipUploadBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.clipUploadBtn.addEventListener('click', () => this.clipFileInput.click());
+        this.clipFileInput.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.clipFileInput.addEventListener('change', () => this._onClipFile());
+        panel.querySelector('.cv-add-ref-btn:not(.cv-clip-upload-btn)').addEventListener('click', () => this._addRefSlot());
         panel.querySelector('.cv-submit-btn').addEventListener('click', () => this.generate());
 
         this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => { this.properties.model = v; });
@@ -1252,11 +1264,22 @@
     // 模式判定要用「有沒有連線」（結構性、graph topology），不能用「有沒有資料」
     // （getInputData 要等上游節點生成完畢並執行過 onExecute 才會有值）——否則
     // 剛接上參考圖但還沒按生成時，會誤判成沒有參考圖而退回 i2v/first_frame。
+    VideoGenNode.prototype._hasClip = function () {
+        return !!this.getInputNode(this.clipSlot) || !!this.localClipUrl;
+    };
     VideoGenNode.prototype._detectMode = function () {
         const hasRef = this.refSlots.some(i => !!this.getInputNode(i));
         if (hasRef) return 'r2v';
-        if (this.getInputNode(1)) return 'i2v';
+        if (this.getInputNode(1) || this._hasClip()) return 'i2v';
         return 't2v';
+    };
+    VideoGenNode.prototype._onClipFile = function () {
+        const file = this.clipFileInput.files[0];
+        if (!file) return;
+        if (this.localClipUrl && this.localClipUrl.startsWith('blob:')) URL.revokeObjectURL(this.localClipUrl);
+        this.localClipUrl = URL.createObjectURL(file);
+        this.statusEl.textContent = '已選擇影片片段：' + file.name;
+        this.onConnectionsChange(LiteGraph.INPUT);
     };
     VideoGenNode.prototype.onExecute = function () {
         _syncPromptTextarea(this, this.textarea, 0);
@@ -1270,6 +1293,10 @@
         if (!values.includes(this.properties.model)) this.properties.model = values[0] || '';
         this.modelSelect.innerHTML = values.map(v => `<option value="${v}"${v === this.properties.model ? ' selected' : ''}>${v}</option>`).join('');
         const firstFrameAlsoConnected = mode === 'r2v' && !!this.getInputNode(1);
+        if (mode === 'i2v' && this._hasClip()) {
+            this.modeHintEl.textContent = '（影片延伸，首幀圖片將被忽略）';
+            return;
+        }
         this.modeHintEl.textContent = mode === 'r2v'
             ? (firstFrameAlsoConnected ? '（參考生影片 / 多圖，first_frame 將被忽略）' : '（參考生影片 / 多圖）')
             : mode === 'i2v' ? '（圖生影片）' : '（文生影片）';
@@ -1302,11 +1329,19 @@
                 }
             } else if (mode === 'i2v') {
                 endpoint = '/api/video/i2v';
-                const firstFrameUrl = this.getInputData(1, true);
                 const lastFrameUrl = this.getInputData(2, true);
-                fd.append('i2v_mode', lastFrameUrl ? 'first_last_frame' : 'first_frame');
-                fd.append('first_frame', await fetchAsBlob(firstFrameUrl), 'first_frame.png');
-                if (lastFrameUrl) fd.append('last_frame', await fetchAsBlob(lastFrameUrl), 'last_frame.png');
+                const clipUrl = this.getInputData(this.clipSlot, true) || this.localClipUrl;
+                if (clipUrl) {
+                    // 影片延伸：接續上游一段既有影片繼續生成，不需要首幀圖片
+                    fd.append('i2v_mode', lastFrameUrl ? 'first_clip_last_frame' : 'first_clip');
+                    fd.append('first_clip', await fetchAsBlob(clipUrl), 'clip.mp4');
+                    if (lastFrameUrl) fd.append('last_frame', await fetchAsBlob(lastFrameUrl), 'last_frame.png');
+                } else {
+                    const firstFrameUrl = this.getInputData(1, true);
+                    fd.append('i2v_mode', lastFrameUrl ? 'first_last_frame' : 'first_frame');
+                    fd.append('first_frame', await fetchAsBlob(firstFrameUrl), 'first_frame.png');
+                    if (lastFrameUrl) fd.append('last_frame', await fetchAsBlob(lastFrameUrl), 'last_frame.png');
+                }
             }
             const res = await apiFetch(endpoint, { method: 'POST', body: fd });
             const data = await res.json();

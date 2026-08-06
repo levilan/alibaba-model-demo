@@ -221,7 +221,7 @@ TTS 的音色 (`voice`) 在主測試台與 AI Canvas 都是下拉選單、依選
 |---|---|
 | 文字 Text | 手動輸入 prompt，或選模型做真正的文字生成；若連接圖片輸入則可改用「分析圖片」 |
 | 圖片 Image | 文生圖 (t2i)；若連接參考圖輸入則自動切換為圖像生成 (i2i)。跟主測試台圖片分頁同步支援：Gemini 系列的「圖片比例」選項、萬相 2.7 的組圖模式（`enable_sequential`，一次生成最多 12 張連貫圖組，多張結果以網格顯示）與 2K/4K 解析度、GPT Image 的 quality/background/output_format 三個參數 |
-| 影片 Video | 依連接的圖片組合自動切換 t2v / i2v（首尾幀）/ r2v（最多 6 張參考圖） |
+| 影片 Video | 依連接的圖片組合自動切換 t2v / i2v（首尾幀）/ r2v（最多 6 張參考圖）；另有「來源影片(延伸)」輸入（可接其他影片節點的輸出或上傳本機檔案），接上後改走「影片延伸」（`first_clip`/`first_clip_last_frame`），忽略首幀圖片改用既有影片片段接續生成，可串接多個影片節點延長 |
 | 圖像編輯 Editing | 圖像編輯 (i2i)，需連接一張來源圖片；GPT Image 系列同樣支援 quality/background/output_format |
 | 語音 TTS | 呼叫語音模型分頁同一套 `/api/voice/tts`，可接文字節點輸出或手動輸入；依選擇的模型（qwen-audio-3.0-tts-* / gemini-*-tts）動態顯示或隱藏 CosyVoice 專屬的進階參數 |
 | MuleAI Spicy | 對應 NenAI Spicy 四個模型，依選擇的模型動態切換必填輸入與輸出型別（image/video） |
