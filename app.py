@@ -618,14 +618,17 @@ async def _fetch_pricing_map(api_key: str) -> dict:
         if not mid:
             continue
         if m.get("quota_type") == 1:
-            result[mid] = {"type": "fixed", "price": round(m.get("model_price", 0), 4)}
+            # 不要粗暴 round 到固定小數位——像語音辨識這類每次呼叫只要 $0.000035 的
+            # 模型，round(x, 4) 會直接捨去變成 0，讓使用者誤以為免費。保留原始精度，
+            # 顯示位數交給前端依數值大小動態決定。
+            result[mid] = {"type": "fixed", "price": m.get("model_price", 0) or 0}
         else:
             model_ratio = m.get("model_ratio", 0) or 0
             completion_ratio = m.get("completion_ratio", 1) or 1
             result[mid] = {
                 "type": "token",
-                "input": round(model_ratio * 2, 4),
-                "output": round(model_ratio * completion_ratio * 2, 4),
+                "input": model_ratio * 2,
+                "output": model_ratio * completion_ratio * 2,
             }
     _PRICING_CACHE["data"] = result
     _PRICING_CACHE["ts"] = now

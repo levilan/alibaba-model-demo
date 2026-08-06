@@ -427,11 +427,23 @@ function onTextModelChange() {
 
 // 價格資料來自網關自己的計費表（/api/pricing），只當參考用，不是精確帳單金額
 // （已假設帳號分組倍率 group_ratio=1，實測目前所有分組確實都是 1）
+// 後端不對價格做固定小數位 round（避免像語音辨識 $0.000035/次 這種極小值被
+// 捨去顯示成 0，讓人誤以為免費），改成這裡依數值大小動態決定要顯示幾位小數——
+// 至少抓到第一個非零小數位、再多留一位，取到合理的精度
+function formatUsd(n) {
+    if (!n) return '0';
+    if (n >= 0.01) return (Math.round(n * 100) / 100).toString();
+    let decimals = 2;
+    while (decimals < 8 && Math.abs(n) < Math.pow(10, -decimals)) decimals++;
+    const factor = Math.pow(10, decimals + 1);
+    return (Math.round(n * factor) / factor).toString();
+}
+
 function formatPriceSuffix(modelId) {
     const p = pricingMap[modelId];
     if (!p) return '';
-    if (p.type === 'fixed') return ` ・ $${p.price}/次`;
-    return ` ・ $${p.input}→$${p.output}/1M`;
+    if (p.type === 'fixed') return ` ・ $${formatUsd(p.price)}/次`;
+    return ` ・ $${formatUsd(p.input)}→$${formatUsd(p.output)}/1M`;
 }
 
 // 下拉選單收合狀態下常因側欄寬度不夠被截斷看不到價格，所以在「模型」label 旁邊
