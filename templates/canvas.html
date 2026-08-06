@@ -7,7 +7,7 @@
     <meta name="robots" content="noai, noimageai">
     <link rel="icon" type="image/png" href="/static/img/logo.png">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litegraph.js@0.7.18/css/litegraph.css">
-    <link rel="stylesheet" href="/static/css/canvas.css?v=9">
+    <link rel="stylesheet" href="/static/css/canvas.css?v=10">
 </head>
 <body>
 
@@ -34,6 +34,7 @@
 
     <div class="canvas-toolbar">
         <button class="canvas-tool-btn" id="btnAddNode" title="新增節點">+</button>
+        <button class="canvas-tool-btn" id="btnTemplates" title="套用範本">▤</button>
         <button class="canvas-tool-btn" id="btnFitView" title="置中顯示全部節點">⤢</button>
     </div>
 
@@ -49,6 +50,11 @@
         <button data-type="audio">語音 TTS</button>
         <button data-type="edit">圖像編輯 Editing</button>
         <button data-type="muleai">MuleAI Spicy</button>
+    </div>
+
+    <div id="templatesMenu" class="add-node-menu" style="display:none">
+        <div class="add-node-menu-title">套用範本</div>
+        <!-- 按鈕由 JS 依 CANVAS_TEMPLATES 動態產生，data-template-id 對應範本 id -->
     </div>
 
     <div class="canvas-zoom-controls">
@@ -67,6 +73,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/litegraph.js@0.7.18/build/litegraph.min.js"></script>
-<script src="/static/js/canvas.js?v=27"></script>
+<script src="/static/js/canvas.js?v=28"></script>
 </body>
 </html>

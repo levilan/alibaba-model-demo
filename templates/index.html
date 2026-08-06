@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=7">
+    <link rel="stylesheet" href="/static/css/style.css?v=8">
     <link rel="icon" type="image/png" href="/static/img/logo.png">
     <script>
         // 在 CSS 套用前就先決定 light/dark，避免登入畫面先閃一下錯的主題再跳回來
@@ -96,6 +96,10 @@
         </nav>
 
         <div class="header-right">
+            <div class="session-cost-indicator" id="sessionCostIndicator" title="本次瀏覽器分頁的估計花費（僅供參考，依網關計費表估算，非精確帳單）">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+                <span id="sessionCostDisplay">本次花費：$0</span>
+            </div>
             <div class="api-key-indicator">
                 <span class="dot"></span>
                 <span id="apiKeyLabel">API Key Connected</span>
@@ -888,6 +892,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=38"></script>
+<script src="/static/js/app.js?v=39"></script>
 </body>
 </html>

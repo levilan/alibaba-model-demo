@@ -27,6 +27,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbo
 let apiKey = sessionStorage.getItem('nenai_api_key') || '';
 let models = { text: [], image: [], video: [], muleai: [], voice: { asr: [], tts: [] } };
 let pricingMap = {}; // model id -> {type:'token', input, output} 或 {type:'fixed', price}，僅供參考
+let textChatHistory = []; // 文字生成多輪對話歷史，[{role, content}]，隨對話累積、清除對話時清空
+let sessionCost = 0; // 本次瀏覽器分頁累積的估計花費（USD），僅供參考、重新整理後歸零
 let refFiles = [];
 let editRefFiles = [];  // for video editing reference images
 let imgRefFiles = [];   // for image edit reference images (up to 9)
@@ -437,6 +439,28 @@ function formatUsd(n) {
     while (decimals < 8 && Math.abs(n) < Math.pow(10, -decimals)) decimals++;
     const factor = Math.pow(10, decimals + 1);
     return (Math.round(n * factor) / factor).toString();
+}
+
+// ── 即時花費統計 ──────────────────────────────────────────────
+// 只是根據網關自己的計費表（pricingMap）粗略估算，不是精確帳單；固定價格以外
+// 的計費方式（例如少數以 token 計費的圖片模型）目前沒有對應資料，故不計入
+function addCost(amount) {
+    if (!amount || !isFinite(amount)) return;
+    sessionCost += amount;
+    const disp = document.getElementById('sessionCostDisplay');
+    if (disp) disp.textContent = '本次花費：$' + formatUsd(sessionCost);
+}
+
+function addFixedCost(modelId, count = 1) {
+    const p = pricingMap[modelId];
+    if (p && p.type === 'fixed') addCost(p.price * count);
+}
+
+function addTokenTextCost(modelId, usage) {
+    const p = pricingMap[modelId];
+    if (!p || p.type !== 'token' || !usage) return;
+    const cost = (usage.prompt_tokens || 0) / 1e6 * p.input + (usage.completion_tokens || 0) / 1e6 * p.output;
+    addCost(cost);
 }
 
 function formatPriceSuffix(modelId) {
@@ -1088,6 +1112,7 @@ async function sendText() {
             presence_penalty: presencePenalty, frequency_penalty: frequencyPenalty,
             stream: useStream,
             enable_thinking: enableThinking && !!modelInfo?.thinking,
+            history: textChatHistory,
         };
         if (topK > 0) body.top_k = topK;
         if (seed !== null) body.seed = seed;
@@ -1118,11 +1143,14 @@ async function sendText() {
                 const meta = el('div', { className: 'msg-meta' });
                 meta.innerHTML = '<span>' + model + ' (耗時 ' + elapsed + 's)</span><span>' + new Date().toLocaleTimeString() + '</span>';
                 aDiv.appendChild(meta);
+                textChatHistory.push({ role: 'user', content: prompt });
+                textChatHistory.push({ role: 'assistant', content: data.content || '' });
+                addTokenTextCost(model, data.usage);
             }
         } else {
             const reader  = res.body.getReader();
             const decoder = new TextDecoder();
-            let full = '', buf = '';
+            let full = '', buf = '', usage = null;
             aDiv.classList.add('streaming-cursor');
 
             while (true) {
@@ -1149,6 +1177,8 @@ async function sendText() {
                         } else if (d.error) {
                             contentDiv.textContent = '⚠ 錯誤：' + d.error;
                             aDiv.classList.remove('streaming-cursor');
+                        } else if (d.done) {
+                            usage = d.usage || null;
                         }
                     } catch (_) { /* skip */ }
                 }
@@ -1158,6 +1188,11 @@ async function sendText() {
             const meta = el('div', { className: 'msg-meta' });
             meta.innerHTML = '<span>' + model + ' (耗時 ' + elapsed + 's)</span><span>' + new Date().toLocaleTimeString() + '</span>';
             aDiv.appendChild(meta);
+            if (full) {
+                textChatHistory.push({ role: 'user', content: prompt });
+                textChatHistory.push({ role: 'assistant', content: full });
+            }
+            addTokenTextCost(model, usage);
         }
     } catch (e) {
         contentDiv.textContent = '⚠ 錯誤：' + e.message;
@@ -1167,6 +1202,7 @@ async function sendText() {
 }
 
 function clearChat() {
+    textChatHistory = [];
     document.getElementById('textOutput').innerHTML = `
         <div class="empty-state">
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
@@ -1251,6 +1287,7 @@ async function sendImage() {
                 gallery.insertBefore(card, gallery.firstChild);
             });
             toast(`圖片生成完成！共 ${res.images.length} 張`, 'success');
+            addFixedCost(res.model, res.images.length);
         } else {
             const errMsg = res.error || '生成失敗';
             toast(errMsg, 'error');
@@ -1390,6 +1427,7 @@ async function sendVideo() {
             addVideoResult(model, prompt, res.local_path || res.video_url, false, fmtElapsed(Date.now() - startTime));
             TaskHistory.save('video', model, prompt, res.local_path || res.video_url);
             toast('影片生成完成！', 'success');
+            addFixedCost(model);
         } else {
             toast(res.error || '生成失敗', 'error');
             console.error('Video generation error:', res);
@@ -1420,7 +1458,7 @@ function addVideoTask(taskId, model, prompt, status) {
         <div class="vtc-progress"><div class="vtc-progress-bar" id="pb-${taskId}" style="width:5%"></div></div>
         <div id="rv-${taskId}"></div>`;
     cont.insertBefore(card, cont.firstChild);
-    pollVideo(taskId, startTime);
+    pollVideo(taskId, startTime, model);
 }
 
 function addVideoResult(model, prompt, src, isHistory = false, elapsed = null) {
@@ -1438,7 +1476,7 @@ function addVideoResult(model, prompt, src, isHistory = false, elapsed = null) {
     cont.insertBefore(card, cont.firstChild);
 }
 
-async function pollVideo(taskId, startTime) {
+async function pollVideo(taskId, startTime, model) {
     let tries = 0;
     const maxTries = 360; // 30 min max (5s * 360) — video-edit/重型任務常超過 15 min
     const poll = async () => {
@@ -1487,6 +1525,7 @@ async function pollVideo(taskId, startTime) {
                     }
                 }
                 toast('影片生成完成！', 'success');
+                addFixedCost(model);
             } else if (isFailed) {
                 const errMsg = data.error_message || 'Unknown';
                 const isSchedulerErr = errMsg.toLowerCase().includes('scheduler');
@@ -1700,6 +1739,7 @@ async function sendVoiceAsr() {
             }
             card.querySelector('.voice-result-header span').textContent = `${model}（耗時 ${fmtElapsed(Date.now() - startTime)}）`;
             toast('語音辨識完成！', 'success');
+            addFixedCost(model);
         } else {
             const fd = new FormData();
             fd.append('model', model);
@@ -1709,6 +1749,7 @@ async function sendVoiceAsr() {
                 textEl.textContent = res.text || '（無辨識結果）';
                 card.querySelector('.voice-result-header span').textContent = `${model}（耗時 ${fmtElapsed(Date.now() - startTime)}）`;
                 toast('語音辨識完成！', 'success');
+                addFixedCost(model);
             } else {
                 throw new Error(res.error || '辨識失敗');
             }
@@ -2046,6 +2087,7 @@ async function pollMuleAIVideo(taskId, startTime, model, promptText) {
                     }
                 }
                 toast('任務完成！', 'success');
+                addFixedCost(model);
             } else if (st === 'FAILED' || st === 'failed') {
                 if (stEl) { stEl.textContent = 'FAILED'; stEl.className = 'vtc-status failed'; }
                 if (pbEl) { pbEl.style.width = '100%'; pbEl.style.background = 'var(--red)'; }

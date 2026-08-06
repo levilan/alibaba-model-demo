@@ -2143,6 +2143,66 @@
 
     const NODE_MENU_TYPES = { text: 'nenai/text', camera_angle: 'nenai/camera_angle', load_image: 'nenai/load_image', image: 'nenai/image', video: 'nenai/video', video_edit: 'nenai/video_edit', video_animate: 'nenai/video_animate', edit: 'nenai/edit', audio: 'nenai/audio', muleai: 'nenai/muleai' };
 
+    // ── 範本庫：一鍵套用常見組合，省去手動拉線 ─────────────────────
+    // 每個範本只描述「節點類型 + 相對座標 + 要接的線」，實際節點是套用當下用
+    // LiteGraph.createNode()/graph.add()/node.connect() 即時生成，不是還原一份
+    // 手刻的序列化 JSON——這樣範本永遠跟目前的節點實作（預設參數、插槽順序）同步，
+    // 不會因為節點程式碼改版就跟著過期失真。
+    const CANVAS_TEMPLATES = [
+        {
+            id: 'text-to-image', name: '文字 → 圖片生成',
+            desc: '用文字節點寫/生成 Prompt，接到圖片生成節點',
+            nodes: [{ type: 'text', pos: [0, 0] }, { type: 'image', pos: [420, -60] }],
+            edges: [[0, 0, 1, 0]],
+        },
+        {
+            id: 'image-to-edit', name: '圖片生成 → 圖像編輯',
+            desc: '生成一張圖後，直接接到編輯節點做二次調整',
+            nodes: [{ type: 'image', pos: [0, 0] }, { type: 'edit', pos: [420, 0] }],
+            edges: [[0, 0, 1, 0]],
+        },
+        {
+            id: 'text-to-voice', name: '文字腳本 → 語音配音',
+            desc: '用文字節點寫腳本，接到 TTS 節點配音',
+            nodes: [{ type: 'text', pos: [0, 0] }, { type: 'audio', pos: [420, 0] }],
+            edges: [[0, 0, 1, 0]],
+        },
+        {
+            id: 'text-fanout', name: '文字 → 圖片 + 語音（雙路輸出）',
+            desc: '同一段文字同時拿去生成配圖，也拿去配音',
+            nodes: [{ type: 'text', pos: [0, 120] }, { type: 'image', pos: [440, -40] }, { type: 'audio', pos: [440, 340] }],
+            edges: [[0, 0, 1, 0], [0, 0, 2, 0]],
+        },
+        {
+            id: 'image-to-video', name: '上傳圖片 → 圖生影片',
+            desc: '上傳一張圖片當首幀，接到影片節點生成 i2v',
+            nodes: [{ type: 'load_image', pos: [0, 0] }, { type: 'video', pos: [420, 0] }],
+            edges: [[0, 0, 1, 1]],
+        },
+    ];
+    let _templatePlaceOffset = 0; // 每套用一次範本就往右下偏移，避免疊在前一個範本上面
+
+    function applyTemplate(tpl) {
+        const canvasEl = document.getElementById('litegraphCanvas');
+        const baseX = (canvasEl.width / 2) / lgCanvas.ds.scale - lgCanvas.ds.offset[0] - 340 + _templatePlaceOffset;
+        const baseY = (canvasEl.height / 2) / lgCanvas.ds.scale - lgCanvas.ds.offset[1] - 200 + _templatePlaceOffset;
+        _templatePlaceOffset += 60;
+
+        const createdNodes = tpl.nodes.map(spec => {
+            const type = NODE_MENU_TYPES[spec.type];
+            const node = LiteGraph.createNode(type);
+            node.pos = [baseX + spec.pos[0], baseY + spec.pos[1]];
+            graph.add(node);
+            return node;
+        });
+        (tpl.edges || []).forEach(([fromIdx, fromSlot, toIdx, toSlot]) => {
+            createdNodes[fromIdx].connect(fromSlot, createdNodes[toIdx], toSlot);
+        });
+        selectNodeOnly(createdNodes[0]);
+        lgCanvas.setDirty(true, true);
+        showToast(`已套用範本：${tpl.name}`);
+    }
+
     function wireToolbar() {
         const addMenu = document.getElementById('addNodeMenu');
         document.getElementById('btnAddNode').addEventListener('click', (e) => {
@@ -2166,6 +2226,24 @@
                 selectNodeOnly(node);
                 addMenu.style.display = 'none';
             });
+        });
+
+        const templatesMenu = document.getElementById('templatesMenu');
+        CANVAS_TEMPLATES.forEach(tpl => {
+            const btn = document.createElement('button');
+            btn.innerHTML = `${tpl.name}<span class="tpl-desc">${tpl.desc}</span>`;
+            btn.addEventListener('click', () => {
+                applyTemplate(tpl);
+                templatesMenu.style.display = 'none';
+            });
+            templatesMenu.appendChild(btn);
+        });
+        document.getElementById('btnTemplates').addEventListener('click', (e) => {
+            e.stopPropagation();
+            templatesMenu.style.display = templatesMenu.style.display === 'none' ? 'block' : 'none';
+        });
+        document.addEventListener('click', (e) => {
+            if (!templatesMenu.contains(e.target) && e.target.id !== 'btnTemplates') templatesMenu.style.display = 'none';
         });
 
         document.getElementById('btnFitView').addEventListener('click', fitView);

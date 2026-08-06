@@ -673,6 +673,7 @@ class TextGenerateRequest(BaseModel):
     stream: bool = True
     enable_thinking: bool = False
     reasoning_effort: Optional[str] = None  # 僅 GPT 系列支援：none/low/medium/high/xhigh
+    history: List[Dict[str, str]] = []  # 多輪對話歷史，[{"role": "user"/"assistant", "content": "..."}]
 
 
 class OmniChatRequest(BaseModel):
@@ -778,6 +779,7 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
     messages = []
     if data.system_prompt:
         messages.append({"role": "system", "content": data.system_prompt})
+    messages.extend(data.history)
     messages.append({"role": "user", "content": data.prompt})
 
     extra_body = {}
@@ -804,6 +806,9 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
         create_kwargs["seed"] = data.seed
     if data.stop:
         create_kwargs["stop"] = data.stop[:4]
+    if data.stream:
+        # 要求上游在最後一個 chunk 附上 usage（token 數），供前端計算即時花費
+        create_kwargs["stream_options"] = {"include_usage": True}
     # reasoning_effort 是 GPT-5 系列專屬的推理強度控制（實測這個網關接受的枚舉值是
     # none/low/medium/high/xhigh，不是 OpenAI 官方文件常見的 minimal/low/medium/high；
     # 帶 minimal 會被直接拒絕：400 "does not support 'minimal' with this model"），
@@ -828,6 +833,11 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
             result = {"content": content, "done": True}
             if reasoning:
                 result["reasoning_content"] = reasoning
+            if resp.usage:
+                result["usage"] = {
+                    "prompt_tokens": resp.usage.prompt_tokens,
+                    "completion_tokens": resp.usage.completion_tokens,
+                }
             return result
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
@@ -836,7 +846,13 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
         try:
             user_client = AsyncOpenAI(api_key=api_key, base_url=BASE_URL_COMPATIBLE)
             stream = await user_client.chat.completions.create(**create_kwargs)
+            usage = None
             async for chunk in stream:
+                if chunk.usage:
+                    usage = {
+                        "prompt_tokens": chunk.usage.prompt_tokens,
+                        "completion_tokens": chunk.usage.completion_tokens,
+                    }
                 if not chunk.choices:
                     continue
                 delta = chunk.choices[0].delta
@@ -847,7 +863,10 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
                     yield f"data: {json.dumps({'reasoning': reasoning})}\n\n"
                 if delta.content:
                     yield f"data: {json.dumps({'content': delta.content})}\n\n"
-            yield f"data: {json.dumps({'done': True})}\n\n"
+            done_payload = {"done": True}
+            if usage:
+                done_payload["usage"] = usage
+            yield f"data: {json.dumps(done_payload)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 

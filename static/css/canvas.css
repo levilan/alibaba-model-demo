@@ -78,6 +78,9 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
 .add-node-menu button:hover { background: var(--cv-panel-2); }
 .add-node-menu button.disabled { color: var(--cv-text-sub); cursor: not-allowed; opacity: 0.55; }
 .add-node-menu button.disabled:hover { background: transparent; }
+#templatesMenu { min-width: 260px; }
+#templatesMenu button { flex-direction: column; align-items: flex-start; gap: 2px; }
+#templatesMenu button .tpl-desc { font-size: 0.74rem; color: var(--cv-text-sub); font-weight: 400; }
 
 /* ── Zoom controls (bottom-left) ─────────────────────────── */
 .canvas-zoom-controls {
