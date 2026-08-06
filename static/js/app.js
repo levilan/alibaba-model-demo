@@ -26,6 +26,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbo
 // ── State ─────────────────────────────────────────────────────
 let apiKey = sessionStorage.getItem('nenai_api_key') || '';
 let models = { text: [], image: [], video: [], muleai: [], voice: { asr: [], tts: [] } };
+let pricingMap = {}; // model id -> {type:'token', input, output} 或 {type:'fixed', price}，僅供參考
 let refFiles = [];
 let editRefFiles = [];  // for video editing reference images
 let imgRefFiles = [];   // for image edit reference images (up to 9)
@@ -297,6 +298,19 @@ function showApp() {
     const masked = apiKey.slice(0, 6) + '****' + apiKey.slice(-4);
     document.getElementById('apiKeyLabel').textContent = masked;
     try { populateSelectors(); TaskHistory.load(); } catch(e) { toast('UI 載入發生錯誤，請聯絡開發者', 'error'); }
+    loadPricing();
+}
+
+// 價格是輔助參考資訊，非同步背景載入即可，失敗也不影響主要功能——載入完成後
+// 重新跑一次 populateSelectors() 讓已經產生的選單補上價格顯示
+async function loadPricing() {
+    try {
+        const res = await fetch('/api/pricing', { headers: authHeader() });
+        if (res.ok) {
+            pricingMap = await res.json();
+            populateSelectors();
+        }
+    } catch (_) { /* 價格載入失敗就不顯示，不影響其他功能 */ }
 }
 
 function handleLogout() {
@@ -315,6 +329,7 @@ function authHeader() {
 // ── Selectors ─────────────────────────────────────────────────
 function onMuleaiModelChange() {
     const model = document.getElementById('muleaiModel').value;
+    updateModelPriceHint('muleaiModelPrice', model);
     const isZImage   = model.includes('z-image');
     const isImgEdit  = model === 'qwen-image-edit-spicy';
     const isFaceSwap = model === 'face-swap';
@@ -407,10 +422,32 @@ function onTextModelChange() {
     const modelInfo = models.text.find(m => m.id === modelId) || {};
     document.getElementById('textThinkingGroup').style.display = modelInfo.thinking ? '' : 'none';
     document.getElementById('textReasoningEffortGroup').style.display = modelInfo.reasoning_effort ? '' : 'none';
+    updateModelPriceHint('textModelPrice', modelId);
+}
+
+// 價格資料來自網關自己的計費表（/api/pricing），只當參考用，不是精確帳單金額
+// （已假設帳號分組倍率 group_ratio=1，實測目前所有分組確實都是 1）
+function formatPriceSuffix(modelId) {
+    const p = pricingMap[modelId];
+    if (!p) return '';
+    if (p.type === 'fixed') return ` ・ $${p.price}/次`;
+    return ` ・ $${p.input}→$${p.output}/1M`;
+}
+
+// 下拉選單收合狀態下常因側欄寬度不夠被截斷看不到價格，所以在「模型」label 旁邊
+// 另外放一個不會被截斷的價格提示，跟著目前選到的模型即時更新
+function updateModelPriceHint(hintElId, modelId) {
+    const el = document.getElementById(hintElId);
+    if (!el) return;
+    const suffix = formatPriceSuffix(modelId);
+    el.textContent = suffix ? '（' + suffix.replace(/^\s*・\s*/, '') + '）' : '';
 }
 
 function populateSelect(id, list, filterFn = null) {
     const sel = document.getElementById(id);
+    // 價格背景載入完成後會重新呼叫這裡補上價格顯示——重建選單前先記住目前選到
+    // 哪個值，重建後試著設回去，否則使用者已經手動選的模型會被打回第一個選項
+    const prevValue = sel.value;
     sel.innerHTML = '';
     const filtered = filterFn ? list.filter(filterFn) : list;
     let group = '';
@@ -420,9 +457,15 @@ function populateSelect(id, list, filterFn = null) {
             group = m.group;
         }
         sel.lastElementChild.appendChild(
-            Object.assign(document.createElement('option'), { value: m.id, textContent: `${m.name} — ${m.desc}` })
+            Object.assign(document.createElement('option'), { value: m.id, textContent: `${m.name} — ${m.desc}${formatPriceSuffix(m.id)}` })
         );
     });
+    // 只有新清單裡真的還有這個值才恢復，否則保持瀏覽器預設行為（自動選第一項）——
+    // 直接無條件 sel.value = prevValue 在新清單不包含舊值時會讓選單整個變成沒有
+    // 任何選項被選中（selectedIndex=-1，value 變空字串），而不是退回選第一項
+    if (prevValue && [...sel.options].some(o => o.value === prevValue)) {
+        sel.value = prevValue;
+    }
 }
 
 // ── Image 任務/模型切換 ────────────────────────────────────────
@@ -439,6 +482,7 @@ function onImgTaskChange() {
 function onImgModelChange() {
     const t = document.getElementById('imageTaskType').value;
     const modelId = document.getElementById('imageModel').value;
+    updateModelPriceHint('imageModelPrice', modelId);
     // 同一 model id 可能同時存在 t2i 與 i2i 兩筆資料（如 qwen-image-2.0），需依 type 一併比對避免混淆
     const modelInfo = models.image.find(m => m.id === modelId && m.type === t) || {};
 
@@ -563,6 +607,7 @@ function onVidTaskChange() {
 function onVidModelChange() {
     const taskType = document.getElementById('videoTaskType').value;
     const modelId  = document.getElementById('videoModel').value;
+    updateModelPriceHint('videoModelPrice', modelId);
     const modelInfo = models.video.find(m => m.id === modelId) || {};
 
     // 顯示/隱藏自動配音
@@ -1553,6 +1598,7 @@ function onVoiceTaskChange() {
 
 function onVoiceModelChange() {
     const t = document.getElementById('voiceTaskType').value;
+    updateModelPriceHint('voiceModelPrice', document.getElementById('voiceModel').value);
     if (t !== 'tts') return;
     const model = document.getElementById('voiceModel').value;
     // Gemini TTS 走 /v1/audio/speech，只吃 model/input/voice——instructions 帶了

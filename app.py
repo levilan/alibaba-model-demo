@@ -591,6 +591,53 @@ async def login(data: LoginRequest):
 async def get_models(api_key: str = Depends(get_api_key)):
     return MODELS
 
+
+# ─── API: Pricing（供前端顯示各模型參考單價，資料來源是網關自己的計費表）───
+# 網關的 /api/pricing 是「New API」這類閘道專案的標準端點，回傳所有模型的計價
+# 資訊。換算成美金的公式（已用 quota_per_unit=500000、group_ratio=1 實測反推
+# 確認）：quota_type=1（圖片/影片/Spicy 等）的 model_price 本身就是每次呼叫的
+# 美金價，不用換算；quota_type=0（文字/語音等 token 計費）則是
+#   每 1M input token 美金 = model_ratio × 2 × group_ratio
+#   每 1M output token 美金 = model_ratio × completion_ratio × 2 × group_ratio
+# 這裡固定假設 group_ratio=1（實測目前所有分組確實都是 1），只當作參考價格，
+# 不是精確帳單金額——快取 1 小時，避免每次載入頁面都打一次上游。
+_PRICING_CACHE: Dict[str, Any] = {"data": None, "ts": 0.0}
+_PRICING_CACHE_TTL = 3600
+
+async def _fetch_pricing_map(api_key: str) -> dict:
+    now = time.time()
+    if _PRICING_CACHE["data"] is not None and now - _PRICING_CACHE["ts"] < _PRICING_CACHE_TTL:
+        return _PRICING_CACHE["data"]
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(f"{NENAI_BASE}/api/pricing", headers={"Authorization": f"Bearer {api_key}"})
+        resp.raise_for_status()
+        raw = resp.json()
+    result = {}
+    for m in raw.get("data", []):
+        mid = m.get("model_name")
+        if not mid:
+            continue
+        if m.get("quota_type") == 1:
+            result[mid] = {"type": "fixed", "price": round(m.get("model_price", 0), 4)}
+        else:
+            model_ratio = m.get("model_ratio", 0) or 0
+            completion_ratio = m.get("completion_ratio", 1) or 1
+            result[mid] = {
+                "type": "token",
+                "input": round(model_ratio * 2, 4),
+                "output": round(model_ratio * completion_ratio * 2, 4),
+            }
+    _PRICING_CACHE["data"] = result
+    _PRICING_CACHE["ts"] = now
+    return result
+
+@app.get("/api/pricing")
+async def get_pricing(api_key: str = Depends(get_api_key)):
+    try:
+        return await _fetch_pricing_map(api_key)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Canvas 節點間傳遞的圖片/影片網址可能落在 OSS bucket，瀏覽器直接 fetch 會被 CORS 擋下，
 # 故提供一個僅允許白名單網域的代理端點；不可放行任意網址，否則會變成 SSRF 入口
 _PROXY_ALLOWED_SUFFIXES = (".aliyuncs.com",)

@@ -137,7 +137,7 @@
             <div class="sidebar-section">
                 <div class="sidebar-section-title">模型設定</div>
                 <div class="form-group">
-                    <label class="form-label" data-tip="選擇 AI 語言模型。Max 系列推理能力最強，Plus 性價比均衡，Flash 速度最快成本最低，DeepSeek 為第三方深度推理模型">模型</label>
+                    <label class="form-label" data-tip="選擇 AI 語言模型。Max 系列推理能力最強，Plus 性價比均衡，Flash 速度最快成本最低，DeepSeek 為第三方深度推理模型">模型 <span class="param-hint" id="textModelPrice"></span></label>
                     <select id="textModel" class="select-input" onchange="onTextModelChange()"></select>
                 </div>
                 <div class="form-group">
@@ -254,7 +254,7 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" data-tip="選擇圖片生成模型。千問系列擅長文字渲染，萬相系列支援更多尺寸，Z-Image 輕量快速。I2I 模式請選擇圖像編輯系列模型">模型</label>
+                    <label class="form-label" data-tip="選擇圖片生成模型。千問系列擅長文字渲染，萬相系列支援更多尺寸，Z-Image 輕量快速。I2I 模式請選擇圖像編輯系列模型">模型 <span class="param-hint" id="imageModelPrice"></span></label>
                     <select id="imageModel" class="select-input" onchange="onImgModelChange()"></select>
                 </div>
                 <div class="form-group" id="imgSizeGroup">
@@ -392,7 +392,7 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" data-tip="選擇影片生成模型。2.7 系列為最新版本，品質更佳且支援更多功能；2.6 系列為前代穩定版本">模型</label>
+                    <label class="form-label" data-tip="選擇影片生成模型。2.7 系列為最新版本，品質更佳且支援更多功能；2.6 系列為前代穩定版本">模型 <span class="param-hint" id="videoModelPrice"></span></label>
                     <select id="videoModel" class="select-input" onchange="onVidModelChange()"></select>
                 </div>
                 <div class="form-group" id="vidResolutionGroup">
@@ -619,7 +619,7 @@
             <div class="sidebar-section">
                 <div class="sidebar-section-title">基本設定 (NenAI)</div>
                 <div class="form-group">
-                    <label class="form-label">模型</label>
+                    <label class="form-label">模型 <span class="param-hint" id="muleaiModelPrice"></span></label>
                     <select id="muleaiModel" class="select-input" onchange="onMuleaiModelChange()"></select>
                 </div>
                 <div class="form-group" id="muleaiVidResGroup">
@@ -744,7 +744,7 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">模型</label>
+                    <label class="form-label">模型 <span class="param-hint" id="voiceModelPrice"></span></label>
                     <select id="voiceModel" class="select-input" onchange="onVoiceModelChange()"></select>
                 </div>
             </div>
@@ -888,6 +888,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=34"></script>
+<script src="/static/js/app.js?v=37"></script>
 </body>
 </html>
