@@ -641,9 +641,14 @@ async def get_pricing(api_key: str = Depends(get_api_key)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Canvas 節點間傳遞的圖片/影片網址可能落在 OSS bucket，瀏覽器直接 fetch 會被 CORS 擋下，
-# 故提供一個僅允許白名單網域的代理端點；不可放行任意網址，否則會變成 SSRF 入口
-_PROXY_ALLOWED_SUFFIXES = (".aliyuncs.com",)
+# Canvas 節點間傳遞的圖片/影片網址可能落在雲端物件儲存 bucket，瀏覽器直接 fetch 會被
+# CORS 擋下，故提供一個僅允許白名單網域的代理端點；不可放行任意網址，否則會變成 SSRF 入口。
+# 白名單涵蓋三個雲端儲存後端目前會產生簽名網址的網域：阿里雲 OSS、AWS S3、GCS
+# （GCS 不論走本地私鑰簽章還是 ADC + IAM SignBlob 遠端簽章，網址都落在
+# storage.googleapis.com）——一開始只寫了 OSS 的網域，導致正式環境改用 GCS 之後，
+# AI Canvas 裡任何需要把上一個節點的生成結果重新抓回來當輸入的功能（例如影片延伸
+# 接上一段影片、把生成的圖片再送進另一個節點）都會在這裡被拒絕，噴「無法取得來源檔案」。
+_PROXY_ALLOWED_SUFFIXES = (".aliyuncs.com", ".amazonaws.com", "storage.googleapis.com")
 
 @app.get("/api/proxy/fetch")
 async def proxy_fetch(url: str, api_key: str = Depends(get_api_key)):
