@@ -1180,12 +1180,23 @@
     // r2v（參考生影片）可以連接多張參考圖到同一個節點：初始給 2 個「參考圖」
     // 輸入插槽，並提供「+ 新增參考圖輸入」按鈕可再加到最多 6 張。
     const VIDEO_MAX_REF_SLOTS = 6;
+    // 暫停「影片延伸」功能：正式環境 Cloud Run 目前沒有接任何雲端物件儲存後端，
+    // 生成結果全部退回寫在容器本機磁碟，而 min-instances=0 又會在閒置後整個縮容、
+    // 或同時把請求分派到不同容器實例——本機磁碟不會跨實例共享也不會在重啟後保留，
+    // 導致「接續上一段影片」這種需要重新抓回前一步生成結果的操作常常抓不到檔案
+    // （404）。等正式環境接上持久化的雲端儲存（GCS/S3/OSS 任一）之後再開放，
+    // 屆時把這個常數改回 true 即可，不用改動其他邏輯。
+    const VIDEO_EXTEND_ENABLED = false;
     function VideoGenNode() {
         this.addInput('prompt', 'string');
         this.addInput('first_frame', 'image');
         this.addInput('last_frame', 'image');
-        this.addInput('來源影片(延伸)', 'video');
-        this.clipSlot = 3;
+        if (VIDEO_EXTEND_ENABLED) {
+            this.addInput('來源影片(延伸)', 'video');
+            this.clipSlot = 3;
+        } else {
+            this.clipSlot = -1;
+        }
         this.addOutput('video', 'video');
         this.refSlots = [];
         this._addRefSlot();
@@ -1194,8 +1205,8 @@
         this.properties = { model: (models[0] && models[0].id) || '', prompt: '', resolution: '720P', duration: 5, status: '' };
         this.videoUrl = null;
         this.localClipUrl = null;
-        this._contentHeight = 620;
-        this.size = [320, 620];
+        this._contentHeight = VIDEO_EXTEND_ENABLED ? 620 : 560;
+        this.size = [320, this._contentHeight];
         this.color = '#1f2f3a'; this.bgcolor = '#2a2a2a';
 
         const panel = el('div');
@@ -1209,9 +1220,10 @@
                 <div class="cv-res-slot"></div>
                 <label>時長（秒）<span class="cv-dur-val">5</span></label>
                 <input type="range" class="cv-dur-slider" min="2" max="15" step="1" value="5">
+                ${VIDEO_EXTEND_ENABLED ? `
                 <label>影片延伸<span class="cv-hint">（接影片節點輸出或上傳片段，取代首幀圖片；上游片段需 ≤9.9 秒）</span></label>
                 <input type="file" class="cv-clip-file" accept="video/*" style="display:none">
-                <button class="cv-add-ref-btn cv-clip-upload-btn">選擇影片片段</button>
+                <button class="cv-add-ref-btn cv-clip-upload-btn">選擇影片片段</button>` : ''}
                 <button class="cv-add-ref-btn">+ 新增參考圖輸入</button>
                 <button class="cv-generate cv-submit-btn">▶ 生成影片</button>
                 <div class="cv-status"></div>
@@ -1221,12 +1233,14 @@
         this.textarea.addEventListener('input', () => { this.properties.prompt = this.textarea.value; });
         this.statusEl = panel.querySelector('.cv-status');
         this.modeHintEl = panel.querySelector('.cv-mode-hint');
-        this.clipFileInput = panel.querySelector('.cv-clip-file');
-        this.clipUploadBtn = panel.querySelector('.cv-clip-upload-btn');
-        this.clipUploadBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-        this.clipUploadBtn.addEventListener('click', () => this.clipFileInput.click());
-        this.clipFileInput.addEventListener('mousedown', (e) => e.stopPropagation());
-        this.clipFileInput.addEventListener('change', () => this._onClipFile());
+        if (VIDEO_EXTEND_ENABLED) {
+            this.clipFileInput = panel.querySelector('.cv-clip-file');
+            this.clipUploadBtn = panel.querySelector('.cv-clip-upload-btn');
+            this.clipUploadBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+            this.clipUploadBtn.addEventListener('click', () => this.clipFileInput.click());
+            this.clipFileInput.addEventListener('mousedown', (e) => e.stopPropagation());
+            this.clipFileInput.addEventListener('change', () => this._onClipFile());
+        }
         panel.querySelector('.cv-add-ref-btn:not(.cv-clip-upload-btn)').addEventListener('click', () => this._addRefSlot());
         panel.querySelector('.cv-submit-btn').addEventListener('click', () => this.generate());
 
