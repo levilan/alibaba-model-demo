@@ -16,3 +16,8 @@ static/uploads/
 Thumbs.db
 .mcp.json
 CLAUDE.md
+
+# Claude Code skills（本機安裝，透過 npx skills add 取得，不進版控）
+.agents/
+.claude/skills/
+skills-lock.json

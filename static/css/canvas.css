@@ -10,6 +10,7 @@
     --cv-accent-2:  #4f8cff;
     --cv-danger:    #ff5555;
     --cv-ok:        #4ade80;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 * { box-sizing: border-box; }
@@ -43,6 +44,8 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
     border-radius: 7px; padding: 6px 12px; font-size: 0.8rem; cursor: pointer;
 }
 .canvas-btn-ghost:hover { color: var(--cv-text); border-color: var(--cv-text-sub); }
+.canvas-btn-ghost { transition: transform 140ms var(--ease-out), color 0.15s, border-color 0.15s; }
+.canvas-btn-ghost:active { transform: scale(0.96); }
 
 /* ── Left floating toolbar ──────────────────────────────── */
 .canvas-toolbar {
@@ -55,9 +58,11 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
     width: 36px; height: 36px; border-radius: 8px; border: none;
     background: transparent; color: var(--cv-text-sub); font-size: 1.1rem;
     cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, color 0.15s, transform 140ms var(--ease-out);
 }
 .canvas-tool-btn:hover { background: var(--cv-panel-2); color: var(--cv-text); }
 .canvas-tool-btn.active { background: var(--cv-accent); color: #fff; }
+.canvas-tool-btn:active { transform: scale(0.92); }
 
 /* ── Add-node popup menu ─────────────────────────────────── */
 .add-node-menu {
@@ -65,6 +70,8 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
     background: var(--cv-panel); border: 1px solid var(--cv-border);
     border-radius: 10px; padding: 6px; min-width: 200px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    transform-origin: top left;
+    animation: cv-menu-in 0.16s var(--ease-out);
 }
 .add-node-menu-title {
     font-size: 0.72rem; color: var(--cv-text-sub); text-transform: uppercase;
@@ -74,8 +81,10 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
     display: flex; align-items: center; gap: 8px; width: 100%;
     background: transparent; border: none; color: var(--cv-text);
     text-align: left; padding: 9px 10px; border-radius: 7px; font-size: 0.86rem; cursor: pointer;
+    transition: background 0.15s, transform 120ms var(--ease-out);
 }
 .add-node-menu button:hover { background: var(--cv-panel-2); }
+.add-node-menu button:active:not(.disabled) { transform: scale(0.97); }
 .add-node-menu button.disabled { color: var(--cv-text-sub); cursor: not-allowed; opacity: 0.55; }
 .add-node-menu button.disabled:hover { background: transparent; }
 #templatesMenu { min-width: 260px; }
@@ -160,16 +169,18 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
 .cv-node-panel button.cv-generate, .cv-config-overlay button.cv-generate {
     margin-top: 10px; background: linear-gradient(135deg, var(--cv-accent), #ff8a3d);
     border: none; color: #fff; font-weight: 600; padding: 9px; border-radius: 8px;
-    cursor: pointer; font-size: 12.5px;
+    cursor: pointer; font-size: 12.5px; transition: filter 0.15s, transform 140ms var(--ease-out);
 }
 .cv-node-panel button.cv-generate:hover, .cv-config-overlay button.cv-generate:hover { filter: brightness(1.08); }
+.cv-node-panel button.cv-generate:active, .cv-config-overlay button.cv-generate:active { transform: scale(0.97); }
 .cv-node-panel button.cv-analyze-btn, .cv-config-overlay button.cv-analyze-btn { background: linear-gradient(135deg, var(--cv-accent-2), #7ab0ff); }
 .cv-node-panel button.cv-add-ref-btn, .cv-config-overlay button.cv-add-ref-btn {
     margin-top: 10px; background: transparent; border: 1px dashed var(--cv-border);
     color: var(--cv-text-sub); font-weight: 500; padding: 8px; border-radius: 8px;
-    cursor: pointer; font-size: 12px;
+    cursor: pointer; font-size: 12px; transition: border-color 0.15s, color 0.15s, transform 140ms var(--ease-out);
 }
 .cv-node-panel button.cv-add-ref-btn:hover, .cv-config-overlay button.cv-add-ref-btn:hover { border-color: var(--cv-accent-2); color: var(--cv-accent-2); }
+.cv-node-panel button.cv-add-ref-btn:active, .cv-config-overlay button.cv-add-ref-btn:active { transform: scale(0.97); }
 .cv-node-panel .cv-check-row, .cv-config-overlay .cv-check-row {
     display: flex; align-items: center; gap: 6px; margin-top: 10px;
     font-size: 12px; color: var(--cv-text); text-transform: none; opacity: 1;
@@ -208,7 +219,10 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
     position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.88);
     display: flex; align-items: center; justify-content: center; padding: 40px;
 }
-.cv-lightbox-body { max-width: 92vw; max-height: 88vh; display: flex; }
+.cv-lightbox-body {
+    max-width: 92vw; max-height: 88vh; display: flex;
+    animation: cv-lightbox-in 0.2s var(--ease-out);
+}
 .cv-lightbox-body img, .cv-lightbox-body video {
     max-width: 92vw; max-height: 88vh; object-fit: contain; border-radius: 8px;
     box-shadow: 0 12px 48px rgba(0,0,0,0.6);
@@ -252,6 +266,14 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
 @keyframes cv-progress-pulse {
     0%, 100% { opacity: 0.35; }
     50% { opacity: 0.9; }
+}
+@keyframes cv-menu-in {
+    from { opacity: 0; transform: scale(0.95) translateY(-4px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes cv-lightbox-in {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
 }
 .cv-progress-meta {
     display: flex; justify-content: space-between; margin-top: 7px;

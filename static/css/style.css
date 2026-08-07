@@ -51,6 +51,8 @@
 
     /* Transitions */
     --t: 0.18s ease;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 
     /* Font */
     --font: 'Inter', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -124,6 +126,18 @@ img { display: block; max-width: 100%; }
     border-radius: var(--radius-lg);
     box-shadow: 0 4px 24px rgba(0,0,0,0.08);
     overflow: hidden;
+    animation: loginCardIn 0.5s var(--ease-out);
+}
+@keyframes loginCardIn {
+    from { opacity: 0; transform: translateY(16px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.login-logo-box img {
+    animation: loginLogoIn 0.6s var(--ease-out) 0.1s backwards;
+}
+@keyframes loginLogoIn {
+    from { opacity: 0; transform: scale(0.6) rotate(-8deg); }
+    to { opacity: 1; transform: scale(1) rotate(0deg); }
 }
 
 .login-header {
@@ -232,6 +246,13 @@ img { display: block; max-width: 100%; }
     cursor: help;
 }
 .session-cost-indicator svg { flex-shrink: 0; color: var(--ali-orange); }
+/* 花費數字更新時短暫閃一下背景色，提示「這裡剛剛變了」——狀態指示用途，
+   保持極短、極淡，不做位移，避免使用者每次呼叫模型都被閃一次而覺得煩 */
+.session-cost-indicator.cost-flash { animation: costFlash 0.6s var(--ease-out); }
+@keyframes costFlash {
+    0% { background: var(--ali-orange-soft); border-color: var(--ali-orange-mid); }
+    100% { background: var(--bg); border-color: var(--border); }
+}
 
 /* ─── Theme Switcher ─────────────────────────────────────────── */
 .theme-switcher { position: relative; }
@@ -239,15 +260,16 @@ img { display: block; max-width: 100%; }
     width: 32px; height: 32px;
     display: flex; align-items: center; justify-content: center;
     background: var(--bg); border: 1px solid var(--border); border-radius: 50%;
-    color: var(--text-sub); cursor: pointer; transition: var(--t);
+    color: var(--text-sub); cursor: pointer; transition: var(--t), transform 140ms var(--ease-out);
 }
 .theme-toggle-btn:hover { color: var(--ali-orange); border-color: var(--ali-orange-mid); }
+.theme-toggle-btn:active { transform: scale(0.92); }
 .theme-menu {
     position: absolute; top: calc(100% + 8px); right: 0;
     width: 220px; z-index: 500;
     background: var(--bg-white); border: 1px solid var(--border); border-radius: var(--radius-lg);
     box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 0 0 1px var(--border);
-    padding: 6px; animation: fadeUp 0.15s ease;
+    padding: 6px; animation: fadeUp 0.15s var(--ease-out);
 }
 .theme-menu-title {
     font-size: 0.68rem; font-weight: 700; color: var(--text-muted);
@@ -377,9 +399,10 @@ input[type="range"]::-webkit-slider-thumb {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 8px 16px; border: none; border-radius: var(--radius);
     font-family: var(--font); font-size: 0.85rem; font-weight: 500;
-    cursor: pointer; transition: var(--t); white-space: nowrap;
+    cursor: pointer; transition: var(--t), transform 140ms var(--ease-out); white-space: nowrap;
 }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn:active:not(:disabled) { transform: scale(0.97); }
 .btn-primary {
     background: var(--ali-orange); color: white;
     box-shadow: var(--shadow-btn);
@@ -411,7 +434,7 @@ input[type="range"]::-webkit-slider-thumb {
     max-width: 82%; padding: 10px 14px;
     border-radius: var(--radius-lg); font-size: 0.88rem; line-height: 1.7;
     white-space: pre-wrap; word-break: break-word;
-    animation: fadeUp 0.2s ease;
+    animation: fadeUp 0.2s var(--ease-out);
 }
 .chat-message.user {
     align-self: flex-end;
@@ -503,9 +526,17 @@ input[type="range"]::-webkit-slider-thumb {
     width: auto; position: relative;
     background: var(--bg-white); border: 1px solid var(--border);
     border-radius: var(--radius-lg); overflow: hidden;
-    transition: var(--t); animation: fadeUp 0.25s ease;
+    transition: var(--t), transform 200ms var(--ease-out), box-shadow 200ms var(--ease-out);
+    animation: cardReveal 0.35s var(--ease-out);
 }
-.img-card:hover { border-color: var(--ali-orange); box-shadow: 0 2px 12px rgba(1,160,199,0.1); }
+@media (hover: hover) and (pointer: fine) {
+    .img-card:hover { transform: translateY(-3px); }
+}
+.img-card:hover { border-color: var(--ali-orange); box-shadow: 0 8px 20px rgba(1,160,199,0.16); }
+@keyframes cardReveal {
+    from { opacity: 0; transform: translateY(10px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
 .img-card img {
     width: 100%; max-height: 300px; object-fit: cover;
     cursor: zoom-in; transition: opacity var(--t);
@@ -550,8 +581,10 @@ input[type="range"]::-webkit-slider-thumb {
 .video-task-card {
     background: var(--bg-white); border: 1px solid var(--border);
     border-radius: var(--radius-lg); padding: 16px;
-    animation: fadeUp 0.25s ease;
+    animation: cardReveal 0.35s var(--ease-out);
+    transition: box-shadow 200ms var(--ease-out);
 }
+.video-task-card:has(.vtc-status.succeeded) { box-shadow: 0 4px 16px rgba(0,179,101,0.1); }
 .vtc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; }
 .vtc-model { font-size: 0.8rem; font-weight: 600; color: var(--text-h); }
 .vtc-timer { font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono); }
@@ -677,6 +710,7 @@ input[type="range"]::-webkit-slider-thumb {
 .lightbox-inner {
     position: relative; display: flex; align-items: center; justify-content: center;
     max-width: 92vw; max-height: 92vh; cursor: default;
+    animation: lightboxIn 0.2s var(--ease-out);
 }
 .lightbox-inner img {
     max-width: 90vw; max-height: 88vh;
@@ -698,6 +732,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .lightbox-close:hover { background: rgba(255,255,255,0.3); }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lightboxIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 
 /* ─── Voice Panel ─────────────────────────────────────────────── */
 .voice-result {

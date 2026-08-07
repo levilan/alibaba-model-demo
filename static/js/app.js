@@ -481,6 +481,13 @@ function addCost(amount) {
     sessionCost += amount;
     const disp = document.getElementById('sessionCostDisplay');
     if (disp) disp.textContent = '本次花費：$' + formatUsd(sessionCost);
+    const indicator = document.getElementById('sessionCostIndicator');
+    if (indicator) {
+        // 重新觸發 CSS animation：先移除 class 讓瀏覽器有機會回到起始狀態，
+        // 下一輪動畫幀再加回去，否則連續呼叫時 class 已經在身上，animation 不會重播
+        indicator.classList.remove('cost-flash');
+        requestAnimationFrame(() => indicator.classList.add('cost-flash'));
+    }
 }
 
 function addFixedCost(modelId, count = 1) {
