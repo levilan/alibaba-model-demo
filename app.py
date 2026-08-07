@@ -251,6 +251,12 @@ MODELS = {
         {"id": "deepseek-v3.2",      "name": "DeepSeek V3.2",    "group": "第三方", "desc": "前代深度推理",           "thinking": True},
         {"id": "glm-5.1",            "name": "GLM 5.1",          "group": "第三方", "desc": "智譜 GLM 前一版",        "thinking": True},
         {"id": "glm-5.2",            "name": "GLM 5.2",          "group": "第三方", "desc": "智譜 GLM 最新版",        "thinking": True},
+        # ── ByteDance Seed（字節跳動豆包大模型；seed-2.0 系列預設就會回思考過程
+        #    reasoning_content，跟 DeepSeek 那套 enable_thinking 機制相同，seed-sc
+        #    則沒有思考過程）──
+        {"id": "dola-seed-sc",       "name": "Seed SC",          "group": "ByteDance", "desc": "字節跳動豆包，一般對話", "thinking": False},
+        {"id": "dola-seed-2.0-lite", "name": "Seed 2.0 Lite",    "group": "ByteDance", "desc": "字節跳動豆包，輕量推理", "thinking": True},
+        {"id": "dola-seed-2.0-pro",  "name": "Seed 2.0 Pro",     "group": "ByteDance", "desc": "字節跳動豆包，旗艦推理", "thinking": True},
         # ── Claude（實測過 enable_thinking 與 Anthropic 原生 thinking 參數在這個
         #    網關上都不會回傳任何思考過程，thinking 一律維持 False；temperature/
         #    top_p 也不能送，Bedrock 後端會直接回 400 "temperature is deprecated"）──
@@ -382,6 +388,19 @@ MODELS = {
             "desc": "OpenAI 前代圖像模型", "type": "t2i", "max_n": 4,
             "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
         },
+        # ── ByteDance Seedream（尺寸格式同 GPT Image 為 WIDTHxHEIGHT；lite 版實測
+        #    畫面至少要 ~369 萬像素，1024x1024 這種常見小尺寸會被拒絕，故只列
+        #    2K 起跳的尺寸，pro 版則沒有這個限制）──
+        {
+            "id": "dola-seedream-5.0-pro", "name": "Seedream 5.0 Pro", "group": "ByteDance Seedream",
+            "desc": "字節跳動 Seedream，旗艦文生圖", "type": "t2i", "max_n": 4,
+            "sizes": ["1024x1024","1536x1024","1024x1536","2048x2048"],
+        },
+        {
+            "id": "dola-seedream-5.0-lite", "name": "Seedream 5.0 Lite", "group": "ByteDance Seedream",
+            "desc": "字節跳動 Seedream，輕量文生圖（畫面較大，最小約 2K）", "type": "t2i", "max_n": 4,
+            "sizes": ["2048x2048","2k","3k","4k"],
+        },
         # ── Gemini Image（走 /v1/chat/completions + modalities，不支援 size 參數；
         #    aspect_ratio 走「自然語言注入 prompt」而非結構化欄位——實測過
         #    imageConfig/aspect_ratio/generationConfig 這些結構化參數在這個
@@ -495,6 +514,14 @@ MODELS = {
          "desc": "Google 極速參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
         {"id": "veo-3.1-lite-generate-001", "name": "Veo 3.1 Lite（參考生影片）", "group": "Veo",
          "desc": "Google 輕量參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+        # ── ByteDance Seedance（字節跳動/即夢文生影片，走一般 /v1/videos 任務制流程；
+        #    duration/resolution 上限沿用其餘家族常見範圍，未逐一窮舉測試邊界值）──
+        {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro", "group": "ByteDance Seedance",
+         "desc": "字節跳動 Seedance，旗艦文生影片", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "dreamina-seedance-2.0", "name": "Seedance 2.0（即夢）", "group": "ByteDance Seedance",
+         "desc": "即夢 Seedance，標準文生影片", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "dreamina-seedance-2.0-fast", "name": "Seedance 2.0 Fast（即夢）", "group": "ByteDance Seedance",
+         "desc": "即夢 Seedance，極速文生影片", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15},
         # ── Gemini Omni（走 /v1beta/interactions，模型自行決定長度/解析度，固定含原生配音）──
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview", "group": "Gemini",
          "desc": "Google 多模態影片生成（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "t2v", "audio": False, "no_duration": True},

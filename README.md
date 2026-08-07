@@ -82,6 +82,9 @@ python app.py
 | deepseek-v3.2 | DeepSeek V3.2 | 第三方 | enable_thinking（預設開啟） |
 | glm-5.1 | GLM 5.1 | 第三方 | enable_thinking（預設開啟） |
 | glm-5.2 | GLM 5.2 | 第三方 | enable_thinking（預設開啟） |
+| dola-seed-sc | Seed SC | ByteDance | — |
+| dola-seed-2.0-lite | Seed 2.0 Lite | ByteDance | enable_thinking（預設開啟） |
+| dola-seed-2.0-pro | Seed 2.0 Pro | ByteDance | enable_thinking（預設開啟） |
 | claude-opus-4-8 / 4-7 / 4-6 / 4-5 / 4-1 | Claude Opus 系列 | Claude | — |
 | claude-sonnet-5 / 4-6 / 4-5 | Claude Sonnet 系列 | Claude | — |
 | claude-haiku-4-5 | Claude Haiku 4.5 | Claude | — |
@@ -132,6 +135,13 @@ python app.py
 
 > 額外支援 OpenAI 標準的 `quality`（`auto`/`low`/`medium`/`high`）、`background`（`auto`/`opaque`/`transparent`，透明背景輸出）、`output_format`（`png`/`jpeg`/`webp`）三個參數。
 
+**ByteDance Seedream（文生圖，尺寸格式同 GPT Image 為 `WIDTHxHEIGHT`，也接受 `2k`/`3k`/`4k` 預設值）**
+
+| 模型 ID | 名稱 |
+|---|---|
+| dola-seedream-5.0-pro | Seedream 5.0 Pro（旗艦） |
+| dola-seedream-5.0-lite | Seedream 5.0 Lite（輕量，畫面較大，最小約 2K／369 萬像素，太小的尺寸會被上游拒絕） |
+
 **Gemini Image（文生圖 + 圖像編輯，走 `/v1/chat/completions` + `modalities`，不支援結構化的 `size` 參數）**
 
 | 模型 ID | 名稱 |
@@ -167,9 +177,13 @@ python app.py
 | wan2.7-videoedit | 萬相 2.7 視頻編輯 | 萬相視頻編輯 | — |
 | wan2.2-animate-mix | 萬相 2.2 視頻換人 | 萬相動作動畫 | — |
 | wan2.2-animate-move | 萬相 2.2 圖生動作 | 萬相動作動畫 | — |
+| bytedance-seedance-1.5-pro | Seedance 1.5 Pro | ByteDance Seedance | — |
+| dreamina-seedance-2.0 | Seedance 2.0（即夢） | ByteDance Seedance | — |
+| dreamina-seedance-2.0-fast | Seedance 2.0 Fast（即夢） | ByteDance Seedance | — |
 
 > 萬相 2.6/2.7 系列 T2V/I2V/R2V 皆支援自動配音（BGM 自動生成或自訂音訊上傳）。
 > 動作動畫模型：視頻換人（將參考影片角色替換為人物圖片）、圖生動作（將參考影片動作遷移到人物圖片）。
+> ByteDance Seedance 系列僅實測過文生影片（t2v）與 5 秒時長，`min_dur`/`max_dur` 沿用其他家族的常見範圍（2–15 秒），未逐一窮舉邊界值。
 
 **Veo（Google，duration 僅接受 4/6/8 秒）**
 
