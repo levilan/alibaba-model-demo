@@ -620,9 +620,43 @@ async def canvas_page():
 class LoginRequest(BaseModel):
     api_key: str
 
+# 登入失敗鎖定：純記憶體、依來源 IP 計數，重試超過 5 次鎖定 5 分鐘。這裡沒有資料庫，
+# 且正式環境是 Cloud Run（min-instances=0、可能多實例），這份計數不會跨實例共享、
+# 服務重啟或縮容到 0 也會清空——只是盡力而為地拉高brute-force門檻，不是嚴格保證。
+_LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_LOCKOUT_SECONDS = 5 * 60
+_login_attempts: Dict[str, Dict[str, float]] = {}  # ip -> {"count": int, "locked_until": float}
+
+def _login_client_ip(request: Request) -> str:
+    # Cloud Run 前面有 Load Balancer/CDN，真實來源 IP 落在 X-Forwarded-For 第一段
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+def _login_record_failure(ip: str) -> int:
+    """回傳這次失敗後、鎖定前還剩幾次機會（已鎖定則回傳 0）。"""
+    entry = _login_attempts.setdefault(ip, {"count": 0, "locked_until": 0.0})
+    entry["count"] += 1
+    if entry["count"] >= _LOGIN_MAX_ATTEMPTS:
+        entry["locked_until"] = time.time() + _LOGIN_LOCKOUT_SECONDS
+        entry["count"] = 0
+        return 0
+    return _LOGIN_MAX_ATTEMPTS - entry["count"]
+
 @app.post("/login")
-async def login(data: LoginRequest):
+async def login(data: LoginRequest, request: Request):
     """Validate NenAI API key."""
+    ip = _login_client_ip(request)
+    now = time.time()
+    entry = _login_attempts.get(ip)
+    if entry and entry["locked_until"] > now:
+        remaining = int(entry["locked_until"] - now) + 1
+        return JSONResponse(status_code=429, content={
+            "success": False, "locked": True, "retry_after": remaining,
+            "message": f"登入失敗次數過多，請 {remaining} 秒後再試",
+        })
+
     api_key = data.api_key.strip()
     if not (api_key and len(api_key) > 10):
         return JSONResponse(status_code=400, content={"success": False, "message": "請輸入有效的 NenAI API Key"})
@@ -637,11 +671,21 @@ async def login(data: LoginRequest):
             max_tokens=1,
             stream=False,
         )
+        _login_attempts.pop(ip, None)
         return {"success": True}
     except Exception as e:
         err = str(e)
         if "401" in err or "Unauthorized" in err or "invalid" in err.lower():
-            return JSONResponse(status_code=401, content={"success": False, "message": "API Key 無效或權限不足"})
+            attempts_left = _login_record_failure(ip)
+            if attempts_left <= 0:
+                return JSONResponse(status_code=429, content={
+                    "success": False, "locked": True, "retry_after": _LOGIN_LOCKOUT_SECONDS,
+                    "message": f"登入失敗次數過多，請 {_LOGIN_LOCKOUT_SECONDS // 60} 分鐘後再試",
+                })
+            return JSONResponse(status_code=401, content={
+                "success": False,
+                "message": f"API Key 無效或權限不足（剩餘 {attempts_left} 次機會，超過將鎖定 5 分鐘）",
+            })
         # Other errors (rate limit etc.) - key is likely valid
         return {"success": True}
 

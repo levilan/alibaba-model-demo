@@ -258,6 +258,34 @@ async function attemptAutoLogin() {
 }
 
 // ── Auth ──────────────────────────────────────────────────────
+// 登入鎖定倒數計時器——後端依 IP 記錄失敗次數，超過 5 次會回 429 + retry_after
+// 秒數，這裡在鎖定期間停用登入按鈕並即時倒數，避免使用者一直狂點碰壁
+let _loginLockoutTimer = null;
+
+function _startLoginLockoutCountdown(seconds) {
+    const btn = document.getElementById('loginBtn');
+    const errEl = document.getElementById('loginError');
+    clearInterval(_loginLockoutTimer);
+    let remaining = seconds;
+    const render = () => {
+        btn.disabled = true;
+        btn.innerHTML = `<span>請 ${remaining} 秒後再試</span>`;
+        errEl.textContent = `登入失敗次數過多，已暫時鎖定，請 ${remaining} 秒後再試`;
+    };
+    render();
+    _loginLockoutTimer = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+            clearInterval(_loginLockoutTimer);
+            btn.disabled = false;
+            errEl.textContent = '';
+            btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg><span>登入</span>';
+            return;
+        }
+        render();
+    }, 1000);
+}
+
 async function handleLogin() {
     const key = document.getElementById('apiKeyInput').value.trim();
     const errEl = document.getElementById('loginError');
@@ -282,9 +310,13 @@ async function handleLogin() {
             const mRes = await fetch('/api/models', { headers: authHeader() });
             models = await mRes.json();
             showApp();
-        } else {
-            errEl.textContent = data.message || '驗證失敗，請確認 API Key';
+            return;
         }
+        if (data.locked && data.retry_after) {
+            _startLoginLockoutCountdown(data.retry_after);
+            return;
+        }
+        errEl.textContent = data.message || '驗證失敗，請確認 API Key';
     } catch (e) {
         errEl.textContent = '網路錯誤，請重試';
     }
