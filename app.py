@@ -238,9 +238,11 @@ MODELS = {
         # ── 極速 ──────────────────────────────────────────────────
         {"id": "qwen3.6-flash",      "name": "Qwen3.6 Flash",    "group": "極速",   "desc": "新一代極速模型",         "thinking": True},
         {"id": "qwen3.5-flash",      "name": "Qwen3.5 Flash",    "group": "極速",   "desc": "速度快、成本低",         "thinking": True},
-        # ── 代碼 ──────────────────────────────────────────────────
-        {"id": "qwen3-coder-plus",   "name": "Qwen3 Coder Plus", "group": "代碼",   "desc": "代碼生成旗艦",           "thinking": True},
-        {"id": "qwen3-coder-flash",  "name": "Qwen3 Coder Flash","group": "代碼",   "desc": "代碼生成極速",           "thinking": True},
+        # ── 代碼（實測 enable_thinking 對這兩個 coder 模型完全沒有效果——true/false
+        #    都不會有 reasoning_content，代碼生成場景本來就不需要思考過程，
+        #    thinking 維持 False 避免顯示一個沒作用的開關）──────────────
+        {"id": "qwen3-coder-plus",   "name": "Qwen3 Coder Plus", "group": "代碼",   "desc": "代碼生成旗艦",           "thinking": False},
+        {"id": "qwen3-coder-flash",  "name": "Qwen3 Coder Flash","group": "代碼",   "desc": "代碼生成極速",           "thinking": False},
         # ── 角色 ──────────────────────────────────────────────────
         {"id": "qwen-plus-character", "name": "Qwen Plus Character","group": "角色", "desc": "角色扮演，Plus 品質",   "thinking": False},
         # ── 第三方 ────────────────────────────────────────────────
@@ -251,12 +253,13 @@ MODELS = {
         {"id": "deepseek-v3.2",      "name": "DeepSeek V3.2",    "group": "第三方", "desc": "前代深度推理",           "thinking": True},
         {"id": "glm-5.1",            "name": "GLM 5.1",          "group": "第三方", "desc": "智譜 GLM 前一版",        "thinking": True},
         {"id": "glm-5.2",            "name": "GLM 5.2",          "group": "第三方", "desc": "智譜 GLM 最新版",        "thinking": True},
-        # ── ByteDance Seed（字節跳動豆包大模型；seed-2.0 系列預設就會回思考過程
-        #    reasoning_content，跟 DeepSeek 那套 enable_thinking 機制相同，seed-sc
-        #    則沒有思考過程）──
+        # ── ByteDance Seed（字節跳動豆包大模型；seed-2.0 系列無條件會回思考過程
+        #    reasoning_content，實測過 enable_thinking:false 對它們沒有效果
+        #    （跟 Gemini 3.x 系列同樣「關不掉」），thinking 維持 False 不顯示
+        #    會誤導使用者以為能控制的開關；seed-sc 則完全沒有思考過程）──
         {"id": "dola-seed-sc",       "name": "Seed SC",          "group": "ByteDance", "desc": "字節跳動豆包，一般對話", "thinking": False},
-        {"id": "dola-seed-2.0-lite", "name": "Seed 2.0 Lite",    "group": "ByteDance", "desc": "字節跳動豆包，輕量推理", "thinking": True},
-        {"id": "dola-seed-2.0-pro",  "name": "Seed 2.0 Pro",     "group": "ByteDance", "desc": "字節跳動豆包，旗艦推理", "thinking": True},
+        {"id": "dola-seed-2.0-lite", "name": "Seed 2.0 Lite",    "group": "ByteDance", "desc": "字節跳動豆包，輕量推理（思考過程無法關閉）", "thinking": False},
+        {"id": "dola-seed-2.0-pro",  "name": "Seed 2.0 Pro",     "group": "ByteDance", "desc": "字節跳動豆包，旗艦推理（思考過程無法關閉）", "thinking": False},
         # ── Claude（實測過 enable_thinking 與 Anthropic 原生 thinking 參數在這個
         #    網關上都不會回傳任何思考過程，thinking 一律維持 False；temperature/
         #    top_p 也不能送，Bedrock 後端會直接回 400 "temperature is deprecated"）──
