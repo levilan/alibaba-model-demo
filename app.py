@@ -843,9 +843,17 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
     messages.extend(data.history)
     messages.append({"role": "user", "content": data.prompt})
 
+    # 這裡不能只在 enable_thinking=True 時才帶這個欄位——實測發現 qwen3.5-flash/
+    # qwen3.6-flash/qwen3.8-max/deepseek-v4-*/glm-5.* 這些模型預設就是思考模式開啟，
+    # 完全不帶 enable_thinking 欄位並不會關閉思考，只有明確送 enable_thinking:false
+    # 才有效——原本的寫法導致使用者把「思考模式」開關關掉後其實毫無作用，模型仍在
+    # 思考（多花 token、多等時間）。GPT 系列則是完全不同的機制（reasoning_effort），
+    # 送 enable_thinking 給它會直接 400 "Unknown parameter"，因此只排除 GPT 系列，
+    # 其餘家族（含 Claude/Gemini，實測過送 enable_thinking:false 不會報錯，只是沒
+    # 有效果）一律明確帶上 True 或 False。
     extra_body = {}
-    if data.enable_thinking:
-        extra_body["enable_thinking"] = True
+    if not data.model.startswith("gpt-"):
+        extra_body["enable_thinking"] = data.enable_thinking
 
     create_kwargs = dict(
         model=data.model,

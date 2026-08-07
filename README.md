@@ -93,7 +93,7 @@ python app.py
 | gpt-5.5 / 5.4 / 5.4-mini / 5.4-nano / 5.2 / 5-mini | GPT 5.x 系列 | GPT | reasoning_effort |
 | gemini-3.1-pro-preview 等 7 個 Gemini 模型 | Gemini 系列 | Gemini | — |
 
-> **思考模式的三種機制，不能混用**：Qwen/DeepSeek/GLM 用布林值 `enable_thinking`（DeepSeek/GLM 皆已實測，且預設就是開啟，設 `false` 才會關閉並省 token）；GPT 系列改用字串 `reasoning_effort`（實測這個網關接受的枚舉是 `none/low/medium/high/xhigh`，跟 OpenAI 官方文件常見的 `minimal/low/medium/high` 不同，帶錯值或帶 `enable_thinking` 給 GPT 都會被直接拒絕）；Claude／Gemini 目前實測皆無法透過這個網關控制（Claude 送了無效、Gemini 3.x 無條件思考、關不掉），因此 UI 不提供對應開關。開啟後若上游回傳 `reasoning_content`（目前只有 Qwen/DeepSeek/GLM 會有），會在回答上方顯示成可收合的「思考過程」區塊。
+> **思考模式的三種機制，不能混用**：Qwen/DeepSeek/GLM 用布林值 `enable_thinking`（這幾家幾乎都實測預設就是開啟，必須明確送 `enable_thinking:false` 才會關閉並省 token——完全不帶這個欄位並不會關閉思考，後端一律會明確帶上 `true`/`false`，只有 GPT 系列例外不帶）；GPT 系列改用字串 `reasoning_effort`（實測這個網關接受的枚舉是 `none/low/medium/high/xhigh`，跟 OpenAI 官方文件常見的 `minimal/low/medium/high` 不同，帶錯值或帶 `enable_thinking` 給 GPT 都會被直接拒絕）；Claude／Gemini 目前實測皆無法透過這個網關控制（Claude 送了無效、Gemini 3.x 無條件思考、關不掉），因此 UI 不提供對應開關。開啟後若上游回傳 `reasoning_content`（目前只有 Qwen/DeepSeek/GLM 會有），會在回答上方顯示成可收合的「思考過程」區塊。
 
 ### 圖片生成
 
