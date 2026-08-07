@@ -436,6 +436,18 @@ MODELS = {
             "desc": "OpenAI 前代圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True,
             "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
         },
+        # ── ByteDance Seedream 編輯（沿用一般 /v1/images/edits 流程，實測 ref_strength
+        #    參數有效不會被拒絕，因此不加進 _NO_REF_STRENGTH_EDIT_MODELS）──
+        {
+            "id": "dola-seedream-5.0-pro", "name": "Seedream 5.0 Pro（編輯）", "group": "ByteDance Seedream",
+            "desc": "字節跳動 Seedream，旗艦圖像編輯", "type": "i2i", "max_n": 1,
+            "sizes": ["1024x1024","1536x1024","1024x1536","2048x2048"],
+        },
+        {
+            "id": "dola-seedream-5.0-lite", "name": "Seedream 5.0 Lite（編輯）", "group": "ByteDance Seedream",
+            "desc": "字節跳動 Seedream，輕量圖像編輯（畫面較大，最小約 2K）", "type": "i2i", "max_n": 1,
+            "sizes": ["2048x2048","2k","3k","4k"],
+        },
         # ── MAI Image 編輯（Azure OpenAI 管道，沿用一般 /v1/images/edits 流程，不支援 ref_strength）──
         {
             "id": "MAI-Image-2.5", "name": "MAI-Image-2.5（編輯）", "group": "MAI Image",
@@ -514,14 +526,31 @@ MODELS = {
          "desc": "Google 極速參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
         {"id": "veo-3.1-lite-generate-001", "name": "Veo 3.1 Lite（參考生影片）", "group": "Veo",
          "desc": "Google 輕量參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
-        # ── ByteDance Seedance（字節跳動/即夢文生影片，走一般 /v1/videos 任務制流程；
-        #    duration/resolution 上限沿用其餘家族常見範圍，未逐一窮舉測試邊界值）──
+        # ── ByteDance Seedance（字節跳動/即夢文生/圖生/參考生影片，走一般 /v1/videos
+        #    任務制流程——跟萬相系列共用的 media/image/images 三欄位注入機制。
+        #    t2v 三個模型都實測過；i2v 在 bytedance-seedance-1.5-pro 上實測完整跑到
+        #    completed 拿到影片網址，r2v 在 dreamina-seedance-2.0-fast 上實測完整跑到
+        #    completed；其餘模型 × 模式的組合沒有逐一窮舉，是基於同一套通用機制推斷
+        #    同樣可用。duration/resolution 上限沿用其餘家族常見範圍，未測邊界值；
+        #    視頻編輯 vedit 實測會直接被上游拒絕（image_url 參數不合法），不列入）──
         {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro", "group": "ByteDance Seedance",
          "desc": "字節跳動 Seedance，旗艦文生影片", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0", "name": "Seedance 2.0（即夢）", "group": "ByteDance Seedance",
          "desc": "即夢 Seedance，標準文生影片", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0-fast", "name": "Seedance 2.0 Fast（即夢）", "group": "ByteDance Seedance",
          "desc": "即夢 Seedance，極速文生影片", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro（圖生影片）", "group": "ByteDance Seedance",
+         "desc": "字節跳動 Seedance，旗艦圖生影片（首幀）", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "dreamina-seedance-2.0", "name": "Seedance 2.0（即夢，圖生影片）", "group": "ByteDance Seedance",
+         "desc": "即夢 Seedance，標準圖生影片（首幀）", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "dreamina-seedance-2.0-fast", "name": "Seedance 2.0 Fast（即夢，圖生影片）", "group": "ByteDance Seedance",
+         "desc": "即夢 Seedance，極速圖生影片（首幀）", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro（參考生影片）", "group": "ByteDance Seedance",
+         "desc": "字節跳動 Seedance，旗艦參考生影片", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "dreamina-seedance-2.0", "name": "Seedance 2.0（即夢，參考生影片）", "group": "ByteDance Seedance",
+         "desc": "即夢 Seedance，標準參考生影片", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "dreamina-seedance-2.0-fast", "name": "Seedance 2.0 Fast（即夢，參考生影片）", "group": "ByteDance Seedance",
+         "desc": "即夢 Seedance，極速參考生影片", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
         # ── Gemini Omni（走 /v1beta/interactions，模型自行決定長度/解析度，固定含原生配音）──
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview", "group": "Gemini",
          "desc": "Google 多模態影片生成（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "t2v", "audio": False, "no_duration": True},

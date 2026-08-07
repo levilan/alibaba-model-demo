@@ -123,6 +123,8 @@ python app.py
 | qwen-image-2.0（編輯） | 千問圖像 2.0 | 千問圖像編輯 |
 | MAI-Image-2.5（編輯） | MAI-Image-2.5 | MAI Image |
 | MAI-Image-2.5-Flash（編輯） | MAI-Image-2.5-Flash | MAI Image |
+| dola-seedream-5.0-pro（編輯） | Seedream 5.0 Pro | ByteDance Seedream |
+| dola-seedream-5.0-lite（編輯） | Seedream 5.0 Lite | ByteDance Seedream |
 
 > qwen-image-2.0 系列為生成與編輯融合模型：最多 3 張參考圖、可一次輸出 1–6 張，並以 `prompt_extend` 取代 `ref_strength` 參數。
 
@@ -141,6 +143,8 @@ python app.py
 |---|---|
 | dola-seedream-5.0-pro | Seedream 5.0 Pro（旗艦） |
 | dola-seedream-5.0-lite | Seedream 5.0 Lite（輕量，畫面較大，最小約 2K／369 萬像素，太小的尺寸會被上游拒絕） |
+
+> 兩個模型都同時支援圖像編輯 (I2I)，實測 `ref_strength` 參數有效、不會被拒絕，用法跟其餘走 `/v1/images/edits` 的模型一致。
 
 **Gemini Image（文生圖 + 圖像編輯，走 `/v1/chat/completions` + `modalities`，不支援結構化的 `size` 參數）**
 
@@ -180,10 +184,16 @@ python app.py
 | bytedance-seedance-1.5-pro | Seedance 1.5 Pro | ByteDance Seedance | — |
 | dreamina-seedance-2.0 | Seedance 2.0（即夢） | ByteDance Seedance | — |
 | dreamina-seedance-2.0-fast | Seedance 2.0 Fast（即夢） | ByteDance Seedance | — |
+| bytedance-seedance-1.5-pro（圖生影片） | Seedance 1.5 Pro | ByteDance Seedance | — |
+| dreamina-seedance-2.0（圖生影片） | Seedance 2.0（即夢） | ByteDance Seedance | — |
+| dreamina-seedance-2.0-fast（圖生影片） | Seedance 2.0 Fast（即夢） | ByteDance Seedance | — |
+| bytedance-seedance-1.5-pro（參考生影片） | Seedance 1.5 Pro | ByteDance Seedance | — |
+| dreamina-seedance-2.0（參考生影片） | Seedance 2.0（即夢） | ByteDance Seedance | — |
+| dreamina-seedance-2.0-fast（參考生影片） | Seedance 2.0 Fast（即夢） | ByteDance Seedance | — |
 
 > 萬相 2.6/2.7 系列 T2V/I2V/R2V 皆支援自動配音（BGM 自動生成或自訂音訊上傳）。
 > 動作動畫模型：視頻換人（將參考影片角色替換為人物圖片）、圖生動作（將參考影片動作遷移到人物圖片）。
-> ByteDance Seedance 系列僅實測過文生影片（t2v）與 5 秒時長，`min_dur`/`max_dur` 沿用其他家族的常見範圍（2–15 秒），未逐一窮舉邊界值。
+> ByteDance Seedance 系列同時支援 t2v/i2v/r2v，走跟萬相系列共用的 `media`/`image`/`images` 三欄位注入機制；i2v 在 `bytedance-seedance-1.5-pro`、r2v 在 `dreamina-seedance-2.0-fast` 上實測完整跑到 `completed`，其餘模型 × 模式組合基於同一套機制推斷同樣可用，未逐一窮舉。**不支援**視頻編輯（vedit）——實測直接被上游拒絕（`image_url` 參數不合法）。`min_dur`/`max_dur` 沿用其他家族的常見範圍（2–15 秒），未測邊界值。
 
 **Veo（Google，duration 僅接受 4/6/8 秒）**
 
