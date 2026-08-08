@@ -233,6 +233,7 @@ if (darkMediaQuery) {
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     applyTheme();
+    initLoginFx();
     if (apiKey) attemptAutoLogin();
     updateOmniVoices(document.getElementById('omniModel')?.value || 'qwen3.5-omni-flash-realtime');
 
@@ -255,6 +256,74 @@ async function attemptAutoLogin() {
             sessionStorage.removeItem('nenai_api_key');
         }
     } catch (_) { /* show login */ }
+}
+
+// ── 登入頁裝飾檯燈：純裝飾互動，跟登入邏輯無關，點一下切換開/關 ──────────
+// 拉燈＝切換淺色/深色模式（深色＝燈亮）。直接寫死 light/dark 兩個選項，
+// 不接「自動」——拉繩開關本身就是一個明確的二元動作，銜接自動模式的語意
+// 反而會讓「拉一下卻沒變」的情況發生（系統剛好已經是那個主題時）。
+function toggleLoginLamp() {
+    const lamp = document.getElementById('loginLamp');
+    if (!lamp) return;
+    const isDark = resolveEffectiveTheme(getThemePref()) === 'dark';
+    setThemePref(isDark ? 'light' : 'dark');
+    const cord = lamp.querySelector('.lamp-cord');
+    // 每次點擊都要重新播放「往下拉」的動畫——class 已經在身上時直接再 add
+    // 一次不會觸發 animation，要先移除、等下一個動畫幀再加回去強制重播
+    cord.classList.remove('pulling');
+    requestAnimationFrame(() => cord.classList.add('pulling'));
+}
+
+// 登入頁背景動態效果的粒子——深色模式的星星、淺色模式的暖色光塵。兩組都
+// 常駐在 DOM 裡，用 CSS 的 [data-theme] 選擇器切換顯示/隱藏，切換主題時
+// 不用重新產生，位置/延遲用 CSS 變數帶隨機值，只需要產生一次
+function initLoginFx() {
+    const container = document.getElementById('loginFxParticles');
+    if (!container || container.childElementCount) return; // 已經產生過就跳過
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < 40; i++) {
+        const star = document.createElement('span');
+        star.className = 'fx-star';
+        const size = 1 + Math.random() * 1.8;
+        star.style.width = star.style.height = size + 'px';
+        star.style.left = Math.random() * 100 + '%';
+        star.style.top = Math.random() * 70 + '%';
+        star.style.setProperty('--fx-dur', (2 + Math.random() * 3).toFixed(2) + 's');
+        star.style.setProperty('--fx-delay', (Math.random() * 4).toFixed(2) + 's');
+        frag.appendChild(star);
+    }
+    for (let i = 0; i < 16; i++) {
+        const mote = document.createElement('span');
+        mote.className = 'fx-mote';
+        const size = 4 + Math.random() * 7;
+        mote.style.width = mote.style.height = size + 'px';
+        mote.style.left = Math.random() * 100 + '%';
+        mote.style.top = 40 + Math.random() * 55 + '%';
+        mote.style.setProperty('--fx-dur', (6 + Math.random() * 6).toFixed(2) + 's');
+        mote.style.setProperty('--fx-delay', (Math.random() * 6).toFixed(2) + 's');
+        frag.appendChild(mote);
+    }
+    // 淺色模式的雲：只放 3 片、走得很慢（90 秒以上跨過整個畫面），
+    // 目的是讓白天的天空「有在動」但不會吸引注意力離開登入表單
+    // 只給寬度，高度由 CSS 的 aspect-ratio 自動換算，維持雲的形狀比例
+    // top 控制在 4%～23%：再往下就會飄到檯燈/登入卡片的高度，跟近景的物件
+    // 打架（雲應該只出現在遠景的天空區域）
+    const clouds = [
+        { top: 13, w: 210, dur: 96,  delay: -20  },
+        { top: 23, w: 150, dur: 132, delay: -70  },
+        { top: 4,  w: 116, dur: 112, delay: -110 },
+        { top: 18, w: 178, dur: 148, delay: -46  },
+    ];
+    clouds.forEach(c => {
+        const cloud = document.createElement('span');
+        cloud.className = 'fx-cloud';
+        cloud.style.top = c.top + '%';
+        cloud.style.width = c.w + 'px';
+        cloud.style.setProperty('--fx-dur', c.dur + 's');
+        cloud.style.setProperty('--fx-delay', c.delay + 's');
+        frag.appendChild(cloud);
+    });
+    container.appendChild(frag);
 }
 
 // ── Auth ──────────────────────────────────────────────────────

@@ -110,24 +110,335 @@ img { display: block; max-width: 100%; }
 
 /* ─── Login Overlay ──────────────────────────────────────────── */
 .login-overlay {
-    position: fixed; inset: 0; z-index: 999;
+    position: fixed; inset: 0; z-index: 999; overflow: hidden;
     display: flex; align-items: center; justify-content: center;
     background: var(--bg);
-    background-image: linear-gradient(135deg, #FFF8F4 0%, #F5F6F8 50%, #EBF4FF 100%);
 }
-:root[data-theme="dark"] .login-overlay {
-    background-image: linear-gradient(135deg, #1A1A14 0%, #0F1419 50%, #0F1A26 100%);
+/* 淺色/深色兩片背景疊在一起，切換時用 opacity 淡入淡出取代直接换圖，
+   才會有絲滑的過場，而不是「啪」一聲瞬間變色 */
+.login-bg {
+    position: absolute; inset: 0; opacity: 0;
+    transition: opacity 0.7s var(--ease-in-out);
+}
+/* 左上角疊一圈跟太陽/月亮同位置的環境光，讓天體看起來真的在照亮那一角天空，
+   而不是一個貼在背景上的貼圖 */
+/* 上半部帶一層淡天藍：白色的雲畫在接近白色的背景上本來就看不見，
+   要讓雲清楚，天空得先有顏色可以襯托。藍色只鋪在上半部（雲在的高度），
+   下半部維持原本偏暖的色調，才不會把整體的溫馨感變成冷色 */
+.login-bg-light {
+    background-image:
+        radial-gradient(circle 620px at 12% 13%, rgba(255,206,120,0.42), rgba(255,206,120,0) 68%),
+        linear-gradient(180deg, rgba(138,192,232,0.42) 0%, rgba(138,192,232,0.18) 34%, rgba(138,192,232,0) 56%),
+        linear-gradient(135deg, #FFF8F4 0%, #F5F6F8 50%, #EBF4FF 100%);
+}
+.login-bg-dark {
+    background-image:
+        radial-gradient(circle 560px at 12% 13%, rgba(255,214,140,0.13), rgba(255,214,140,0) 66%),
+        linear-gradient(135deg, #1A1A14 0%, #0F1419 50%, #0F1A26 100%);
+}
+:root[data-theme="light"] .login-bg-light { opacity: 1; }
+:root[data-theme="dark"]  .login-bg-dark  { opacity: 1; }
+/* 頁面正中央一圈很淡的品牌色環境光，讓整個場景有個視覺重心，不然大螢幕上
+   燈跟卡片會像兩個孤立的小物件飄在一大片空白背景裡；兩個主題色調很接近，
+   不特別區分深淺，維持同一層即可 */
+.login-overlay::before {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 1100px; height: 1100px; transform: translate(-50%, -50%);
+    background: radial-gradient(circle, rgba(1,160,199,0.13), rgba(1,160,199,0) 62%);
+    pointer-events: none;
+}
+
+/* ─── 天空：太陽/弦月放在畫面右上角，跟左下的檯燈形成對角平衡（燈在近景
+   左下、天體在遠景右上），切換深淺色模式時互相淡入淡出＋沿著弧線位移，
+   像日月交替升落，呼應「拉燈＝晝夜切換」的敘事。
+   外層 .fx-sun/.fx-moon 只負責光暈與位移，實體圓盤放在內層 span——因為
+   弦月是用 mask 從圓盤挖掉一塊做出來的，mask 會連 box-shadow 一起裁掉，
+   光暈必須放在沒有 mask 的外層才不會被切掉 ─────────────────────────── */
+.fx-sky-body {
+    position: absolute; top: 11%; left: 11%; z-index: 0;
+    width: 92px; height: 92px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.9s var(--ease-in-out), transform 0.9s var(--ease-in-out);
+}
+.fx-sky-body svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.fx-sky-body::before {  /* 光暈，會緩慢呼吸 */
+    content: ''; position: absolute; inset: -55%;
+    border-radius: 50%; pointer-events: none;
+    animation: fxGlowBreathe 5s ease-in-out infinite;
+}
+@keyframes fxGlowBreathe {
+    0%, 100% { transform: scale(1);    opacity: 1;    }
+    50%      { transform: scale(1.09); opacity: 0.72; }
+}
+
+/* 太陽：白天從左上方降下就位；夜晚往左上退場（沉到天空外） */
+.fx-sun { transform: translate(-24px, -34px) scale(0.72); }
+.fx-sun::before { background: radial-gradient(circle, rgba(255,193,84,0.5), rgba(255,193,84,0) 62%); }
+.fx-sun-rays {
+    fill: #FBB61C;
+    /* transform-box: fill-box 讓 transform-origin 以自己的邊界框為基準，
+       不加的話 SVG 元素的旋轉原點會落在整個 SVG 座標系原點（左上角），
+       光芒就會繞著畫面外的一個點公轉而不是自轉 */
+    transform-box: fill-box; transform-origin: center;
+    animation: fxSunSpin 30s linear infinite;
+}
+@keyframes fxSunSpin { to { transform: rotate(360deg); } }
+.fx-sun-core { fill: #FBB61C; }
+.fx-sun-ring { fill: none; stroke: rgba(255,255,255,0.9); stroke-width: 3.5; }
+
+/* 弦月：暖色調（跟檯燈的燈光呼應，比銀白色更溫馨），旁邊三顆小星星錯開閃爍 */
+.fx-moon { transform: translate(24px, 34px) scale(0.72); }
+/* 弦月的光暈要比太陽收斂很多——暈得太開會在弦月旁邊糊出一整圈亮盤，
+   看起來反而像滿月被擋住一半，而不是一彎弦月 */
+.fx-moon::before { background: radial-gradient(circle, rgba(255,222,150,0.2), rgba(255,222,150,0) 52%); }
+.fx-moon-disc { fill: #FFD97A; filter: drop-shadow(0 0 10px rgba(255,214,130,0.5)); }
+.fx-spark {
+    fill: #FFD97A;
+    transform-box: fill-box; transform-origin: center;
+    animation: fxSparkTwinkle 2.8s ease-in-out infinite;
+}
+.fx-spark-b { animation-delay: 0.9s; }
+.fx-spark-c { animation-delay: 1.8s; }
+@keyframes fxSparkTwinkle {
+    0%, 100% { transform: scale(0.75) rotate(0deg);  opacity: 0.45; }
+    50%      { transform: scale(1.12) rotate(18deg); opacity: 1;    }
+}
+
+:root[data-theme="light"] .fx-sun  { opacity: 1; transform: translate(0, 0) scale(1); }
+:root[data-theme="dark"]  .fx-moon { opacity: 1; transform: translate(0, 0) scale(1); }
+@media (prefers-reduced-motion: reduce) {
+    .fx-sun-rays, .fx-spark, .fx-sky-body::before { animation: none !important; }
+}
+/* 窄螢幕：天體縮小並往內移，否則光暈會被左邊界切掉、也會壓到登入卡片 */
+@media (max-width: 760px) {
+    .fx-sky-body { top: 6%; left: 14%; width: 62px; height: 62px; }
+}
+
+/* ─── 地平線微光：整個場景底部一層很淡的光，讓檯燈跟卡片看起來站在同一片
+   地面上、畫面下緣不會硬生生截斷 ────────────────────────────────── */
+.fx-horizon {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 34%;
+    pointer-events: none; z-index: 0;
+    transition: opacity 0.8s var(--ease-in-out);
+}
+:root[data-theme="light"] .fx-horizon {
+    background: linear-gradient(180deg, rgba(255,240,214,0) 0%, rgba(255,236,201,0.5) 100%);
+}
+:root[data-theme="dark"] .fx-horizon {
+    background: linear-gradient(180deg, rgba(1,160,199,0) 0%, rgba(12,32,48,0.75) 100%);
+}
+
+/* ─── 淺色模式的雲：兩片很淡的雲慢慢飄過，比單純的光塵更有「白天」的感覺 ── */
+.fx-cloud { display: none; position: absolute; pointer-events: none; }
+/* 雲的形狀用三團互相重疊、邊緣淡出的橢圓漸層疊出來，不能用「圓角矩形＋
+   blur」——圓角矩形就算模糊了，輪廓還是看得出是個長方形色塊，完全不像雲 */
+/* 雲的形狀改用 SVG：三個高低不同的圓弧疊在一個平底長條上，這才是雲的
+   輪廓。純用 radial-gradient 疊只會糊成一顆扁橢圓（藥丸狀），怎麼調
+   都調不出「一朵雲」的剪影。高度用 aspect-ratio 自動換算，JS 只需要給
+   寬度，不會因為兩邊尺寸沒對上而把雲壓扁 */
+:root[data-theme="light"] .fx-cloud {
+    display: block; left: 0;
+    aspect-ratio: 200 / 64;
+    background-repeat: no-repeat; background-size: 100% 100%;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 64'%3E%3Cg fill='%23ffffff'%3E%3Cellipse cx='56' cy='42' rx='36' ry='20'/%3E%3Cellipse cx='102' cy='27' rx='43' ry='25'/%3E%3Cellipse cx='148' cy='40' rx='34' ry='21'/%3E%3Crect x='20' y='39' width='162' height='21' rx='10.5'/%3E%3C/g%3E%3C/svg%3E");
+    /* 底部一道很淡的藍灰陰影，讓雲有厚度、跟天空分離，而不是一片糊掉的白霧 */
+    filter: blur(1.5px) drop-shadow(0 5px 7px rgba(96,140,180,0.22));
+    animation: fxDrift var(--fx-dur, 90s) linear var(--fx-delay, 0s) infinite;
+}
+@keyframes fxDrift {
+    from { transform: translateX(-16vw); }
+    to   { transform: translateX(112vw); }
+}
+
+/* ─── 深色模式的流星：偶爾劃過一次的小驚喜（登入頁是低頻畫面，delight
+   tier 才允許這種裝飾），走完後長時間停在畫面外不會一直閃 ────────────── */
+.fx-shooting { display: none; }
+:root[data-theme="dark"] .fx-shooting {
+    display: block; position: absolute; top: 16%; left: 58%;
+    width: 120px; height: 1.5px; pointer-events: none;
+    background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.9));
+    opacity: 0; transform: rotate(18deg);
+    animation: fxShoot 14s linear 4s infinite;
+}
+@keyframes fxShoot {
+    0%      { opacity: 0; transform: rotate(18deg) translate(0, 0) scaleX(0.3); }
+    3%      { opacity: 1; }
+    12%     { opacity: 0; transform: rotate(18deg) translate(280px, 90px) scaleX(1); }
+    100%    { opacity: 0; transform: rotate(18deg) translate(280px, 90px) scaleX(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .fx-cloud, .fx-shooting { animation: none !important; }
+    .fx-shooting { opacity: 0 !important; }
+}
+
+/* ─── 登入頁的裝飾檯燈──拉一下切換淺色/深色模式（深色＝燈亮，暗房裡一盞
+   燈；淺色＝燈熄，白天不需要燈），窄螢幕直接隱藏。造型走簡約溫馨路線：
+   奶油色燈罩＋木紋燈柱，取代原本冷灰色的塑膠感 ─────────────────────── */
+.login-scene {
+    display: flex; align-items: flex-end; justify-content: center; gap: 8px;
+    position: relative; z-index: 1;
+}
+/* 燈跟卡片共用一片很淡的地面陰影，讓兩個物件看起來站在同一個平面上，
+   而不是各自浮空的獨立元素 */
+.login-scene::after {
+    content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
+    width: 86%; height: 28px; border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(0,0,0,0.14), rgba(0,0,0,0) 75%);
+    z-index: -1; pointer-events: none;
+}
+:root[data-theme="dark"] .login-scene::after {
+    background: radial-gradient(ellipse, rgba(0,0,0,0.4), rgba(0,0,0,0) 75%);
+}
+.login-lamp {
+    width: 112px; height: 236px; position: relative; flex-shrink: 0;
+    cursor: pointer; margin-bottom: 18px;
+}
+@media (max-width: 760px) { .login-lamp { display: none; } }
+.lamp-glow {
+    position: absolute; top: -36px; left: 50%; transform: translateX(-50%);
+    width: 230px; height: 230px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,196,110,0.4), rgba(255,196,110,0) 70%);
+    filter: blur(4px); opacity: 0; transition: opacity 0.6s var(--ease-out);
+    z-index: 1; pointer-events: none;
+}
+/* 燈光往下灑的光錐——只有暗色模式才看得到，模擬真的燈亮起來灑光的感覺 */
+.lamp-beam {
+    position: absolute; top: 46px; left: 50%; transform: translateX(-50%);
+    width: 10px; height: 190px;
+    clip-path: polygon(38% 0%, 62% 0%, 100% 100%, 0% 100%);
+    background: linear-gradient(180deg, rgba(255,214,140,0.32), rgba(255,214,140,0));
+    opacity: 0; transition: opacity 0.6s var(--ease-out);
+    z-index: 0; pointer-events: none; filter: blur(2px);
+}
+/* 拉繩掛在燈罩「右側」下緣（不是正中央），比較像真的立燈開關。
+   .lamp-cord 只是個透明容器（順便加寬點擊範圍），裡面的細線跟珠子各自
+   動畫：細線用 scaleY 往下延伸、珠子用 translateY 往下移，兩者位移量
+   對齊（40px × 0.42 ≈ 17px）才不會拉的時候珠子脫離繩子末端 */
+/* z-index 要比燈罩（3）低，繩子的上端才會被燈罩遮住、看起來是「從燈罩下面
+   垂出來」。之前設 4 畫在燈罩上面，線頭就會露在燈罩表面上。起點刻意設在
+   燈罩內部（top 40px < 燈罩底緣 54px），讓重疊的那一段藏進燈罩裡 */
+.lamp-cord {
+    position: absolute; top: 40px; left: 68%;
+    width: 12px; height: 40px; margin-left: -6px; z-index: 2;
+}
+.lamp-cord-line {
+    position: absolute; top: 0; left: 50%; margin-left: -0.75px;
+    width: 1.5px; height: 100%;
+    background: rgba(108,92,70,0.85);
+    transform-origin: top center;
+}
+.lamp-bead {
+    position: absolute; top: 100%; left: 50%;
+    margin-left: -4.5px; margin-top: -4px;
+    width: 9px; height: 9px; border-radius: 50%;
+    background: linear-gradient(180deg,#d4a44c,#a97c2f);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+}
+/* 滑過時珠子微微下沉，暗示「這條可以拉」 */
+@media (hover: hover) and (pointer: fine) {
+    .login-lamp:hover .lamp-bead { transform: translateY(3px); }
+    .lamp-bead { transition: transform 180ms var(--ease-out); }
+}
+.lamp-cord.pulling .lamp-cord-line { animation: lampCordStretch 0.75s var(--ease-out); }
+.lamp-cord.pulling .lamp-bead      { animation: lampBeadPull    0.75s var(--ease-out); }
+@keyframes lampCordStretch {
+    0%   { transform: scaleY(1);    }
+    26%  { transform: scaleY(1.42); }
+    52%  { transform: scaleY(0.94); }
+    74%  { transform: scaleY(1.06); }
+    100% { transform: scaleY(1);    }
+}
+@keyframes lampBeadPull {
+    0%   { transform: translateY(0);      }
+    26%  { transform: translateY(17px);   }
+    52%  { transform: translateY(-2.5px); }
+    74%  { transform: translateY(2.5px);  }
+    100% { transform: translateY(0);      }
+}
+.lamp-shade {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 98px; height: 54px; z-index: 3; overflow: hidden;
+    background: linear-gradient(175deg, #fffaf1 0%, #ffedc9 65%, #f6dfae 100%);
+    border-radius: 50% 50% 6% 6% / 100% 100% 14% 14%;
+    box-shadow: 0 6px 14px rgba(120,90,40,0.18), inset 0 -5px 8px -3px rgba(150,110,50,0.18);
+    transition: background 0.5s var(--ease-out), box-shadow 0.5s var(--ease-out);
+}
+.lamp-shade-highlight {
+    position: absolute; top: 10%; left: 14%; width: 34%; height: 30%;
+    border-radius: 50%; background: rgba(255,255,255,0.55); filter: blur(3px);
+}
+.lamp-neck {
+    position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
+    width: 12px; height: 8px; z-index: 2; border-radius: 3px;
+    background: linear-gradient(180deg,#a9835a,#8a6642);
+}
+.lamp-pole {
+    position: absolute; top: 56px; left: 50%; transform: translateX(-50%);
+    width: 6px; height: 168px; z-index: 2;
+    background: linear-gradient(90deg,#8a6642 0%,#c9a273 45%,#8a6642 100%);
+}
+.lamp-base {
+    position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 58px; height: 12px; border-radius: 50%; z-index: 2;
+    background: linear-gradient(180deg,#c9a273,#7c5a37);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.25), inset 0 1px 2px rgba(255,255,255,0.3);
+}
+/* 深色模式＝燈亮：暖黃燈罩＋暈光＋光錐一起出現，跟房間變暗的敘事呼應 */
+:root[data-theme="dark"] .lamp-glow { opacity: 1; }
+:root[data-theme="dark"] .lamp-beam { opacity: 1; }
+:root[data-theme="dark"] .lamp-shade {
+    background: linear-gradient(175deg, #fff6df 0%, #ffdf9e 60%, #ffce7a 100%);
+    box-shadow: 0 6px 26px rgba(255,193,90,0.55), 0 0 46px rgba(255,193,90,0.3),
+                inset 0 -5px 8px -3px rgba(150,110,50,0.18);
+}
+
+/* ─── 登入頁背景動態效果：淺色是漂浮的暖色光塵（白天暖陽的感覺），
+   深色是閃爍的星空（暗房窗外的夜空）。兩組元素都由 JS 產生後常駐在
+   DOM 裡，用 [data-theme] 選擇器切換顯示，切換主題不用重新產生 ────── */
+.login-fx {
+    position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0;
+}
+.fx-particles { position: absolute; inset: 0; }
+.fx-star, .fx-mote { display: none; position: absolute; border-radius: 50%; }
+:root[data-theme="dark"] .fx-star {
+    display: block; background: #fff;
+    animation: fxTwinkle var(--fx-dur, 3s) ease-in-out var(--fx-delay, 0s) infinite;
+}
+:root[data-theme="light"] .fx-mote {
+    display: block; background: radial-gradient(circle, rgba(255,196,110,0.9), rgba(255,196,110,0) 70%);
+    animation: fxFloat var(--fx-dur, 8s) ease-in-out var(--fx-delay, 0s) infinite;
+}
+@keyframes fxTwinkle {
+    0%, 100% { opacity: 0.15; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.15); }
+}
+@keyframes fxFloat {
+    0%   { transform: translateY(0) translateX(0); opacity: 0; }
+    15%  { opacity: 0.55; }
+    85%  { opacity: 0.4; }
+    100% { transform: translateY(-90px) translateX(12px); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .fx-star, .fx-mote { animation: none !important; opacity: 0.4; }
 }
 
 .login-card {
     width: 420px;
     background: var(--bg-white);
     border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    border-radius: 20px;
+    box-shadow: 0 30px 60px -20px rgba(0,0,0,0.22), 0 0 0 1px rgba(0,0,0,0.03);
     overflow: hidden;
     animation: loginCardIn 0.5s var(--ease-out);
+    transition: background-color 0.6s var(--ease-in-out), border-color 0.6s var(--ease-in-out), box-shadow 0.6s var(--ease-in-out);
 }
+/* 卡片內文字/輸入框顏色在深淺色模式下不一樣，額外補上顏色過渡，讓整張卡片
+   切換時是柔和淡變而不是瞬間跳色；只點名會變色的元素，不用萬用選擇器蓋掉
+   按鈕/輸入框原本就有的 transform、box-shadow 過渡效果 */
+.login-body, .login-desc, .login-error, .form-label {
+    transition: background-color 0.6s var(--ease-in-out), border-color 0.6s var(--ease-in-out), color 0.6s var(--ease-in-out);
+}
+:root[data-theme="dark"] .login-card { box-shadow: 0 30px 60px -20px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,0,0,0.2); }
 @keyframes loginCardIn {
     from { opacity: 0; transform: translateY(16px) scale(0.97); }
     to { opacity: 1; transform: translateY(0) scale(1); }
@@ -142,13 +453,17 @@ img { display: block; max-width: 100%; }
 
 .login-header {
     background: var(--ali-orange);
-    background-image: linear-gradient(135deg, #01A0C7 0%, #3FC4E8 100%);
-    padding: 28px 32px;
+    background-image: linear-gradient(120deg, #0183A3 0%, #01A0C7 45%, #4FD2F0 100%);
+    padding: 30px 32px;
     display: flex; align-items: center; gap: 14px;
+    position: relative;
 }
 .login-logo-box {
-    width: 44px; height: 44px; flex-shrink: 0;
+    width: 48px; height: 48px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.94); border-radius: 50%;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.18), 0 0 0 1px rgba(255,255,255,0.6);
+    padding: 7px;
 }
 .login-logo-box img { width: 100%; height: 100%; object-fit: contain; }
 .login-header-text h1 {
