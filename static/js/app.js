@@ -318,7 +318,10 @@ function initLoginFx() {
         const cloud = document.createElement('span');
         cloud.className = 'fx-cloud';
         cloud.style.top = c.top + '%';
-        cloud.style.width = c.w + 'px';
+        // 寬度透過 CSS 變數傳遞（而不是直接設 style.width），CSS 才有辦法
+        // 在窄螢幕的 media query 裡等比例縮小——inline style 的優先權比
+        // media query 高，直接設 width 的話就得靠 !important 才蓋得掉
+        cloud.style.setProperty('--fx-w', c.w + 'px');
         cloud.style.setProperty('--fx-dur', c.dur + 's');
         cloud.style.setProperty('--fx-delay', c.delay + 's');
         frag.appendChild(cloud);

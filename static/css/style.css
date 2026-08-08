@@ -238,7 +238,7 @@ img { display: block; max-width: 100%; }
    寬度，不會因為兩邊尺寸沒對上而把雲壓扁 */
 :root[data-theme="light"] .fx-cloud {
     display: block; left: 0;
-    aspect-ratio: 200 / 64;
+    width: var(--fx-w); aspect-ratio: 200 / 64;
     background-repeat: no-repeat; background-size: 100% 100%;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 64'%3E%3Cg fill='%23ffffff'%3E%3Cellipse cx='56' cy='42' rx='36' ry='20'/%3E%3Cellipse cx='102' cy='27' rx='43' ry='25'/%3E%3Cellipse cx='148' cy='40' rx='34' ry='21'/%3E%3Crect x='20' y='39' width='162' height='21' rx='10.5'/%3E%3C/g%3E%3C/svg%3E");
     /* 底部一道很淡的藍灰陰影，讓雲有厚度、跟天空分離，而不是一片糊掉的白霧 */
@@ -293,7 +293,20 @@ img { display: block; max-width: 100%; }
     width: 112px; height: 236px; position: relative; flex-shrink: 0;
     cursor: pointer; margin-bottom: 18px;
 }
-@media (max-width: 760px) { .login-lamp { display: none; } }
+/* 手機版：燈不能藏起來——它同時是這個頁面「切換淺色/深色模式」的唯一入口，
+   藏掉等於手機使用者沒辦法切主題。改成排到卡片下方（那裡本來就是一大片
+   空白）並縮小。transform: scale() 不會改變版面高度，所以要用負 margin
+   把縮放後多出來的空白收掉：236px × (1 − 0.58) ≈ 99px */
+@media (max-width: 760px) {
+    .login-scene { flex-direction: column; align-items: center; gap: 0; }
+    .login-card { order: 1; }
+    .login-lamp {
+        order: 2; margin: 4px 0 -99px;
+        transform: scale(0.58); transform-origin: top center;
+    }
+    /* 雲照原尺寸放在窄螢幕上會大到擠住登入卡片，等比例縮小 */
+    :root[data-theme="light"] .fx-cloud { width: calc(var(--fx-w) * 0.62); }
+}
 .lamp-glow {
     position: absolute; top: -36px; left: 50%; transform: translateX(-50%);
     width: 230px; height: 230px; border-radius: 50%;
@@ -423,7 +436,9 @@ img { display: block; max-width: 100%; }
 }
 
 .login-card {
-    width: 420px;
+    /* max-width 是必要的：只寫 width: 420px 的話，畫面比 420px 窄的手機上
+       卡片會直接撐破視窗、左右被切掉 */
+    width: 420px; max-width: calc(100vw - 28px);
     background: var(--bg-white);
     border: 1px solid var(--border);
     border-radius: 20px;
