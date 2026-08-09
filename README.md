@@ -204,15 +204,19 @@ python app.py
 > **上傳的音訊必須是 URL。** 上游只接受 `audio_url`，base64 data URI 不會被解析，所以使用者上傳的配樂/驅動音訊會先經 `_cloud_put()` 放到雲端物件儲存再帶簽名網址過去；沒有設定任何雲端儲存後端時會直接回報錯誤，而不是送出一個註定無聲的請求。
 > ByteDance Seedance 系列同時支援 t2v/i2v/r2v，走跟萬相系列共用的 `media`/`image`/`images` 三欄位注入機制；i2v 在 `bytedance-seedance-1.5-pro`、r2v 在 `dreamina-seedance-2.0-fast` 上實測完整跑到 `completed`，其餘模型 × 模式組合基於同一套機制推斷同樣可用，未逐一窮舉。**不支援**視頻編輯（vedit）——實測直接被上游拒絕（`image_url` 參數不合法）。`min_dur`/`max_dur` 沿用其他家族的常見範圍（2–15 秒），未測邊界值。
 >
-> **Seedance 各型號的解析度支援度不一樣**（2026-08-10 對正式網關逐一實測）：
+> **Seedance 各型號的解析度支援度不一樣**（2026-08-10 對正式網關逐一實測）。下表記錄的是**送出時上游是否接受這個參數值**（提交回 200 vs 回 `InvalidParameter`）：
 >
 > | 模型 | 480P | 720P | 1080P | 4K |
 > |---|---|---|---|---|
-> | `dreamina-seedance-2.0-fast` | ✓ | ✓ | ✗ | ✗ |
-> | `dreamina-seedance-2.0` | ✓ | ✓ | ✓ | ✓ |
-> | `bytedance-seedance-1.5-pro` | ✓ | ✓ | ✓ | ✗ |
+> | `dreamina-seedance-2.0-fast` | 接受 | 接受 | **拒絕** | **拒絕** |
+> | `dreamina-seedance-2.0` | 接受 | 接受 | 接受＊ | 接受 |
+> | `bytedance-seedance-1.5-pro` | 接受 | 接受 | 接受 | **拒絕** |
 >
-> 超出範圍會回 `InvalidParameter`（`the parameter resolution ... is not valid`），`fast` 版的 t2v/i2v/r2v 三種模式都一樣。這個限制先前看不出來——解析度根本沒送到上游，一律當 720p 跑；是把解析度真的送達之後才浮現的。MODELS 以 `resolutions` 欄位限制住 `fast` 版的可選項，前端據此收掉選單裡的 1080P。（4K 目前不在 UI 的選項裡，`dreamina-seedance-2.0` 的 4K 能力尚未開放給使用者選擇。）
+> 被拒時回 `InvalidParameter`（`the parameter resolution ... is not valid`），`fast` 版的 t2v/i2v/r2v 三種模式都一樣。這個限制先前看不出來——解析度根本沒送到上游，一律當 720p 跑；是把解析度真的送達之後才浮現的。MODELS 以 `resolutions` 欄位限制住 `fast` 版的可選項，前端據此收掉選單裡的 1080P。
+>
+> ＊ **「接受」不等於「產得出來」**：`dreamina-seedance-2.0` @ 1080P 提交回 200，但該任務跑了約 15 分鐘後以 `failed` / `Unknown error` 收場，沒有拿到影片。只跑過這一次，無法區分是偶發失敗還是這個組合實際上不可用——**尚未端到端驗證**。相對地，`wan2.7-t2v` 與 `veo-3.1-fast-generate-001` 的 1080P 都已經下載成品用 `ffprobe` 量到實際 1920x1080。
+>
+> 4K 目前不在 UI 的選項裡，`dreamina-seedance-2.0` 的 4K 能力尚未開放給使用者選擇（也同樣只驗到「提交被接受」）。
 
 **Veo（Google，duration 僅接受 4/6/8 秒）**
 

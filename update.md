@@ -29,6 +29,7 @@
   - `veo-3.1-fast-generate-001` @ 1080P → 實際 **1920x1080** ✅（`metadata.resolution` 成功蓋過 `SizeToVeoResolution` 對 `"1080P"` 切不開而 fallback 成 720p 的錯誤推導）
   - **`dreamina-seedance-2.0-fast` 不支援 1080P**，送出直接被上游回 `InvalidParameter`。這不是這次改壞的，而是「解析度終於真的送達」之後才浮現的既有限制——先前上游收不到解析度，一律當 720p 跑，所以看起來一切正常。逐一實測後確定支援範圍：`dreamina-seedance-2.0-fast` 只有 480P/720P；`dreamina-seedance-2.0` 四種都支援（含 4K）；`bytedance-seedance-1.5-pro` 支援到 1080P（4K 不行）。fast 版的 t2v/i2v/r2v 三種模式都一樣被擋。
   - 修法：MODELS 的影片條目新增 `resolutions` 欄位（僅 `dreamina-seedance-2.0-fast` 三個條目設為 `["480P", "720P"]`），前端 `onVidModelChange()` 把解析度選單裡不支援的選項 `hidden` 掉、若當前選取值被隱藏就自動跳到第一個可用值——這段同時把原本寫死的「vedit 隱藏 480P」邏輯合併進同一個判斷。
+  - **上面那張支援矩陣記錄的是「提交時上游收不收這個參數值」，不是「產得出來」**——這兩件事實測後確認不能劃等號：`dreamina-seedance-2.0` @ 1080P 提交回 200，但任務跑了約 15 分鐘後以 `failed` / `Unknown error` 收場，沒拿到影片。只跑過一次，無法區分偶發失敗或該組合實際不可用，Seedance 家族因此**尚未有任何端到端（下載成品量寬高）的解析度驗證**；已在 `README.md` 標註。萬相與 Veo 則都已經 ffprobe 量到實際 1920x1080。
   - 前端改動：`app.js?v=52` → `?v=53`。
 
 ## 2026-08-08
