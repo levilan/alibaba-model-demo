@@ -1475,17 +1475,6 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ─── Resolution helper ────────────────────────────────────────────
-_RESOLUTION_WH = {"480P": (854, 480), "720P": (1280, 720), "1080P": (1920, 1080)}
-
-def _res_to_wh(resolution: str) -> tuple[int, int]:
-    if resolution.upper() in _RESOLUTION_WH:
-        return _RESOLUTION_WH[resolution.upper()]
-    for sep in ("*", "x", "X"):
-        if sep in resolution:
-            w, h = resolution.split(sep, 1)
-            return int(w), int(h)
-    return 1280, 720
-
 # Gemini Omni 不走 /v1/videos 的非同步任務模式，而是同步呼叫 /v1beta/interactions 直接拿到完成的影片
 _INTERACTIONS_VIDEO_MODELS = {"gemini-omni-flash-preview"}
 # Veo 預設的 personGeneration 安全設定較嚴格，帶真人圖片容易被擋，明確放寬為 allow_adult
@@ -1566,9 +1555,8 @@ async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    w, h = _res_to_wh(resolution)
     payload: dict = {"model": model, "prompt": prompt,
-                     "duration": duration, "width": w, "height": h}
+                     "duration": duration, "size": resolution}
     meta: dict = {}
     if negative_prompt: meta["negative_prompt"] = negative_prompt
     if prompt_extend:   meta["prompt_extend"] = True
@@ -1645,10 +1633,9 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    w, h = _res_to_wh(resolution)
     actual_duration = duration
     payload: dict = {"model": model, "prompt": prompt,
-                     "duration": actual_duration, "width": w, "height": h}
+                     "duration": actual_duration, "size": resolution}
     meta: dict = {"i2v_mode": i2v_mode}
     if neg_prompt:    meta["negative_prompt"] = neg_prompt
     if prompt_extend: meta["prompt_extend"] = True
@@ -1745,7 +1732,6 @@ async def video_vedit(request: Request, api_key: str = Depends(get_api_key)):
 
     video_bytes = await video_file.read()
     video_b64 = f"data:video/mp4;base64,{base64.b64encode(video_bytes).decode()}"
-    w, h = _res_to_wh(resolution)
 
     media_arr: list = [{"url": video_b64, "type": "video"}]
     max_refs = 5 if "happyhorse" in model else 3
@@ -1764,7 +1750,7 @@ async def video_vedit(request: Request, api_key: str = Depends(get_api_key)):
 
     payload: dict = {
         "model": model, "prompt": prompt,
-        "duration": duration, "width": w, "height": h,
+        "duration": duration, "size": resolution,
         "media": media_arr, "image": video_b64,
         "images": [m["url"] for m in media_arr],
         "metadata": meta,
@@ -1825,7 +1811,6 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    w, h = _res_to_wh(resolution)
     meta: dict = {}
     if prompt_extend: meta["prompt_extend"] = True
     if watermark:     meta["watermark"] = True
@@ -1842,7 +1827,7 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
         meta["audio"] = audio_bgm
 
     payload: dict = {"model": model, "prompt": prompt,
-                     "duration": duration, "width": w, "height": h,
+                     "duration": duration, "size": resolution,
                      "media": media_arr,
                      "image": media_arr[0]["url"],
                      "images": [m["url"] for m in media_arr]}
@@ -1878,12 +1863,17 @@ async def video_animate(request: Request, api_key: str = Depends(get_api_key)):
     img_mime = image_file.content_type or "image/png"
     vid_bytes = await video_file.read()
 
+    img_url = f"data:{img_mime};base64,{base64.b64encode(img_bytes).decode()}"
+    vid_url = f"data:video/mp4;base64,{base64.b64encode(vid_bytes).decode()}"
+
     payload = {
         "model": model,
         "media": [
-            {"url": f"data:{img_mime};base64,{base64.b64encode(img_bytes).decode()}", "type": "image"},
-            {"url": f"data:video/mp4;base64,{base64.b64encode(vid_bytes).decode()}", "type": "video"},
+            {"url": img_url, "type": "image"},
+            {"url": vid_url, "type": "video"},
         ],
+        # 平台 TaskSubmitReq 只認 images（陣列），media 會被忽略——順序 [0]=人物圖 [1]=參考影片
+        "images": [img_url, vid_url],
         "metadata": {"mode": mode, "check_image": check_image, "watermark": watermark},
     }
 
