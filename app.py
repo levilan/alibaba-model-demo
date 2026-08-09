@@ -544,26 +544,34 @@ MODELS = {
         #    t2v 三個模型都實測過；i2v 在 bytedance-seedance-1.5-pro 上實測完整跑到
         #    completed 拿到影片網址，r2v 在 dreamina-seedance-2.0-fast 上實測完整跑到
         #    completed；其餘模型 × 模式的組合沒有逐一窮舉，是基於同一套通用機制推斷
-        #    同樣可用。duration/resolution 上限沿用其餘家族常見範圍，未測邊界值；
-        #    視頻編輯 vedit 實測會直接被上游拒絕（image_url 參數不合法），不列入）──
+        #    同樣可用。duration 上限沿用其餘家族常見範圍，未測邊界值；
+        #    視頻編輯 vedit 實測會直接被上游拒絕（image_url 參數不合法），不列入。
+        #
+        #    解析度支援度已逐一實測（2026-08-10，對正式網關送出、看上游收不收）：
+        #      dreamina-seedance-2.0-fast  480P ✓  720P ✓  1080P ✗  4K ✗（t2v/i2v/r2v 三種模式都拒）
+        #      dreamina-seedance-2.0       480P ✓  720P ✓  1080P ✓  4K ✓
+        #      bytedance-seedance-1.5-pro  480P ✓  720P ✓  1080P ✓  4K ✗
+        #    超出範圍會回 InvalidParameter「the parameter resolution ... is not valid」。
+        #    先前送不到解析度時這個限制看不出來（上游一律當 720p 跑），是把解析度真的
+        #    送達之後才浮現的，所以用 resolutions 明確限制住 fast 版的選項）──
         {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro", "group": "ByteDance Seedance",
          "desc": "字節跳動 Seedance，旗艦文生影片", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0", "name": "Seedance 2.0（即夢）", "group": "ByteDance Seedance",
          "desc": "即夢 Seedance，標準文生影片", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0-fast", "name": "Seedance 2.0 Fast（即夢）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance，極速文生影片", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15},
+         "desc": "即夢 Seedance，極速文生影片；上游僅支援 480P/720P", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
         {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro（圖生影片）", "group": "ByteDance Seedance",
          "desc": "字節跳動 Seedance，旗艦圖生影片（首幀）", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0", "name": "Seedance 2.0（即夢，圖生影片）", "group": "ByteDance Seedance",
          "desc": "即夢 Seedance，標準圖生影片（首幀）", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0-fast", "name": "Seedance 2.0 Fast（即夢，圖生影片）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance，極速圖生影片（首幀）", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
+         "desc": "即夢 Seedance，極速圖生影片（首幀）；上游僅支援 480P/720P", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
         {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro（參考生影片）", "group": "ByteDance Seedance",
          "desc": "字節跳動 Seedance，旗艦參考生影片", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0", "name": "Seedance 2.0（即夢，參考生影片）", "group": "ByteDance Seedance",
          "desc": "即夢 Seedance，標準參考生影片", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0-fast", "name": "Seedance 2.0 Fast（即夢，參考生影片）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance，極速參考生影片", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
+         "desc": "即夢 Seedance，極速參考生影片；上游僅支援 480P/720P", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
         # ── Gemini Omni（走 /v1beta/interactions，模型自行決定長度/解析度，固定含原生配音）──
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview", "group": "Gemini",
          "desc": "Google 多模態影片生成（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "t2v", "audio": False, "no_duration": True},

@@ -782,15 +782,18 @@ function onVidModelChange() {
     const rangeEl = document.getElementById('durRange');
     if (rangeEl) rangeEl.textContent = `（${minD} ~ ${maxD} 秒）`;
 
-    // resolution: vedit only supports 720P/1080P
+    // 解析度選項：vedit 不支援 480P；另外部分模型的上游有自己的支援範圍
+    // （例如 dreamina-seedance-2.0-fast 只到 720P，送 1080P 會直接被拒），
+    // 由 MODELS 的 resolutions 明確指定
     const resEl = document.getElementById('videoResolution');
-    if (taskType === 'vedit') {
-        Array.from(resEl.options).forEach(o => {
-            o.hidden = (o.value === '480P');
-        });
-        if (resEl.value === '480P') resEl.value = '720P';
-    } else {
-        Array.from(resEl.options).forEach(o => { o.hidden = false; });
+    const allowedRes = modelInfo.resolutions;
+    Array.from(resEl.options).forEach(o => {
+        o.hidden = (taskType === 'vedit' && o.value === '480P') ||
+                   (allowedRes ? !allowedRes.includes(o.value) : false);
+    });
+    if (resEl.selectedOptions[0] && resEl.selectedOptions[0].hidden) {
+        const first = Array.from(resEl.options).find(o => !o.hidden);
+        if (first) resEl.value = first.value;
     }
 
     // I2V 模式：部分模型的上游只讀取首幀，尾幀／驅動音訊／影片延伸送過去會被
