@@ -13,6 +13,16 @@
   - **`/api/video/animate`（wan2.2-animate-mix/move）沒有送 `images`，人物圖/參考影片實際上沒傳到上游**：此檔案裡 i2v handler 早就在註解寫明「平台 TaskSubmitReq 只認 images（陣列），media/image 會被忽略」，i2v/vedit/r2v 三個 handler 也都確實額外補了 `images` 欄位，但 animate handler 唯獨漏補，只送了會被忽略的 `media` 陣列，等於上游收到的圖片/影片內容是空的。補上 `payload["images"] = [人物圖, 參考影片]`（順序對應 wan2.2-animate 上游規則）。
   - 修完後 `docker compose build --no-cache && docker compose up -d` 重新建置部署。
 
+- fix：接續上一筆，把上一筆改動造成的跨廠商迴歸補起來，並依閘道原始碼收掉一批「送了也沒用」的參數與 UI（commit 待補）：
+  - **上一筆改成統一送 `size: "720P"` 會讓 Veo 靜默降級、Seedance 完全吃不到**。四個影片端點是所有廠商共用的，但每家 adaptor 取值的欄位都不一樣：阿里讀頂層 `size`（"720P" 這種字串它三條分支都解析得出來）；Veo 的頂層 `size` 是用**小寫 `x`** 切 `WIDTHxHEIGHT` 的，`"1080P"` 切不開會 fallback 成 720p，而且同一個函式也用於計費——使用者選 1080P 會拿到 720p 的影片、還照 720p 計費，全程不報錯；Seedance/Dreamina 則是連頂層 `size` 和 `duration` 都不讀，只吃 `metadata.resolution` 與頂層 `seconds`（字串）。新增 `_apply_res_and_duration()` 一次把三種形式都送出去（頂層 `size` + `metadata.resolution` 小寫 + 頂層 `duration` int 與 `seconds` 字串），畫面比例同時送 `metadata.ratio`（Seedance）與 `metadata.aspectRatio`（Veo）。三家的 metadata 都是整包 unmarshal 進各自的 payload struct、未知 key 直接忽略，所以重複送是安全的。
+  - **拿掉萬相系列無效的配音開關**。阿里的 task adaptor 從頭到尾沒有讀統一請求的頂層 `audio`，整份程式只有 `wan2.6-i2v-flash` 會去讀 `metadata.audio`（bool，關閉後費用減半）。其餘萬相型號有沒有聲音完全由上游決定，UI 上那個開關是純粹的裝飾。MODELS 裡把這些型號的 `audio` 改成 `False`（前端本來就會據此隱藏整列），只留 `wan2.6-i2v-flash`；新增 `_apply_audio_flag()` 把 `metadata.audio`（wan2.6-i2v-flash）、`metadata.generateAudio`（Veo）、`metadata.generate_audio`（Seedance）三個欄位一次帶齊。
+  - **i2v 只開放「首幀生成」**。adaptor 的 i2v 分支只取 `images[0]` 當 `first_frame`，尾幀／驅動音訊／影片延伸片段送過去都會被靜默丟棄——使用者只會拿到一支「看起來就是沒照做」的影片，沒有任何錯誤訊息，非常難查。MODELS 加上 `i2v_modes: ["first_frame"]`，前端把其餘模式從選單 hidden 掉，後端再擋一次（直接打 API 的呼叫端會拿到明確的 400）。
+  - **r2v 擋掉影片檔**。萬相/HappyHorse 的 r2v 會把收到的每個檔案都當成參考「圖片」（wan2.6 走 `reference_urls`、wan2.7/HappyHorse 走 `media` 的 `reference_image`），混入影片會被上游拒。MODELS 加 `ref_images_only`，前端把 `<input accept>` 收成只剩 `image/*`，後端擋下並提示改用動作動畫或視頻編輯。
+  - **上傳的音訊改走 URL**。先前是把音檔轉成 `data:audio/...;base64,...` 塞進 `metadata.audio`（t2v/i2v/r2v 的配樂）或 `media` 的 `driving_audio`，但上游只接受 `audio_url`（一個真的能下載的 URL），等於使用者上傳的音訊**從來沒有生效過**。改成先用 `_cloud_put()` 上傳到雲端物件儲存再帶簽名網址；沒有任何雲端後端可用時直接回 400（本機 `outputs/` 路徑上游一樣抓不到，送出去只是註定無聲）。驅動音訊刻意不放進 `media_arr`——那個陣列會整包變成 `payload["images"]`，混進音訊會被上游當成參考圖。
+  - **萬相圖像編輯補 `max_ref: 2`**。上游 `WanImageInput.images` 的硬上限就是 2 張，但前端在 `max_ref` 未設時的 fallback 是 9 張（`app.js:697`），等於放任使用者選到必定被拒的張數；後端 `image_edit` 也同步以 `_WAN_EDIT_MODELS` 收到 2 張。
+  - **圖片端點 timeout 120 秒 → 300 秒**。萬相 2.7 系列不在閘道的同步圖片模型清單裡，會走 `text2image/image-synthesis` + `X-DashScope-Async`，由閘道代為輪詢到 `SUCCEEDED` 才回應——客戶端看到的是一次很慢的同步請求，120 秒不夠。
+  - 前端改動：`app.js?v=51` → `?v=52`。
+
 ## 2026-08-08
 
 - fix：手機版登入頁三個問題（使用者回報「手機看好像燈不見了」）。**燈在手機上被隱藏其實是功能退化，不只是美觀問題**——燈同時是登入頁切換淺色/深色模式的唯一入口，`@media (max-width: 760px) { .login-lamp { display: none } }` 等於讓手機使用者完全沒辦法切主題。改成把燈排到卡片下方（那裡本來就是一大片空白）並縮小到 58%；因為 `transform: scale()` 不會改變版面高度，要用負 margin 把縮放後多出來的空白（236px × 0.42 ≈ 99px）收掉，否則底下會留一段幽靈空隙。順手抓到一個既有 bug：`.login-card` 只寫了 `width: 420px` 沒有 `max-width`，在比 420px 窄的手機上卡片會直接撐破視窗、左右被切掉，補上 `max-width: calc(100vw - 28px)`。另外雲照原尺寸放在窄螢幕上會大到擠住登入卡片，等比例縮到 62%——實作上把雲的寬度改成透過 CSS 變數傳遞而不是 JS 直接設 `style.width`，因為 inline style 的優先權比 media query 高，直接設的話得靠 `!important` 才蓋得掉。已用 Playwright 在 390px 寬（iPhone 14 Pro）實測：無橫向溢出、卡片 362px、用真實觸控座標點燈確認能正常切換 dark→light、燈的底緣與場景底緣一致（無幽靈空隙）。

@@ -350,19 +350,21 @@ MODELS = {
             "sizes": ["1024x1024","1536x1024","1024x1536"],
         },
         # ── 萬相圖像編輯 ──────────────────────────────────────────
+        # 上游 WanImageInput.images 的硬上限是 2 張，超過會被拒——前端的參考圖欄位
+        # 預設是 9 張（max_ref 未設時的 fallback），這裡必須明確標成 2
         {
             "id": "wan2.7-image-pro", "name": "萬相 2.7 Image Pro（編輯）", "group": "萬相圖像編輯",
-            "desc": "多圖融合、風格遷移", "type": "i2i", "max_n": 1,
+            "desc": "多圖融合、風格遷移（最多 2 張）", "type": "i2i", "max_n": 1, "max_ref": 2,
             "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960"],
         },
         {
             "id": "wan2.7-image", "name": "萬相 2.7 Image（編輯）", "group": "萬相圖像編輯",
-            "desc": "標準圖像編輯", "type": "i2i", "max_n": 1,
+            "desc": "標準圖像編輯（最多 2 張）", "type": "i2i", "max_n": 1, "max_ref": 2,
             "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960"],
         },
         {
             "id": "wan2.6-image", "name": "萬相 2.6 Image", "group": "萬相圖像編輯",
-            "desc": "前代編輯模型", "type": "i2i", "max_n": 1,
+            "desc": "前代編輯模型（最多 2 張）", "type": "i2i", "max_n": 1, "max_ref": 2,
             "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960"],
         },
         # ── 千問圖像 2.0（生成與編輯融合模型，同一模型 ID 兼具 T2I 與 I2I）──
@@ -481,26 +483,34 @@ MODELS = {
         },
     ],
     "video": [
+        # ── 阿里（萬相／HappyHorse）家族的兩個上游限制，已對照閘道 adaptor 原始碼確認：
+        #    1. 配音開關：阿里 task adaptor 從頭到尾沒有讀取統一請求的頂層 audio 欄位，
+        #       只有 wan2.6-i2v-flash 會去讀 metadata.audio（bool）。其餘萬相型號有沒有
+        #       聲音完全由上游自己決定，送任何欄位都無效——所以除了 wan2.6-i2v-flash
+        #       以外的阿里模型一律 audio: False，不顯示一個實際上沒有作用的開關。
+        #    2. i2v 只吃首幀：adaptor 的 i2v 分支只取 images[0] 當 first_frame，尾幀／
+        #       驅動音訊／影片延伸片段送過去都會被靜默丟棄，故以 i2v_modes 限制成
+        #       只有「首幀生成」一種模式。
         # ── 文生影片 ──────────────────────────────────────────────
-        {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭、自動配音", "type": "t2v",   "audio": True,  "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片",     "type": "t2v",   "audio": True, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭，配音由模型自動決定（上游無開關）", "type": "t2v",   "audio": False,  "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片（配音由模型自動決定）",     "type": "t2v",   "audio": False, "min_dur": 2, "max_dur": 15},
         # ── 圖生影片 ──────────────────────────────────────────────
-        {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀/首尾幀/配音/影片延伸", "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀生成（上游僅支援首幀）", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"]},
         # wan2.6-i2v / wan2.6-i2v-flash 目前 NenAI 平台端 pipeline 故障（無論送任何欄位格式都回
         # "Field required: input.img_url"，已用直連 API 排除是本專案的請求格式問題），保留在清單中等待平台方修復
-        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片",       "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版", "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片（含音頻，無開關）",       "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"]},
+        {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版（唯一可關閉配音的萬相型號，關閉後費用減半）", "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"]},
         # ── 參考生影片 ────────────────────────────────────────────
-        {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片", "desc": "角色形象參考",       "type": "r2v", "audio": True, "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片",     "type": "r2v", "audio": True, "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版", "type": "r2v", "audio": True, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片", "desc": "角色形象參考（僅接受圖片）",       "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True},
+        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片（僅接受圖片）",     "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True},
+        {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版（僅接受圖片）", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True},
         # ── HappyHorse ────────────────────────────────────────────
          {"id": "happyhorse-1.1-t2v",        "name": "HappyHorse 1.1 T2V",        "group": "HappyHorse", "desc": "高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},    
         {"id": "happyhorse-1.0-t2v",        "name": "HappyHorse 1.0 T2V",        "group": "HappyHorse", "desc": "前一代高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},
-        {"id": "happyhorse-1.1-i2v",        "name": "HappyHorse 1.1 I2V",        "group": "HappyHorse", "desc": "高還原度圖生影片（首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15},
-        {"id": "happyhorse-1.0-i2v",        "name": "HappyHorse 1.0 I2V",        "group": "HappyHorse", "desc": "前一代高還原度圖生影片（首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15},
-        {"id": "happyhorse-1.1-r2v",        "name": "HappyHorse 1.1 R2V",        "group": "HappyHorse", "desc": "多圖參考生影片（最多 9 張）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15},
-        {"id": "happyhorse-1.0-r2v",        "name": "HappyHorse 1.0 R2V",        "group": "HappyHorse", "desc": "前一代多圖參考生影片（最多 9 張）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15},
+        {"id": "happyhorse-1.1-i2v",        "name": "HappyHorse 1.1 I2V",        "group": "HappyHorse", "desc": "高還原度圖生影片（僅首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15, "i2v_modes": ["first_frame"]},
+        {"id": "happyhorse-1.0-i2v",        "name": "HappyHorse 1.0 I2V",        "group": "HappyHorse", "desc": "前一代高還原度圖生影片（僅首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15, "i2v_modes": ["first_frame"]},
+        {"id": "happyhorse-1.1-r2v",        "name": "HappyHorse 1.1 R2V",        "group": "HappyHorse", "desc": "多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True},
+        {"id": "happyhorse-1.0-r2v",        "name": "HappyHorse 1.0 R2V",        "group": "HappyHorse", "desc": "前一代多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True},
         {"id": "happyhorse-1.0-video-edit", "name": "HappyHorse Video Edit 1.0", "group": "HappyHorse", "desc": "視頻編輯（最多 5 張參考圖）", "type": "vedit", "audio": False, "min_dur": 3, "max_dur": 15},      
         # ── 視頻編輯 ──────────────────────────────────────────────
         {"id": "wan2.7-videoedit", "name": "萬相 2.7 視頻編輯", "group": "萬相視頻編輯",
@@ -1306,6 +1316,12 @@ _QWEN2_EDIT_MODELS = {"qwen-image-2.0-pro", "qwen-image-2.0"}
 _GPT_IMAGE_MODELS = {"gpt-image-2", "gpt-image-1.5"}
 # 支援組圖模式（enable_sequential）與更高解析度的萬相 2.7 系列
 _WAN27_IMAGE_MODELS = {"wan2.7-image-pro", "wan2.7-image"}
+# 萬相圖像編輯系列：上游 WanImageInput.images 的硬上限是 2 張參考圖
+_WAN_EDIT_MODELS = {"wan2.7-image-pro", "wan2.7-image", "wan2.6-image"}
+# 圖片端點統一的上游逾時。有些圖片模型（例如萬相 2.7 系列）在閘道端走的是非同步
+# 端點、由閘道代為輪詢到 SUCCEEDED 才回應，客戶端看到的是一次很慢的同步請求，
+# 原本的 120 秒不夠用
+_IMAGE_TIMEOUT = 300.0
 
 # ─── API: Image Generate (T2I) ────────────────────────────────────
 class ImageGenerateRequest(BaseModel):
@@ -1355,7 +1371,7 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
         payload["enable_sequential"] = True
 
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=_IMAGE_TIMEOUT) as client:
             resp = await client.post(
                 f"{NENAI_V1}/images/generations",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -1405,8 +1421,14 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
         raise HTTPException(status_code=400, detail="Prompt is required")
 
     # Read and optionally resize reference images in memory
-    # qwen-image-2.0 系列（生成與編輯融合模型）最多 3 張參考圖，其餘模型最多 9 張
-    max_refs = 3 if is_qwen2_edit else 9
+    # qwen-image-2.0 系列（生成與編輯融合模型）最多 3 張參考圖；萬相編輯系列上游
+    # WanImageInput.images 的硬上限是 2 張；其餘模型最多 9 張
+    if is_qwen2_edit:
+        max_refs = 3
+    elif model in _WAN_EDIT_MODELS:
+        max_refs = 2
+    else:
+        max_refs = 9
     image_files: list[tuple[str, bytes, str]] = []
     for i in range(1, max_refs + 1):
         f = form.get(f"image_{i}")
@@ -1456,7 +1478,7 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
         files = [(("image" if i == 0 else f"image_{i+1}"), (fname, fbytes, ftype))
                  for i, (fname, fbytes, ftype) in enumerate(image_files)]
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=_IMAGE_TIMEOUT) as client:
             resp = await client.post(
                 f"{NENAI_V1}/images/edits",
                 headers={"Authorization": f"Bearer {api_key}"},
@@ -1480,6 +1502,82 @@ _INTERACTIONS_VIDEO_MODELS = {"gemini-omni-flash-preview"}
 # Veo 預設的 personGeneration 安全設定較嚴格，帶真人圖片容易被擋，明確放寬為 allow_adult
 _VEO_MODELS = {"veo-3.1-generate-001", "veo-3.1-fast-generate-001", "veo-3.1-lite-generate-001"}
 _OMNI_TASK_CACHE: Dict[str, dict] = {}
+
+# 下面兩組都是從 MODELS 的旗標推導出來的，前端已經據此收掉對應的 UI，這裡再擋一次，
+# 避免直接打 API 的呼叫端送出上游會靜默丟棄的內容（尾幀被丟掉只會拿到一支「看起來
+# 就是沒有照做」的影片，不會有任何錯誤訊息，很難查）
+_FIRST_FRAME_ONLY_I2V_MODELS = {
+    m["id"] for m in MODELS["video"]
+    if m.get("type") == "i2v" and m.get("i2v_modes") == ["first_frame"]
+}
+_REF_IMAGES_ONLY_MODELS = {m["id"] for m in MODELS["video"] if m.get("ref_images_only")}
+
+
+def _apply_res_and_duration(payload: dict, meta: dict, resolution: str,
+                            duration: Optional[int] = None, ratio: str = "") -> None:
+    """把解析度／時長／畫面比例同時以三家上游各自看得懂的形式塞進 payload 與 metadata。
+
+    影片的四個端點是所有廠商共用的，但每一家 task adaptor 取值的欄位都不一樣，
+    任何一家漏送都不會報錯、只會靜默用它自己的預設值（使用者選了 1080P 卻拿到
+    720P 的影片，而且照 720P 計費）：
+
+    - 阿里（萬相／HappyHorse）：讀頂層 `size`。"720P"/"1080P" 這種字串在它的三條
+      分支都解析得出來（t2v 會再轉成 "1280*720"），所以頂層 size 必須保留。
+    - Veo（gemini／vertex）：頂層 `size` 是用小寫 "x" 去切 WIDTHxHEIGHT 的，
+      "1080P" 切不開會靜默 fallback 成 720p——但 `metadata.resolution` 優先權最高，
+      用它蓋過去就正確；畫面比例的欄位叫 `aspectRatio`，不吃 `ratio`。
+    - Seedance／Dreamina（doubao）：完全不讀頂層 `size`，也不讀頂層 `duration`，
+      只吃 `metadata.resolution` 與頂層 `seconds`（字串）。畫面比例吃 `ratio`。
+
+    三家的 metadata 都是整包 unmarshal 進各自的 payload struct、未知 key 直接忽略，
+    所以重複多送幾個 key 是安全的。
+    """
+    payload["size"] = resolution
+    meta["resolution"] = resolution.lower()
+    if duration is not None:
+        payload["duration"] = duration        # 阿里 / Veo（Veo 只接受 4、6、8）
+        payload["seconds"] = str(duration)    # doubao 唯一吃得到的時長來源
+    if ratio:
+        meta["ratio"] = ratio                 # doubao
+        meta["aspectRatio"] = ratio           # Veo
+
+
+def _apply_audio_flag(payload: dict, meta: dict, audio: bool) -> None:
+    """把「要不要配音」用三家各自的欄位名送出去。
+
+    注意阿里這邊的實際情況：task adaptor 根本不讀統一請求的頂層 `audio`，整份
+    adaptor 只有 wan2.6-i2v-flash 會去讀 `metadata.audio`（bool）——其餘萬相型號
+    有沒有聲音完全由上游自己決定。MODELS 裡已經據此把那些型號的 audio 旗標關掉、
+    UI 不再顯示無效的開關，這裡仍把欄位帶齊，讓有支援的型號（wan2.6-i2v-flash、
+    Veo、doubao）拿得到。
+    """
+    payload["audio"] = audio        # 統一請求的頂層欄位（阿里不讀，其他家備援）
+    meta["audio"] = audio           # wan2.6-i2v-flash 唯一吃得到的來源
+    meta["generateAudio"] = audio   # Veo（非 bool 或缺省一律當無音訊，也影響計費）
+    meta["generate_audio"] = audio  # doubao（影響計費 audio_presence）
+
+
+async def _upload_audio_for_url(file_obj) -> tuple[Optional[str], Optional[str]]:
+    """把使用者上傳的音檔放到雲端物件儲存，回傳 (簽名網址, 錯誤訊息)。
+
+    上游只接受 `audio_url`（一個真的能被下載的 URL）——先前這裡是把音檔轉成
+    `data:audio/...;base64,...` 塞進 metadata，上游根本不會去解析，等於使用者
+    上傳的配樂從來沒有生效過。本機 `outputs/` 路徑上游同樣抓不到，所以沒有任何
+    雲端儲存後端可用時直接回報錯誤，而不是送出一個註定無聲的請求。
+    """
+    if not file_obj or not hasattr(file_obj, "filename") or not file_obj.filename:
+        return None, None
+    raw = await file_obj.read()
+    if not raw:
+        return None, None
+    suffix = Path(file_obj.filename).suffix.lower() or ".mp3"
+    name = f"aud_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{suffix}"
+    url = _cloud_put(raw, f"audio/{name}")
+    if not url:
+        return None, ("音訊檔需要先上傳到雲端物件儲存才能傳給上游模型，但目前沒有可用的"
+                      "儲存後端（OSS / S3 / GCS 都未設定憑證）。請設定雲端儲存，或改用"
+                      "模型自動配音。")
+    return url, None
 
 async def _save_video_bytes(data: bytes) -> Optional[str]:
     try:
@@ -1555,24 +1653,23 @@ async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    payload: dict = {"model": model, "prompt": prompt,
-                     "duration": duration, "size": resolution}
+    payload: dict = {"model": model, "prompt": prompt}
     meta: dict = {}
+    _apply_res_and_duration(payload, meta, resolution, duration, ratio)
     if negative_prompt: meta["negative_prompt"] = negative_prompt
     if prompt_extend:   meta["prompt_extend"] = True
     if watermark:       meta["watermark"] = True
     if seed is not None: meta["seed"] = seed
-    if ratio:           meta["ratio"] = ratio
     if model in _VEO_MODELS: meta["person_generation"] = "allow_adult"
 
-    if audio_file and hasattr(audio_file, "filename") and audio_file.filename:
-        ab = await audio_file.read()
-        audio_mime = audio_file.content_type or "audio/mpeg"
-        meta["audio"] = f"data:{audio_mime};base64,{base64.b64encode(ab).decode()}"
-    else:
-        # 上游未收到 audio 欄位時會自行判斷是否配音，不會視為「不要配音」——
-        # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
-        meta["audio"] = audio
+    # 上游未收到欄位時會自行判斷是否配音，不會視為「不要配音」——
+    # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
+    _apply_audio_flag(payload, meta, audio)
+    audio_url, audio_err = await _upload_audio_for_url(audio_file)
+    if audio_err:
+        return JSONResponse(status_code=400, content={"error": audio_err})
+    if audio_url:
+        payload["audio_url"] = audio_url
 
     if meta: payload["metadata"] = meta
 
@@ -1624,6 +1721,10 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
     audio_file       = form.get("driving_audio")
     clip_file        = form.get("first_clip")
 
+    if model in _FIRST_FRAME_ONLY_I2V_MODELS and i2v_mode != "first_frame":
+        return JSONResponse(status_code=400, content={
+            "error": f"{model} 的上游只讀取首幀圖片，尾幀／驅動音訊／影片延伸都會被靜默丟棄，請改用「首幀生成」模式。"})
+
     if model in _INTERACTIONS_VIDEO_MODELS:
         first_bytes = await _read_image_bytes(first_frame_file)
         if not first_bytes:
@@ -1634,23 +1735,22 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
             raise HTTPException(status_code=500, detail=str(e))
 
     actual_duration = duration
-    payload: dict = {"model": model, "prompt": prompt,
-                     "duration": actual_duration, "size": resolution}
+    payload: dict = {"model": model, "prompt": prompt}
     meta: dict = {"i2v_mode": i2v_mode}
+    _apply_res_and_duration(payload, meta, resolution, actual_duration, ratio)
     if neg_prompt:    meta["negative_prompt"] = neg_prompt
     if prompt_extend: meta["prompt_extend"] = True
     if watermark:     meta["watermark"] = True
     if seed is not None: meta["seed"] = seed
-    if ratio:         meta["ratio"] = ratio
     if model in _VEO_MODELS: meta["person_generation"] = "allow_adult"
-    if audio_bgm_file and hasattr(audio_bgm_file, "filename") and audio_bgm_file.filename:
-        ab = await audio_bgm_file.read()
-        audio_mime = audio_bgm_file.content_type or "audio/mpeg"
-        meta["audio"] = f"data:{audio_mime};base64,{base64.b64encode(ab).decode()}"
-    else:
-        # 上游未收到 audio 欄位時會自行判斷是否配音，不會視為「不要配音」——
-        # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
-        meta["audio"] = audio_bgm
+    # 上游未收到欄位時會自行判斷是否配音，不會視為「不要配音」——
+    # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
+    _apply_audio_flag(payload, meta, audio_bgm)
+    bgm_url, bgm_err = await _upload_audio_for_url(audio_bgm_file)
+    if bgm_err:
+        return JSONResponse(status_code=400, content={"error": bgm_err})
+    if bgm_url:
+        payload["audio_url"] = bgm_url
 
     media_arr: list = []
 
@@ -1675,7 +1775,7 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
         clip_b64 = f"data:video/mp4;base64,{base64.b64encode(clip_bytes).decode()}"
         media_arr.append({"url": clip_b64, "type": "first_clip"})
         actual_duration = max(duration, 15)
-        payload["duration"] = actual_duration
+        _apply_res_and_duration(payload, meta, resolution, actual_duration, ratio)
         if last_frame_file and hasattr(last_frame_file, "filename") and last_frame_file.filename:
             lb = await _read_image_bytes(last_frame_file)
             if lb: media_arr.append({"url": f"data:image/png;base64,{base64.b64encode(lb).decode()}", "type": "last_frame"})
@@ -1687,9 +1787,14 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
         if last_frame_file and hasattr(last_frame_file, "filename") and last_frame_file.filename:
             lb = await _read_image_bytes(last_frame_file)
             if lb: media_arr.append({"url": f"data:image/png;base64,{base64.b64encode(lb).decode()}", "type": "last_frame"})
-        if audio_file and hasattr(audio_file, "filename") and audio_file.filename:
-            ab = await audio_file.read()
-            if ab: media_arr.append({"url": f"data:audio/mpeg;base64,{base64.b64encode(ab).decode()}", "type": "driving_audio"})
+        # 驅動音訊同樣只能以 URL 形式傳給上游（base64 data URI 不會被解析）
+        drive_url, drive_err = await _upload_audio_for_url(audio_file)
+        if drive_err:
+            return JSONResponse(status_code=400, content={"error": drive_err})
+        if drive_url:
+            # 刻意不放進 media_arr——media_arr 會整個變成 payload["images"]，
+            # 混進音訊會讓上游把它當成參考圖
+            payload["audio_url"] = drive_url
 
     # `media` array + `image` (first item URL) for maximum compatibility
     payload["media"] = media_arr
@@ -1746,15 +1851,16 @@ async def video_vedit(request: Request, api_key: str = Depends(get_api_key)):
     if prompt_extend: meta["prompt_extend"] = True
     if watermark:     meta["watermark"] = True
     if seed is not None: meta["seed"] = seed
-    if ratio:         meta["ratio"] = ratio
 
     payload: dict = {
         "model": model, "prompt": prompt,
-        "duration": duration, "size": resolution,
         "media": media_arr, "image": video_b64,
         "images": [m["url"] for m in media_arr],
         "metadata": meta,
     }
+    # 視頻編輯不指定時長（保留來源影片長度），duration 為 0 時就不送
+    _apply_res_and_duration(payload, meta, resolution,
+                            duration if duration else None, ratio)
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -1787,12 +1893,20 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
         return JSONResponse(status_code=400, content={"error": "At least one reference file is required"})
 
     VIDEO_EXTS = {'.mp4', '.avi', '.mov', '.mkv', '.webm', '.m4v'}
+    # 萬相／HappyHorse 的 r2v 上游會把收到的每一個檔案都當成參考「圖片」
+    # （wan2.6 走 reference_urls、wan2.7/happyhorse 走 media 的 reference_image），
+    # 混入影片檔會被上游拒絕，在這裡先擋掉並給出明確訊息
+    refs_images_only = model in _REF_IMAGES_ONLY_MODELS
     media_arr: list = []
     image_files: list = []
     for f in ref_files:
         if not hasattr(f, "filename") or not f.filename:
             continue
         ext = Path(f.filename).suffix.lower()
+        if refs_images_only and ext in VIDEO_EXTS:
+            return JSONResponse(status_code=400, content={
+                "error": f"{model} 的參考生影片只接受圖片，不能帶影片檔（{f.filename}）。"
+                         "若要以影片驅動，請改用「萬相動作動畫」或「視頻編輯」。"})
         fb = await f.read()
         mime = "video/mp4" if ext in VIDEO_EXTS else "image/png"
         media_type = "reference_video" if ext in VIDEO_EXTS else "reference_image"
@@ -1815,22 +1929,21 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
     if prompt_extend: meta["prompt_extend"] = True
     if watermark:     meta["watermark"] = True
     if seed is not None: meta["seed"] = seed
-    if ratio:         meta["ratio"] = ratio
     if model in _VEO_MODELS: meta["person_generation"] = "allow_adult"
-    if audio_bgm_file and hasattr(audio_bgm_file, "filename") and audio_bgm_file.filename:
-        ab = await audio_bgm_file.read()
-        audio_mime = audio_bgm_file.content_type or "audio/mpeg"
-        meta["audio"] = f"data:{audio_mime};base64,{base64.b64encode(ab).decode()}"
-    else:
-        # 上游未收到 audio 欄位時會自行判斷是否配音，不會視為「不要配音」——
-        # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
-        meta["audio"] = audio_bgm
-
     payload: dict = {"model": model, "prompt": prompt,
-                     "duration": duration, "size": resolution,
                      "media": media_arr,
                      "image": media_arr[0]["url"],
                      "images": [m["url"] for m in media_arr]}
+    _apply_res_and_duration(payload, meta, resolution, duration, ratio)
+    # 上游未收到欄位時會自行判斷是否配音，不會視為「不要配音」——
+    # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
+    _apply_audio_flag(payload, meta, audio_bgm)
+    bgm_url, bgm_err = await _upload_audio_for_url(audio_bgm_file)
+    if bgm_err:
+        return JSONResponse(status_code=400, content={"error": bgm_err})
+    if bgm_url:
+        payload["audio_url"] = bgm_url
+
     if meta: payload["metadata"] = meta
 
     try:

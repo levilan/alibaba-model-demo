@@ -792,6 +792,25 @@ function onVidModelChange() {
     } else {
         Array.from(resEl.options).forEach(o => { o.hidden = false; });
     }
+
+    // I2V 模式：部分模型的上游只讀取首幀，尾幀／驅動音訊／影片延伸送過去會被
+    // 靜默丟棄（拿到的影片看起來就是沒照做、但不會有任何錯誤），所以直接把
+    // 其餘模式從選單收起來
+    if (taskType === 'i2v') {
+        const allowed = modelInfo.i2v_modes;
+        const modeEl  = document.getElementById('videoI2VMode');
+        Array.from(modeEl.options).forEach(o => {
+            o.hidden = allowed ? !allowed.includes(o.value) : false;
+        });
+        if (allowed && !allowed.includes(modeEl.value)) modeEl.value = allowed[0];
+        onI2VModeChange();
+    }
+
+    // R2V 參考檔案：只吃圖片的模型不要讓使用者挑到影片
+    const refInput = document.getElementById('vidRefInput');
+    if (refInput) {
+        refInput.accept = modelInfo.ref_images_only ? 'image/*' : 'image/*,video/*';
+    }
 }
 
 // I2V 模式切換（顯示對應上傳區）

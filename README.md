@@ -163,14 +163,14 @@ python app.py
 
 | 模型 ID | 名稱 | 分類 | 配音 |
 |---|---|---|---|
-| wan2.7-t2v | 萬相 2.7 T2V | 文生影片 | ✓ |
-| wan2.6-t2v | 萬相 2.6 T2V | 文生影片 | ✓ |
-| wan2.7-i2v | 萬相 2.7 I2V | 圖生影片 | ✓ |
-| wan2.6-i2v | 萬相 2.6 I2V | 圖生影片 | ✓ |
+| wan2.7-t2v | 萬相 2.7 T2V | 文生影片 | 自動 |
+| wan2.6-t2v | 萬相 2.6 T2V | 文生影片 | 自動 |
+| wan2.7-i2v | 萬相 2.7 I2V | 圖生影片 | 自動 |
+| wan2.6-i2v | 萬相 2.6 I2V | 圖生影片 | 自動 |
 | wan2.6-i2v-flash | 萬相 2.6 I2V Flash | 圖生影片 | ✓ |
-| wan2.7-r2v | 萬相 2.7 R2V | 參考生影片 | ✓ |
-| wan2.6-r2v | 萬相 2.6 R2V | 參考生影片 | ✓ |
-| wan2.6-r2v-flash | 萬相 2.6 R2V Flash | 參考生影片 | ✓ |
+| wan2.7-r2v | 萬相 2.7 R2V | 參考生影片 | 自動 |
+| wan2.6-r2v | 萬相 2.6 R2V | 參考生影片 | 自動 |
+| wan2.6-r2v-flash | 萬相 2.6 R2V Flash | 參考生影片 | 自動 |
 | happyhorse-1.1-t2v | HappyHorse 1.1 T2V | HappyHorse | — |
 | happyhorse-1.0-t2v | HappyHorse 1.0 T2V | HappyHorse | — |
 | happyhorse-1.1-i2v | HappyHorse 1.1 I2V | HappyHorse | — |
@@ -193,6 +193,15 @@ python app.py
 
 > 萬相 2.6/2.7 系列 T2V/I2V/R2V 皆支援自動配音（BGM 自動生成或自訂音訊上傳）。
 > 動作動畫模型：視頻換人（將參考影片角色替換為人物圖片）、圖生動作（將參考影片動作遷移到人物圖片）。
+>
+> **萬相／HappyHorse 的三個上游限制**（已對照閘道 adaptor 原始碼確認，`app.py` 以 `audio` / `i2v_modes` / `ref_images_only` 三個旗標表示，前端據此收掉對應 UI）：
+> 1. **配音只有 `wan2.6-i2v-flash` 有開關。** 阿里的 task adaptor 完全不讀統一請求的頂層 `audio` 欄位，整份程式只有 `wan2.6-i2v-flash` 會去讀 `metadata.audio`（關閉後費用減半）。其餘萬相型號有沒有聲音由上游自行決定，上表標示為「自動」。
+> 2. **i2v 只讀首幀。** adaptor 的 i2v 分支只取 `images[0]` 當 `first_frame`，尾幀／驅動音訊／影片延伸片段都會被靜默丟棄，因此這些模型只開放「首幀生成」一種模式。
+> 3. **r2v 只接受圖片。** 參考檔案會全部被當成參考圖（wan2.6 走 `reference_urls`、wan2.7/HappyHorse 走 `media` 的 `reference_image`），混入影片檔會被上游拒絕。
+>
+> **解析度／時長要三家分別送。** 影片端點是所有廠商共用的，但每家取值的欄位不同，漏送不會報錯、只會靜默用預設值（選 1080P 卻拿到 720P，而且照 720P 計費）：阿里讀頂層 `size`；Veo 的頂層 `size` 只認小寫 `x` 分隔的 `WIDTHxHEIGHT`、但 `metadata.resolution` 優先權最高；Seedance/Dreamina 完全不讀頂層 `size` 與 `duration`，只吃 `metadata.resolution` 與頂層 `seconds`（字串）。因此 `_apply_res_and_duration()` 一律把三種形式都送出去。畫面比例同理：Seedance 吃 `metadata.ratio`、Veo 吃 `metadata.aspectRatio`。
+>
+> **上傳的音訊必須是 URL。** 上游只接受 `audio_url`，base64 data URI 不會被解析，所以使用者上傳的配樂/驅動音訊會先經 `_cloud_put()` 放到雲端物件儲存再帶簽名網址過去；沒有設定任何雲端儲存後端時會直接回報錯誤，而不是送出一個註定無聲的請求。
 > ByteDance Seedance 系列同時支援 t2v/i2v/r2v，走跟萬相系列共用的 `media`/`image`/`images` 三欄位注入機制；i2v 在 `bytedance-seedance-1.5-pro`、r2v 在 `dreamina-seedance-2.0-fast` 上實測完整跑到 `completed`，其餘模型 × 模式組合基於同一套機制推斷同樣可用，未逐一窮舉。**不支援**視頻編輯（vedit）——實測直接被上游拒絕（`image_url` 參數不合法）。`min_dur`/`max_dur` 沿用其他家族的常見範圍（2–15 秒），未測邊界值。
 
 **Veo（Google，duration 僅接受 4/6/8 秒）**
