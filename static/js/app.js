@@ -889,9 +889,18 @@ function onEditVideoUpload(e) {
     const f = e.target.files[0];
     if (f) document.getElementById('vidEditVideoName').textContent = f.name;
 }
+// 參考圖張數上限依模型而定（MODELS 的 max_ref）。原本這裡跟 r2v 都是寫死／沒有上限，
+// 與後端實際會讀取的張數不一致——超出的檔案會被靜默丟棄（使用者看不出來），
+// 不足的則是白白少了模型支援的欄位
+function vidRefLimit(taskType, fallback) {
+    const id = document.getElementById('videoModel').value;
+    const info = (models.video || []).find(m => m.id === id && m.type === taskType);
+    return (info && info.max_ref) || fallback;
+}
+
 function onEditRefUpload(e) {
     const newFiles = Array.from(e.target.files);
-    editRefFiles = [...editRefFiles, ...newFiles].slice(0, 3);
+    editRefFiles = [...editRefFiles, ...newFiles].slice(0, vidRefLimit('vedit', 3));
     renderEditRefList();
 }
 function renderEditRefList() {
@@ -1735,7 +1744,9 @@ function previewImg(e, previewId, zoneId) {
 }
 
 function handleRefUpload(e) {
-    refFiles = [...refFiles, ...Array.from(e.target.files)];
+    // 沒有明確標 max_ref 的模型維持原本「不設限」的行為（9 只是個保守的上界，
+    // 沒有實測過的模型不要硬編一個猜測值進來擋人）
+    refFiles = [...refFiles, ...Array.from(e.target.files)].slice(0, vidRefLimit('r2v', 99));
     renderRefList();
 }
 function renderRefList() {

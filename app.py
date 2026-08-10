@@ -569,9 +569,9 @@ MODELS = {
         {"id": "happyhorse-1.0-t2v",        "name": "HappyHorse 1.0 T2V",        "group": "HappyHorse", "desc": "前一代高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},
         {"id": "happyhorse-1.1-i2v",        "name": "HappyHorse 1.1 I2V",        "group": "HappyHorse", "desc": "高還原度圖生影片（僅首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15, "i2v_modes": ["first_frame"]},
         {"id": "happyhorse-1.0-i2v",        "name": "HappyHorse 1.0 I2V",        "group": "HappyHorse", "desc": "前一代高還原度圖生影片（僅首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15, "i2v_modes": ["first_frame"]},
-        {"id": "happyhorse-1.1-r2v",        "name": "HappyHorse 1.1 R2V",        "group": "HappyHorse", "desc": "多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True},
-        {"id": "happyhorse-1.0-r2v",        "name": "HappyHorse 1.0 R2V",        "group": "HappyHorse", "desc": "前一代多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True},
-        {"id": "happyhorse-1.0-video-edit", "name": "HappyHorse Video Edit 1.0", "group": "HappyHorse", "desc": "視頻編輯（最多 5 張參考圖）", "type": "vedit", "audio": False, "min_dur": 3, "max_dur": 15},      
+        {"id": "happyhorse-1.1-r2v",        "name": "HappyHorse 1.1 R2V",        "group": "HappyHorse", "desc": "多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True, "max_ref": 9},
+        {"id": "happyhorse-1.0-r2v",        "name": "HappyHorse 1.0 R2V",        "group": "HappyHorse", "desc": "前一代多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True, "max_ref": 9},
+        {"id": "happyhorse-1.0-video-edit", "name": "HappyHorse Video Edit 1.0", "group": "HappyHorse", "desc": "視頻編輯（最多 5 張參考圖）", "type": "vedit", "audio": False, "min_dur": 3, "max_dur": 15, "max_ref": 5},      
         # ── 視頻編輯 ──────────────────────────────────────────────
         {"id": "wan2.7-videoedit", "name": "萬相 2.7 視頻編輯", "group": "萬相視頻編輯",
          "desc": "文字/參考圖驅動編輯", "type": "vedit", "audio": False, "min_dur": 2, "max_dur": 15},
@@ -638,7 +638,7 @@ MODELS = {
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview（圖生影片）", "group": "Gemini",
          "desc": "Google 多模態圖生影片（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "i2v", "audio": False, "no_duration": True},
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview（參考生影片）", "group": "Gemini",
-         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），最長約 10 秒，自動含原生配音（無需另設定）", "type": "r2v", "audio": False, "no_duration": True},
+         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），最長約 10 秒，自動含原生配音（無需另設定）", "type": "r2v", "audio": False, "no_duration": True, "max_ref": 3},
     ],
     "muleai": [
         {"id": "wan2.7-i2v-spicy",       "name": "Wan 2.7 I2V Spicy",  "group": "影片生成", "desc": "Spicy 模型 (支援文字/圖片)"},
@@ -1775,6 +1775,16 @@ _FIRST_FRAME_ONLY_I2V_MODELS = {
 }
 _REF_IMAGES_ONLY_MODELS = {m["id"] for m in MODELS["video"] if m.get("ref_images_only")}
 
+# 參考圖張數上限一律以 MODELS 的 max_ref 為單一來源。先前前端寫死 3、後端另外寫
+# 「happyhorse 給 5、其餘 3」，兩邊各自演化就會不一致——多出來的檔案會被靜默丟棄
+# （使用者完全看不出來），少算的則是白白用不到模型支援的欄位。
+_VIDEO_MAX_REF = {(m["id"], m.get("type")): m["max_ref"]
+                  for m in MODELS["video"] if m.get("max_ref")}
+
+
+def _video_max_ref(model: str, task_type: str, default: int) -> int:
+    return _VIDEO_MAX_REF.get((model, task_type), default)
+
 # 萬相 3.0 這種 all-in-one 模型的模型名沒有 i2v/r2v/videoedit 後綴，上游無法從模型名
 # 判斷每個媒體的用途，改以「MIME／副檔名 ＋ 位置」推斷：影片→video、音訊→
 # driving_audio、第一張圖→first_frame、其餘圖→reference_image。我們送的 data URI
@@ -2129,7 +2139,7 @@ async def video_vedit(request: Request, api_key: str = Depends(get_api_key)):
     video_b64 = f"data:video/mp4;base64,{base64.b64encode(video_bytes).decode()}"
 
     media_arr: list = [{"url": video_b64, "type": "video"}]
-    max_refs = 5 if "happyhorse" in model else 3
+    max_refs = _video_max_ref(model, "vedit", 3)
     for i in range(1, max_refs + 1):
         ref = form.get(f"reference_image_{i}")
         if ref and hasattr(ref, "filename") and ref.filename:

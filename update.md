@@ -81,6 +81,14 @@
   - **順帶發現 MAI 系列的編輯端點只接受「剛好一張」參考圖**，多送直接 400 `Exactly one image file must be attached for edit requests`。原本 MODELS 沒設 `max_ref`、前端 fallback 是 9 張，等於放任使用者選到必定失敗的張數（在舊的欄位命名下反而是「第二張被丟棄所以不會報錯」，改成重複 image 後就會現形）。三個 MAI 編輯條目補上 `max_ref: 1`，後端 `_MAI_EDIT_MODELS` 同步限制。
   - 端到端實測（本機服務打正式網關，透過 `/api/image/edit` 上傳兩張）：平均 RGB (82,4,250)，兩張都生效。
 
+- test/fix：接續上一筆，把**其餘所有多參考圖的圖片與影片模型**都查過一遍（commit 待補）。網關：正式環境 `https://nen.com.tw`。
+  - **圖片編輯：修正後全數通過。** 沿用同一套可量測的驗法（純紅 + 純藍兩張參考圖、要求輸出「所有參考圖顏色的 50/50 混色」、量輸出的平均 RGB）：`wan2.7-image-pro` RGB(165,3,254)、`qwen-image-2.0-pro` RGB(51,80,163)、`gpt-image-1.5` RGB(105,51,184)、`dola-seedream-5.0-lite` RGB(228,196,181) 全部兩張都吃到。Gemini 走的是另一條程式路徑（原生 `generateContent`，多張 `inlineData`），也另外驗過：`gemini-3-pro-image` RGB(135,31,146)、`gemini-3.1-flash-image` RGB(128,7,155)，同樣正常。
+  - **影片參考生影片（r2v）：上游兩條不同路徑都驗過。** 用同樣的混色手法，取產出影片的首幀量平均 RGB——`wan2.6-r2v-flash`（上游走 `input.reference_urls`）RGB(120,34,182)、`wan2.7-r2v`（上游走 `input.media` 的 `reference_image`）RGB(162,193,195)，兩張參考圖都有生效。影片端送的是 JSON 的 `images` 陣列而不是 multipart，沒有上一筆那個欄位命名的問題。
+  - **修：參考圖張數上限前後端不一致**（同一類「靜默丟棄」的問題，只是方向相反）。原本前端把視頻編輯的參考圖寫死 `slice(0, 3)`，後端卻是 `5 if "happyhorse" in model else 3`——`happyhorse-1.0-video-edit` 明明支援 5 張、desc 也寫「最多 5 張參考圖」，但使用者最多只能選 3 張，白白少了兩個欄位；r2v 則是前後端都完全沒有上限，使用者可以一次丟 20 張進去。
+    - 改成以 MODELS 的 `max_ref` 為單一來源：後端新增 `_VIDEO_MAX_REF` / `_video_max_ref()`，前端新增 `vidRefLimit()`，兩邊都讀同一份資料。
+    - 只為**有實據的**模型標上限：`happyhorse-1.x-r2v` 9 張、`happyhorse-1.0-video-edit` 5 張（desc 本來就這樣寫）、`gemini-omni-flash-preview` r2v 3 張（後端本來就 `image_files[:3]`）。其餘沒有實測過上限的模型維持不設限——不硬編一個猜測值進去擋人，這正是先前 MAI 尺寸那個 bug 的成因。
+  - 前端改動：`app.js?v=56` → `?v=57`。
+
 ## 2026-08-08
 
 - fix：手機版登入頁三個問題（使用者回報「手機看好像燈不見了」）。**燈在手機上被隱藏其實是功能退化，不只是美觀問題**——燈同時是登入頁切換淺色/深色模式的唯一入口，`@media (max-width: 760px) { .login-lamp { display: none } }` 等於讓手機使用者完全沒辦法切主題。改成把燈排到卡片下方（那裡本來就是一大片空白）並縮小到 58%；因為 `transform: scale()` 不會改變版面高度，要用負 margin 把縮放後多出來的空白（236px × 0.42 ≈ 99px）收掉，否則底下會留一段幽靈空隙。順手抓到一個既有 bug：`.login-card` 只寫了 `width: 420px` 沒有 `max-width`，在比 420px 窄的手機上卡片會直接撐破視窗、左右被切掉，補上 `max-width: calc(100vw - 28px)`。另外雲照原尺寸放在窄螢幕上會大到擠住登入卡片，等比例縮到 62%——實作上把雲的寬度改成透過 CSS 變數傳遞而不是 JS 直接設 `style.width`，因為 inline style 的優先權比 media query 高，直接設的話得靠 `!important` 才蓋得掉。已用 Playwright 在 390px 寬（iPhone 14 Pro）實測：無橫向溢出、卡片 362px、用真實觸控座標點燈確認能正常切換 dark→light、燈的底緣與場景底緣一致（無幽靈空隙）。
