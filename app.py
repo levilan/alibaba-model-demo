@@ -508,16 +508,16 @@ MODELS = {
         #
         # 費率（官方每秒單價）：480P $0.05 / 720P $0.10 / 1080P $0.20
         {"id": "wan3.0-video", "name": "萬相 3.0（文生影片）", "group": "萬相 3.0",
-         "desc": "All-in-One 影片模型，最長 30 秒（尚未實測）", "type": "t2v",
+         "desc": "All-in-One 影片生成，最長 30 秒，音畫真實", "type": "t2v",
          "audio": False, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
         {"id": "wan3.0-video", "name": "萬相 3.0（圖生影片）", "group": "萬相 3.0",
-         "desc": "首幀／首尾幀／驅動音訊／影片延伸（尚未實測）", "type": "i2v",
+         "desc": "首幀／首尾幀／驅動音訊／影片延伸", "type": "i2v",
          "audio": False, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
         {"id": "wan3.0-video", "name": "萬相 3.0（參考生影片）", "group": "萬相 3.0",
-         "desc": "多圖參考生影片（尚未實測）", "type": "r2v",
+         "desc": "多圖參考生影片，生產級角色一致性", "type": "r2v",
          "audio": False, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
         {"id": "wan3.0-video", "name": "萬相 3.0（視頻編輯）", "group": "萬相 3.0",
-         "desc": "文字／參考圖驅動的視頻編輯（尚未實測）", "type": "vedit",
+         "desc": "統一支援參考／編輯／複刻／驅動", "type": "vedit",
          "audio": False, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
         # ── 文生影片 ──────────────────────────────────────────────
         {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭，配音由模型自動決定（上游無開關）", "type": "t2v",   "audio": False,  "min_dur": 2, "max_dur": 15},
