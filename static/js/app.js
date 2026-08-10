@@ -786,10 +786,12 @@ function onVidModelChange() {
     // （例如 dreamina-seedance-2.0-fast 只到 720P，送 1080P 會直接被拒），
     // 由 MODELS 的 resolutions 明確指定
     const resEl = document.getElementById('videoResolution');
+    // 模型有明確的 resolutions 清單時以它為準（例如萬相 3.0 的視頻編輯確實支援
+    // 480P，那是它的基準價位，不該被 vedit 的通則擋掉）
     const allowedRes = modelInfo.resolutions;
     Array.from(resEl.options).forEach(o => {
-        o.hidden = (taskType === 'vedit' && o.value === '480P') ||
-                   (allowedRes ? !allowedRes.includes(o.value) : false);
+        o.hidden = allowedRes ? !allowedRes.includes(o.value)
+                              : (taskType === 'vedit' && o.value === '480P');
     });
     if (resEl.selectedOptions[0] && resEl.selectedOptions[0].hidden) {
         const first = Array.from(resEl.options).find(o => !o.hidden);

@@ -163,6 +163,7 @@ python app.py
 
 | 模型 ID | 名稱 | 分類 | 配音 |
 |---|---|---|---|
+| wan3.0-video | 萬相 3.0（文生／圖生／參考生／視頻編輯） | 萬相 3.0 | 自動 |
 | wan2.7-t2v | 萬相 2.7 T2V | 文生影片 | 自動 |
 | wan2.6-t2v | 萬相 2.6 T2V | 文生影片 | 自動 |
 | wan2.7-i2v | 萬相 2.7 I2V | 圖生影片 | 自動 |
@@ -192,6 +193,12 @@ python app.py
 | dreamina-seedance-2.0-fast（參考生影片） | Seedance 2.0 Fast（即夢） | ByteDance Seedance | — |
 
 > 萬相 2.6/2.7 系列 T2V/I2V/R2V 皆支援自動配音（BGM 自動生成或自訂音訊上傳）。
+> **萬相 3.0（`wan3.0-video`）是 all-in-one 模型**——同一個模型 id 同時涵蓋文生／圖生／參考生／視頻編輯，UI 上以四個 type 分別呈現。最長 30 秒（其餘萬相家族是 15 秒），解析度 480P／720P／1080P，費率為每秒 $0.05／$0.10／$0.20。`ratio`（畫面比例）與 `resolution` 是兩個互相獨立的參數，預設 `adaptive`（其餘家族預設 16:9）。
+>
+> 因為模型名沒有 `i2v`／`r2v`／`videoedit` 後綴，上游無法從模型名判斷每個媒體的用途，改以「副檔名 ＋ 位置」推斷。**這對本專案行不通**：我們的媒體一律是 multipart 上傳轉成的 `data:...;base64,...` data URI，沒有副檔名，推斷必定落空。因此改走上游提供的覆寫管道，直接以 `metadata.input.media` 送出我們自己已標好 `type` 的陣列（`_apply_explicit_media()`）。
+>
+> ⚠️ **`wan3.0-video` 尚未實際打過任何一次請求。** 它的官方 API 文檔目前是邀請制、尚未公開；可公開查證的只有模型名、端點、`resolution`/`ratio`/`duration` 三個參數與定價。`media` 的 `type` 詞彙（`first_frame`／`last_frame`／`driving_audio`／`first_clip`／`reference_image`／`video`）是閘道端實作者從 wan2.7 已公開文件推導的，兩邊都沒有驗證過。上架後必須實測；若上游回報 type 不合法，要把正確清單回報給閘道端校正 `wan3MediaType()`。
+>
 > 動作動畫模型：視頻換人（將參考影片角色替換為人物圖片）、圖生動作（將參考影片動作遷移到人物圖片）。
 >
 > **萬相／HappyHorse 的三個上游限制**（已對照閘道 adaptor 原始碼確認，`app.py` 以 `audio` / `i2v_modes` / `ref_images_only` 三個旗標表示，前端據此收掉對應 UI）：

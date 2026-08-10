@@ -32,6 +32,14 @@
   - **上面那張支援矩陣記錄的是「提交時上游收不收這個參數值」，不是「產得出來」**——這兩件事實測後確認不能劃等號：`dreamina-seedance-2.0` @ 1080P 提交回 200，但任務跑了約 15 分鐘後以 `failed` / `Unknown error` 收場，沒拿到影片。只跑過一次，無法區分偶發失敗或該組合實際不可用，Seedance 家族因此**尚未有任何端到端（下載成品量寬高）的解析度驗證**；已在 `README.md` 標註。萬相與 Veo 則都已經 ffprobe 量到實際 1920x1080。
   - 前端改動：`app.js?v=52` → `?v=53`。
 
+- feat：上架阿里萬相 3.0（`wan3.0-video`），依另一個 session 在 nen-ai-platform（分支 `feat/carrothub-channel-support`）剛接完的渠道實作規格（commit 待補）。**僅完成程式碼，尚未打過任何一次上游請求**——使用者決定先不測，等確認網關與預算後再驗。
+  - all-in-one 模型：同一個模型 id 統一支援文生／圖生／參考生／視頻編輯，MODELS 裡以四個 type 分別呈現。最長 30 秒（其餘萬相家族 15 秒）、解析度 480P/720P/1080P（每秒 $0.05/$0.10/$0.20）。
+  - **`ratio` 預設要是 `adaptive` 而不是 16:9**。`ratio` 與 `resolution` 是兩個互相獨立的參數；但本專案的 t2v/i2v/r2v 三個 handler 原本是硬寫 `form.get("ratio", "16:9")`（前端只有 vedit 有比例控制項，其餘模式根本不送這個欄位，所以一律吃到 16:9）。改成 `form.get("ratio") or _default_ratio(model)`，讓預設值依模型家族決定。
+  - **上游那套「靠副檔名推斷媒體用途」的邏輯對本專案完全失效**，這是這次接上去時發現的實質整合問題。因為模型名沒有 i2v/r2v/videoedit 後綴，上游改由副檔名（`.mp4`→video、`.mp3`→driving_audio）＋位置（第一張圖→first_frame、其餘→reference_image）推斷；但我們送的媒體全部是 multipart 上傳轉成的 `data:...;base64,...` data URI，**沒有副檔名**，推斷必定落空、所有媒體都會被當成圖片。改走上游提供的 metadata 覆寫管道：新增 `_apply_explicit_media()`，把我們自己在 `media_arr` 裡早就標好 type 的陣列直接放進 `metadata.input.media`，繞過推斷。只對 `_WAN30_ALLINONE_MODELS` 生效，不影響既有模型。
+  - 順手修掉一個因為新模型才浮現的既有寫死規則：前端「vedit 隱藏 480P」原本是為 `wan2.7-videoedit` 寫死的通則，但 480P 正是萬相 3.0 的基準價位、它的視頻編輯確實支援。改成模型有明確 `resolutions` 清單時以清單為準，沒有才套用 vedit 通則。
+  - ⚠️ **`media` 的 `type` 詞彙尚未驗證**：`wan3.0-video` 的官方 API 文檔目前是邀請制、尚未公開，可公開查證的只有模型名、端點、`resolution`/`ratio`/`duration` 與定價。`first_frame`／`last_frame`／`driving_audio`／`first_clip`／`reference_image`／`video` 這組取值是閘道端實作者從 wan2.7 已公開文件推導的，兩邊都沒打過真請求。實測後若上游回報 type 不合法，要把正確清單回報給閘道端校正 `wan3MediaType()`。
+  - 前端改動：`app.js?v=53` → `?v=54`。
+
 ## 2026-08-08
 
 - fix：手機版登入頁三個問題（使用者回報「手機看好像燈不見了」）。**燈在手機上被隱藏其實是功能退化，不只是美觀問題**——燈同時是登入頁切換淺色/深色模式的唯一入口，`@media (max-width: 760px) { .login-lamp { display: none } }` 等於讓手機使用者完全沒辦法切主題。改成把燈排到卡片下方（那裡本來就是一大片空白）並縮小到 58%；因為 `transform: scale()` 不會改變版面高度，要用負 margin 把縮放後多出來的空白（236px × 0.42 ≈ 99px）收掉，否則底下會留一段幽靈空隙。順手抓到一個既有 bug：`.login-card` 只寫了 `width: 420px` 沒有 `max-width`，在比 420px 窄的手機上卡片會直接撐破視窗、左右被切掉，補上 `max-width: calc(100vw - 28px)`。另外雲照原尺寸放在窄螢幕上會大到擠住登入卡片，等比例縮到 62%——實作上把雲的寬度改成透過 CSS 變數傳遞而不是 JS 直接設 `style.width`，因為 inline style 的優先權比 media query 高，直接設的話得靠 `!important` 才蓋得掉。已用 Playwright 在 390px 寬（iPhone 14 Pro）實測：無橫向溢出、卡片 362px、用真實觸控座標點燈確認能正常切換 dark→light、燈的底緣與場景底緣一致（無幽靈空隙）。

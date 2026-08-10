@@ -491,6 +491,34 @@ MODELS = {
         #    2. i2v 只吃首幀：adaptor 的 i2v 分支只取 images[0] 當 first_frame，尾幀／
         #       驅動音訊／影片延伸片段送過去都會被靜默丟棄，故以 i2v_modes 限制成
         #       只有「首幀生成」一種模式。
+        # ── 萬相 3.0（All-in-One）──────────────────────────────────
+        # 單一模型 id 統一支援文生／圖生／參考生／視頻編輯，模型名沒有 i2v/r2v/
+        # videoedit 後綴，所以上游無法從模型名判斷每個媒體的用途，改由「副檔名 ＋
+        # 位置」推斷。**這對本專案行不通**——我們的媒體一律是 multipart 上傳轉成的
+        # `data:video/mp4;base64,...` data URI，根本沒有副檔名，推斷必定落空。因此
+        # 改走上游提供的覆寫管道，直接以 metadata.input.media 送出我們自己已經標好
+        # 型別的陣列（見 _WAN30_ALLINONE_MODELS）。
+        #
+        # ⚠️ 尚未實測：wan3.0-video 的官方 API 文檔目前是邀請制、尚未公開。可公開
+        #    查證的只有模型名、端點、resolution/ratio/duration 三個參數與定價；
+        #    media 的 type 取值（first_frame/last_frame/driving_audio/first_clip/
+        #    reference_image/video）是上游實作者從 wan2.7 已公開文件的詞彙推導的，
+        #    雙方都沒有打過真的請求。上架後要實測確認，若上游回報 type 不合法，
+        #    要把正確清單回報給閘道端校正。
+        #
+        # 費率（官方每秒單價）：480P $0.05 / 720P $0.10 / 1080P $0.20
+        {"id": "wan3.0-video", "name": "萬相 3.0（文生影片）", "group": "萬相 3.0",
+         "desc": "All-in-One 影片模型，最長 30 秒（尚未實測）", "type": "t2v",
+         "audio": False, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
+        {"id": "wan3.0-video", "name": "萬相 3.0（圖生影片）", "group": "萬相 3.0",
+         "desc": "首幀／首尾幀／驅動音訊／影片延伸（尚未實測）", "type": "i2v",
+         "audio": False, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
+        {"id": "wan3.0-video", "name": "萬相 3.0（參考生影片）", "group": "萬相 3.0",
+         "desc": "多圖參考生影片（尚未實測）", "type": "r2v",
+         "audio": False, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
+        {"id": "wan3.0-video", "name": "萬相 3.0（視頻編輯）", "group": "萬相 3.0",
+         "desc": "文字／參考圖驅動的視頻編輯（尚未實測）", "type": "vedit",
+         "audio": False, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
         # ── 文生影片 ──────────────────────────────────────────────
         {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭，配音由模型自動決定（上游無開關）", "type": "t2v",   "audio": False,  "min_dur": 2, "max_dur": 15},
         {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片（配音由模型自動決定）",     "type": "t2v",   "audio": False, "min_dur": 2, "max_dur": 15},
@@ -1520,6 +1548,26 @@ _FIRST_FRAME_ONLY_I2V_MODELS = {
 }
 _REF_IMAGES_ONLY_MODELS = {m["id"] for m in MODELS["video"] if m.get("ref_images_only")}
 
+# 萬相 3.0 這種 all-in-one 模型的模型名沒有 i2v/r2v/videoedit 後綴，上游無法從模型名
+# 判斷每個媒體的用途，改以「副檔名 ＋ 位置」推斷（影片副檔名→video、音訊副檔名→
+# driving_audio、第一張圖→first_frame、其餘圖→reference_image）。我們送的媒體全都是
+# multipart 上傳轉成的 data URI、沒有副檔名，這套推斷必定落空，所以改走上游提供的
+# metadata 覆寫管道：直接把我們自己已經標好 type 的 media 陣列放進 metadata.input.media。
+_WAN30_ALLINONE_MODELS = {"wan3.0-video"}
+# 同一批模型的 ratio 預設是 adaptive（跟隨輸入自適應），而不是其他家族慣用的 16:9；
+# ratio 與 resolution 是兩個互相獨立的參數
+_ADAPTIVE_RATIO_MODELS = _WAN30_ALLINONE_MODELS
+
+
+def _default_ratio(model: str) -> str:
+    return "adaptive" if model in _ADAPTIVE_RATIO_MODELS else "16:9"
+
+
+def _apply_explicit_media(model: str, meta: dict, media_arr: list) -> None:
+    """all-in-one 模型：繞過上游依副檔名猜測媒體用途的邏輯，直接指定 type。"""
+    if model in _WAN30_ALLINONE_MODELS and media_arr:
+        meta.setdefault("input", {})["media"] = media_arr
+
 
 def _apply_res_and_duration(payload: dict, meta: dict, resolution: str,
                             duration: Optional[int] = None, ratio: str = "") -> None:
@@ -1643,7 +1691,7 @@ async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
     prompt          = form.get("prompt", "")
     negative_prompt = form.get("negative_prompt", "")
     resolution      = form.get("resolution", "720P")
-    ratio           = form.get("ratio", "16:9")
+    ratio           = form.get("ratio") or _default_ratio(model)
     duration        = int(form.get("duration", 5))
     audio           = str(form.get("audio", "false")).lower() in ("true", "1", "yes")
     prompt_extend   = str(form.get("prompt_extend", "false")).lower() in ("true", "1", "yes")
@@ -1699,7 +1747,7 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
     prompt        = form.get("prompt", "")
     neg_prompt    = form.get("negative_prompt", "")
     resolution    = form.get("resolution", "720P")
-    ratio         = form.get("ratio", "16:9")
+    ratio         = form.get("ratio") or _default_ratio(model)
     duration      = int(form.get("duration", 5))
     i2v_mode      = form.get("i2v_mode", "first_frame")
     prompt_extend = str(form.get("prompt_extend", "false")).lower() in ("true", "1", "yes")
@@ -1810,6 +1858,7 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
         payload["image"] = media_arr[0]["url"]
         # 平台 TaskSubmitReq 只認 images（陣列），media/image 會被忽略
         payload["images"] = [m["url"] for m in media_arr]
+    _apply_explicit_media(model, meta, media_arr)
     payload["metadata"] = meta
 
     try:
@@ -1860,6 +1909,7 @@ async def video_vedit(request: Request, api_key: str = Depends(get_api_key)):
     if watermark:     meta["watermark"] = True
     if seed is not None: meta["seed"] = seed
 
+    _apply_explicit_media(model, meta, media_arr)
     payload: dict = {
         "model": model, "prompt": prompt,
         "media": media_arr, "image": video_b64,
@@ -1887,7 +1937,7 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
     model         = form.get("model", "wan2.6-r2v")
     prompt        = form.get("prompt", "")
     resolution    = form.get("resolution", "720P")
-    ratio         = form.get("ratio", "16:9")
+    ratio         = form.get("ratio") or _default_ratio(model)
     duration      = int(form.get("duration", 5))
     prompt_extend = str(form.get("prompt_extend", "false")).lower() in ("true", "1", "yes")
     watermark     = str(form.get("watermark", "false")).lower() in ("true", "1", "yes")
@@ -1942,6 +1992,7 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
                      "media": media_arr,
                      "image": media_arr[0]["url"],
                      "images": [m["url"] for m in media_arr]}
+    _apply_explicit_media(model, meta, media_arr)
     _apply_res_and_duration(payload, meta, resolution, duration, ratio)
     # 上游未收到欄位時會自行判斷是否配音，不會視為「不要配音」——
     # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
