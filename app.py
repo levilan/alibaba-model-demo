@@ -425,28 +425,30 @@ MODELS = {
             "desc": "字節跳動 Seedream，輕量文生圖（畫面較大，最小約 2K）", "type": "t2i", "max_n": 4,
             "sizes": ["2048x2048","2k","3k","4k"],
         },
-        # ── Gemini Image（走 /v1/chat/completions + modalities，不支援 size 參數；
-        #    aspect_ratio 走「自然語言注入 prompt」而非結構化欄位——實測過
-        #    imageConfig/aspect_ratio/generationConfig 這些結構化參數在這個
-        #    網關上一律被靜默忽略，直接在 prompt 文字裡要求比例反而有效）──
+        # ── Gemini Image（走 Gemini 原生的 /v1beta/models/{model}:generateContent，
+        #    以結構化的 imageConfig.aspectRatio 與 imageConfig.imageSize 控制輸出。
+        #    先前走 /v1/chat/completions + modalities，那條路徑上 imageConfig 會被
+        #    靜默忽略、只能用自然語言注入 prompt 要比例，而且**完全無法控制解析度**
+        #    （使用者反映「選不了生成結果大小」）。sizes 為各型號實測支援的
+        #    imageSize，見 _GEMINI_IMAGE_SIZES 的註解）──
         {
             "id": "gemini-3-pro-image", "name": "Gemini 3 Pro Image", "group": "Gemini Image",
-            "desc": "Google 旗艦圖像生成，畫質最佳", "type": "t2i", "max_n": 4, "no_size": True,
+            "desc": "Google 旗艦圖像生成，畫質最佳", "type": "t2i", "max_n": 4, "sizes": ["1K", "2K", "4K"],
             "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
         },
         {
             "id": "gemini-3.1-flash-image", "name": "Gemini 3.1 Flash Image", "group": "Gemini Image",
-            "desc": "速度與品質平衡，建議日常使用", "type": "t2i", "max_n": 4, "no_size": True,
+            "desc": "速度與品質平衡，建議日常使用", "type": "t2i", "max_n": 4, "sizes": ["1K", "2K", "4K"],
             "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
         },
         {
             "id": "gemini-2.5-flash-image", "name": "Gemini 2.5 Flash Image", "group": "Gemini Image",
-            "desc": "穩定版，較成熟的圖像模型", "type": "t2i", "max_n": 4, "no_size": True,
+            "desc": "穩定版，較成熟的圖像模型", "type": "t2i", "max_n": 4, "sizes": ["1K"],
             "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
         },
         {
             "id": "gemini-3.1-flash-lite-image", "name": "Gemini 3.1 Flash Lite Image", "group": "Gemini Image",
-            "desc": "輕量極速圖像生成", "type": "t2i", "max_n": 4, "no_size": True,
+            "desc": "輕量極速圖像生成", "type": "t2i", "max_n": 4, "sizes": ["1K"],
             "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
         },
         # ── GPT Image 編輯（沿用一般 /v1/images/edits 流程）──────────
@@ -488,22 +490,28 @@ MODELS = {
             "desc": "極速圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True,
             "sizes": _MAI_IMAGE_SIZES,
         },
-        # ── Gemini Image 編輯（走 /v1/chat/completions + modalities，帶入參考圖）──
+        # ── Gemini Image 編輯（同樣走原生 generateContent，參考圖以 inlineData 帶入。
+        #    實測編輯情境下 aspectRatio 一樣生效——舊路徑在有參考圖時是連比例參數都
+        #    完全不處理的，所以編輯模式等於沒有任何輸出尺寸控制）──
         {
             "id": "gemini-3-pro-image", "name": "Gemini 3 Pro Image（編輯）", "group": "Gemini Image",
-            "desc": "Google 旗艦圖像編輯，畫質最佳", "type": "i2i", "max_n": 1, "no_size": True, "no_ref_strength": True,
+            "desc": "Google 旗艦圖像編輯，畫質最佳", "type": "i2i", "max_n": 1, "no_ref_strength": True, "sizes": ["1K", "2K", "4K"],
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
         },
         {
             "id": "gemini-3.1-flash-image", "name": "Gemini 3.1 Flash Image（編輯）", "group": "Gemini Image",
-            "desc": "速度與品質平衡，建議日常使用", "type": "i2i", "max_n": 1, "no_size": True, "no_ref_strength": True,
+            "desc": "速度與品質平衡，建議日常使用", "type": "i2i", "max_n": 1, "no_ref_strength": True, "sizes": ["1K", "2K", "4K"],
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
         },
         {
             "id": "gemini-2.5-flash-image", "name": "Gemini 2.5 Flash Image（編輯）", "group": "Gemini Image",
-            "desc": "穩定版，較成熟的圖像模型", "type": "i2i", "max_n": 1, "no_size": True, "no_ref_strength": True,
+            "desc": "穩定版，較成熟的圖像模型", "type": "i2i", "max_n": 1, "no_ref_strength": True, "sizes": ["1K"],
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
         },
         {
             "id": "gemini-3.1-flash-lite-image", "name": "Gemini 3.1 Flash Lite Image（編輯）", "group": "Gemini Image",
-            "desc": "輕量極速圖像編輯", "type": "i2i", "max_n": 1, "no_size": True, "no_ref_strength": True,
+            "desc": "輕量極速圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True, "sizes": ["1K"],
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
         },
     ],
     "video": [
@@ -1447,53 +1455,105 @@ async def _extract_images_from_data(data_list: list) -> list:
 # 指令前綴可顯著改善成功率，仍會不穩定則再靠重試補強。
 _GEMINI_IMAGE_MAX_RETRIES = 2
 
-async def _generate_gemini_chat_image(model: str, prompt: str, n: int, api_key: str,
-                                       image_files: Optional[list] = None,
-                                       aspect_ratio: Optional[str] = None) -> dict:
-    if image_files:
-        content: Any = [{"type": "text", "text": f"Edit the image(s) as follows: {prompt}"}]
-        for fname, fbytes, ftype in image_files:
-            b64 = base64.b64encode(fbytes).decode()
-            content.append({"type": "image_url", "image_url": {"url": f"data:{ftype};base64,{b64}"}})
-    elif aspect_ratio:
-        # 實測過結構化的 imageConfig/aspect_ratio/generationConfig 欄位在這個網關上
-        # 一律被靜默忽略（回傳圖片永遠是預設比例），改成直接在 prompt 文字裡用自然
-        # 語言要求比例才有效——這不是 Gemini 官方 API 的正規做法，是繞過網關限制
-        # 的權宜之計，未來若網關支援結構化參數應優先改用那個。
-        content = f"Generate an image with aspect ratio {aspect_ratio} depicting: {prompt}"
-    else:
-        content = f"Generate an image depicting: {prompt}"
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": content}],
-        "modalities": ["text", "image"],
-        "n": n,
-    }
+# imageConfig.imageSize 的合法值。各型號支援度不同（2026-08-10 對正式網關逐一實測，
+# 每個型號 × 每個值都實際產圖量過寬高）：
+#   gemini-3-pro-image / gemini-3.1-flash-image  1K/2K/4K 都真的生效（1024/2048/4096）
+#   gemini-2.5-flash-image                       接受參數但**靜默忽略**，永遠回 1024
+#   gemini-3.1-flash-lite-image                  2K/4K 直接回 400
+# 所以 MODELS 裡後兩個型號的 sizes 只列 1K——列出來卻做不到的選項比沒有更糟。
+_GEMINI_IMAGE_SIZES = {"1K", "2K", "4K"}
+
+async def _gemini_image_once(client: httpx.AsyncClient, model: str, parts: list,
+                             gen_config: dict, api_key: str) -> tuple[Optional[dict], str, Optional[JSONResponse]]:
+    """對原生端點打一次，回傳 (圖片, 這次拿到的純文字, 致命錯誤)。"""
+    resp = await client.post(
+        f"{NENAI_BASE}/v1beta/models/{model}:generateContent",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={"contents": [{"parts": parts}], "generationConfig": gen_config},
+    )
+    if resp.status_code != 200:
+        try:
+            msg = resp.json().get("error", {}).get("message", resp.text)
+        except Exception:
+            msg = resp.text
+        return None, "", JSONResponse(status_code=resp.status_code, content={"error": msg})
+    text = ""
+    for cand in resp.json().get("candidates", []):
+        for part in (cand.get("content") or {}).get("parts", []):
+            inline = part.get("inlineData") or part.get("inline_data")
+            if inline and inline.get("data"):
+                mime = inline.get("mimeType") or inline.get("mime_type") or "image/png"
+                ext = mime.split("/")[-1] or "png"
+                raw = base64.b64decode(inline["data"])
+                saved = await _save_image_bytes(raw, ext)
+                return {"url": None, "local_path": saved, "actual_prompt": None}, text, None
+            if part.get("text"):
+                text += part["text"]
+    return None, text, None
+
+
+async def _generate_gemini_image(model: str, prompt: str, n: int, api_key: str,
+                                 image_files: Optional[list] = None,
+                                 aspect_ratio: Optional[str] = None,
+                                 image_size: Optional[str] = None) -> dict:
+    """Gemini 圖像模型走 Gemini 原生的 /v1beta/models/{model}:generateContent。
+
+    先前這裡是走 OpenAI 相容的 /v1/chat/completions + modalities，那條路徑上結構化的
+    imageConfig 會被靜默忽略，只能用「在 prompt 文字裡拜託模型輸出某個比例」的權宜
+    做法，而且**完全沒有辦法控制輸出解析度**（使用者反映「選不了生成結果大小」）。
+    2026-08-10 實測確認原生端點兩個參數都真的生效：
+      imageConfig.aspectRatio → 1:1 得到 1024x1024、9:16 得到 768x1376
+      imageConfig.imageSize   → 1K/2K/4K 得到長邊 1024/2048/4096
+    而且圖像編輯（帶參考圖）也吃 aspectRatio——舊路徑在有參考圖時是連比例都不處理的。
+
+    兩個要注意的地方：
+      - 原生端點不接受 candidateCount（送了直接 400），多張只能並發打 n 次。
+      - imageSize 的支援度各型號不同，見 _GEMINI_IMAGE_SIZES 的註解。
+    """
+    parts: list = []
+    for _fname, fbytes, ftype in (image_files or []):
+        parts.append({"inlineData": {"mimeType": ftype or "image/png",
+                                     "data": base64.b64encode(fbytes).decode()}})
+    parts.append({"text": (f"Edit the image(s) as follows: {prompt}" if image_files
+                           else f"Generate an image depicting: {prompt}")})
+
+    gen_config: dict = {"responseModalities": ["IMAGE"]}
+    image_config: dict = {}
+    if aspect_ratio:
+        image_config["aspectRatio"] = aspect_ratio
+    # 只接受 1K/2K/4K：瀏覽器可能還快取著舊版前端、送來 "1024*1024" 這種其他家族的
+    # 尺寸字串，直接轉發會讓上游回 400
+    if image_size and image_size.upper() in _GEMINI_IMAGE_SIZES:
+        image_config["imageSize"] = image_size.upper()
+    if image_config:
+        gen_config["imageConfig"] = image_config
+
+    images: list = []
     last_text = ""
-    async with httpx.AsyncClient(timeout=180.0) as client:
-        for attempt in range(_GEMINI_IMAGE_MAX_RETRIES + 1):
-            resp = await client.post(
-                f"{NENAI_V1}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json=payload,
-            )
-            rj = resp.json()
-            if resp.status_code != 200:
-                return JSONResponse(status_code=resp.status_code,
-                                    content={"error": rj.get("error", {}).get("message", resp.text)})
-            images = []
-            for choice in rj.get("choices", []):
-                content = choice.get("message", {}).get("content", "") or ""
-                last_text = content
-                for ext, b64 in _B64_IMAGE_RE.findall(content):
-                    raw = base64.b64decode(b64)
-                    images.append({"url": None, "local_path": await _save_image_bytes(raw, ext), "actual_prompt": None})
-            if images:
-                return {"success": True, "images": images, "model": model}
-        preview = last_text[:200] + ("…" if len(last_text) > 200 else "")
-        return JSONResponse(status_code=500, content={
-            "error": f"模型未回傳圖片，改用純文字回覆（重試 {_GEMINI_IMAGE_MAX_RETRIES} 次仍失敗）：{preview}"
-        })
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        for _attempt in range(_GEMINI_IMAGE_MAX_RETRIES + 1):
+            missing = max(0, n - len(images))
+            if not missing:
+                break
+            results = await asyncio.gather(*[
+                _gemini_image_once(client, model, parts, gen_config, api_key)
+                for _ in range(missing)
+            ])
+            for img, text, err in results:
+                if err is not None:
+                    return err
+                if img:
+                    images.append(img)
+                elif text:
+                    last_text = text
+            if len(images) >= n:
+                break
+    if images:
+        return {"success": True, "images": images[:n], "model": model}
+    preview = last_text[:200] + ("…" if len(last_text) > 200 else "")
+    return JSONResponse(status_code=500, content={
+        "error": f"模型未回傳圖片，改用純文字回覆（重試 {_GEMINI_IMAGE_MAX_RETRIES} 次仍失敗）：{preview}"
+    })
 
 # qwen-image-2.0 系列為「生成與編輯融合模型」：最多 3 張參考圖、可輸出 1-6 張，且不支援 ref_strength 參數
 _QWEN2_EDIT_MODELS = {"qwen-image-2.0-pro", "qwen-image-2.0"}
@@ -1531,8 +1591,9 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
 
     if data.model in _GEMINI_CHAT_IMAGE_MODELS:
         try:
-            return await _generate_gemini_chat_image(data.model, data.prompt, data.n, api_key,
-                                                       aspect_ratio=data.aspect_ratio)
+            return await _generate_gemini_image(data.model, data.prompt, data.n, api_key,
+                                                aspect_ratio=data.aspect_ratio,
+                                                image_size=data.size)
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -1637,7 +1698,9 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
 
     if model in _GEMINI_CHAT_IMAGE_MODELS:
         try:
-            return await _generate_gemini_chat_image(model, prompt, n, api_key, image_files)
+            return await _generate_gemini_image(model, prompt, n, api_key, image_files,
+                                                aspect_ratio=form.get("aspect_ratio") or None,
+                                                image_size=size)
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 

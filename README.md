@@ -156,7 +156,7 @@ python app.py
 
 > 兩個模型都同時支援圖像編輯 (I2I)，實測 `ref_strength` 參數有效、不會被拒絕，用法跟其餘走 `/v1/images/edits` 的模型一致。
 
-**Gemini Image（文生圖 + 圖像編輯，走 `/v1/chat/completions` + `modalities`，不支援結構化的 `size` 參數）**
+**Gemini Image（文生圖 + 圖像編輯，走 Gemini 原生的 `/v1beta/models/{model}:generateContent`）**
 
 | 模型 ID | 名稱 |
 |---|---|
@@ -165,7 +165,22 @@ python app.py
 | gemini-2.5-flash-image | Gemini 2.5 Flash Image（穩定版） |
 | gemini-3.1-flash-lite-image | Gemini 3.1 Flash Lite Image（輕量極速） |
 
-> T2I 支援「圖片比例」選項（1:1/16:9/9:16/4:3/3:4）。實測過 Gemini 官方的結構化 `imageConfig.aspectRatio` 參數在這個網關上會被靜默忽略，因此改用「在 prompt 文字裡以自然語言要求比例」的權宜做法（例如 `Generate an image with aspect ratio 16:9 depicting: ...`），並非官方保證的精確控制。網關上 `gemini-3-pro-image-preview`、`gemini-3.1-flash-image-preview` 這兩個 preview 版模型已下線（實測回 404），故不列入清單。
+> **輸出尺寸與比例都以結構化參數控制**，文生圖與圖像編輯皆適用：`imageConfig.aspectRatio`（1:1／16:9／9:16／4:3／3:4）與 `imageConfig.imageSize`（1K／2K／4K）。
+>
+> `imageSize` 的支援度各型號不同（2026-08-10 對正式網關逐一實測，每個型號 × 每個值都實際產圖量過寬高）：
+>
+> | 模型 | 1K | 2K | 4K |
+> |---|---|---|---|
+> | `gemini-3-pro-image` | ✓ | ✓ | ✓ |
+> | `gemini-3.1-flash-image` | ✓ | ✓ | ✓ |
+> | `gemini-2.5-flash-image` | ✓ | 接受參數但靜默忽略，永遠回 1024 | 同左 |
+> | `gemini-3.1-flash-lite-image` | ✓ | 回 400 | 回 400 |
+>
+> 後兩個型號的 `sizes` 因此只列 `1K`——列出來卻做不到的選項比沒有更糟。實際像素由 `imageSize` 與比例一起決定（例如 4K + 16:9 實測得到 5504×3072、2K + 9:16 得到 1536×2752）。
+>
+> **這裡先前是走 `/v1/chat/completions` + `modalities` 的**，那條路徑上結構化的 `imageConfig` 會被靜默忽略，只能用「在 prompt 文字裡以自然語言要求比例」的權宜做法（該做法實測確實有效：9:16 得到 768×1376），而且**完全無法控制解析度**；圖像編輯模式更是連比例參數都不處理，等於沒有任何輸出尺寸控制（使用者回報「gemini 3 pro image 選不了生成結果大小」即此）。原生端點兩個參數都真的生效，已改用。
+>
+> 注意原生端點**不接受 `candidateCount`**（送了直接 400），所以一次要多張時是並發打 n 次。另外 `/v1/images/generations` 不支援這些模型（回 `not supported model for image generation, only imagen models are supported`）。網關上 `gemini-3-pro-image-preview`、`gemini-3.1-flash-image-preview` 這兩個 preview 版模型已下線（實測回 404），故不列入清單。
 
 圖片輸出支援點擊放大預覽（lightbox）。
 

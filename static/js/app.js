@@ -644,6 +644,8 @@ function onImgModelChange() {
         "960*1280": "960×1280 (3:4)", "1280*960": "1280×960 (4:3)",
         "960*1696": "960×1696 (9:16)", "1696*960": "1696×960 (16:9)",
         "2048*2048": "2048×2048 (2K)", "4096*4096": "4096×4096 (4K)",
+        // Gemini 圖像模型用 imageConfig.imageSize，實際像素由它和比例一起決定
+        "1K": "1K（長邊約 1024）", "2K": "2K（長邊約 2048）", "4K": "4K（長邊約 4096）",
     };
     sizeEl.innerHTML = sizes.map(s =>
         `<option value="${s}"${s === currentSize ? ' selected' : ''}>${sizeLabels[s] || s}</option>`
@@ -1394,6 +1396,7 @@ async function sendImage() {
             fd.append('watermark', watermark); fd.append('ref_strength', refStrength);
             fd.append('n', n); fd.append('prompt_extend', extend);
             if (imgSeed !== null) fd.append('seed', imgSeed);
+            if (aspectRatio) fd.append('aspect_ratio', aspectRatio);
             if (quality) fd.append('quality', quality);
             if (background) fd.append('background', background);
             if (outputFormat) fd.append('output_format', outputFormat);

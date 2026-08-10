@@ -54,6 +54,16 @@
     - **思考關不掉**。`thinking.type=disabled`、`thinking.type=enabled`、額外欄位 `enable_thinking:false` 實測都無效（同一題 output token 150／151／148／111）。相對地 `/v1/chat/completions` 上 `enable_thinking:false` 是真的有效的（同題 completion token 139 → 1）。因此 MODELS 裡把 `glm-5.2` 的 `thinking` 旗標關掉，不顯示一個沒有作用的開關——這與本專案既有的處理慣例一致。
   - 端到端實測（本機服務打正式網關）：非串流拿到 `content='2'` 與 usage、串流拿到 195 字元的思考過程 + `content='一，二，三！'` + usage，兩條路徑都正常。
 
+- fix：修好使用者回報的「gemini 3 pro image 我現在選不了生成結果大小」——Gemini 圖像模型改走 Gemini 原生的 `/v1beta/models/{model}:generateContent`，輸出尺寸與比例都以結構化的 `imageConfig` 控制（commit 待補）。網關：正式環境 `https://nen.com.tw`。
+  - **問題確認**：Gemini 圖像模型在 MODELS 裡標了 `no_size: True`，前端會整個隱藏尺寸選單；而四個 i2i（編輯）條目連 `aspect_ratios` 都沒有，所以編輯模式下比例選單也一起被隱藏——**完全沒有任何輸出尺寸控制**。後端更徹底：`_generate_gemini_chat_image()` 的 `if image_files:` 分支根本沒有用到 `aspect_ratio` 參數，就算補上選單也不會有作用。
+  - **原因**：先前走的是 OpenAI 相容的 `/v1/chat/completions` + `modalities`，那條路徑上結構化的 `imageConfig` 會被上游靜默忽略（這次重測仍然如此：送 `imageConfig.aspectRatio=9:16` 得到的還是 1408×768 橫式），所以當初只能用「在 prompt 文字裡以自然語言要求比例」的權宜做法。那個做法本身其實是有效的（實測 9:16 → 768×1376、1:1 → 1024×1024），但**解析度完全沒有辦法控制**。
+  - **解法**：實測發現網關支援 Gemini 原生的 `/v1beta/models/{model}:generateContent`，而且 `imageConfig` 在那裡真的生效——`aspectRatio` 文生圖與圖像編輯都吃，`imageSize` 給 1K/2K/4K 得到長邊 1024/2048/4096。改寫成 `_generate_gemini_image()` 走原生端點，MODELS 拿掉 `no_size`、改成各型號實測支援的 `sizes`，四個 i2i 條目補上 `aspect_ratios`，前端在編輯模式也送 `aspect_ratio`。
+  - **各型號的 `imageSize` 支援度不同**，逐一實測（每個型號 × 每個值都實際產圖量寬高）：`gemini-3-pro-image` 與 `gemini-3.1-flash-image` 三種都真的生效；`gemini-2.5-flash-image` 接受參數但**靜默忽略**、永遠回 1024；`gemini-3.1-flash-lite-image` 的 2K/4K 直接回 400。後兩個型號的 `sizes` 因此只列 `1K`——列出來卻做不到的選項比沒有更糟。
+  - 原生端點**不接受 `candidateCount`**（送了直接 400），所以多張改成並發打 n 次、沿用原本的重試次數補足缺的張數。另外 `/v1/images/generations` 不支援這些模型（回 `only imagen models are supported`）。
+  - 加了防呆：只有 `1K`/`2K`/`4K` 會被轉成 `imageSize` 送出，避免瀏覽器快取著舊版前端、送來 `1024*1024` 這種其他家族的尺寸字串導致上游 400。
+  - 端到端實測（本機服務打正式網關，下載成品量寬高）：文生圖 1K+1:1 → 1024×1024、2K+1:1 → 2048×2048、4K+16:9 → 5504×3072；圖像編輯 2K+9:16 → 1536×2752。
+  - 前端改動：`app.js?v=54` → `?v=55`。
+
 ## 2026-08-08
 
 - fix：手機版登入頁三個問題（使用者回報「手機看好像燈不見了」）。**燈在手機上被隱藏其實是功能退化，不只是美觀問題**——燈同時是登入頁切換淺色/深色模式的唯一入口，`@media (max-width: 760px) { .login-lamp { display: none } }` 等於讓手機使用者完全沒辦法切主題。改成把燈排到卡片下方（那裡本來就是一大片空白）並縮小到 58%；因為 `transform: scale()` 不會改變版面高度，要用負 margin 把縮放後多出來的空白（236px × 0.42 ≈ 99px）收掉，否則底下會留一段幽靈空隙。順手抓到一個既有 bug：`.login-card` 只寫了 `width: 420px` 沒有 `max-width`，在比 420px 窄的手機上卡片會直接撐破視窗、左右被切掉，補上 `max-width: calc(100vw - 28px)`。另外雲照原尺寸放在窄螢幕上會大到擠住登入卡片，等比例縮到 62%——實作上把雲的寬度改成透過 CSS 變數傳遞而不是 JS 直接設 `style.width`，因為 inline style 的優先權比 media query 高，直接設的話得靠 `!important` 才蓋得掉。已用 Playwright 在 390px 寬（iPhone 14 Pro）實測：無橫向溢出、卡片 362px、用真實觸控座標點燈確認能正常切換 dark→light、燈的底緣與場景底緣一致（無幽靈空隙）。
