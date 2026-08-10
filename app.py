@@ -450,22 +450,22 @@ MODELS = {
         {
             "id": "gemini-3-pro-image", "name": "Gemini 3 Pro Image", "group": "Gemini Image",
             "desc": "Google 旗艦圖像生成，畫質最佳", "type": "t2i", "max_n": 4, "sizes": ["1K", "2K", "4K"],
-            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "5:4", "4:5", "21:9"],
         },
         {
             "id": "gemini-3.1-flash-image", "name": "Gemini 3.1 Flash Image", "group": "Gemini Image",
             "desc": "速度與品質平衡，建議日常使用", "type": "t2i", "max_n": 4, "sizes": ["1K", "2K", "4K"],
-            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "5:4", "4:5", "21:9"],
         },
         {
             "id": "gemini-2.5-flash-image", "name": "Gemini 2.5 Flash Image", "group": "Gemini Image",
             "desc": "穩定版，較成熟的圖像模型", "type": "t2i", "max_n": 4, "sizes": ["1K"],
-            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "5:4", "4:5", "21:9"],
         },
         {
             "id": "gemini-3.1-flash-lite-image", "name": "Gemini 3.1 Flash Lite Image", "group": "Gemini Image",
             "desc": "輕量極速圖像生成", "type": "t2i", "max_n": 4, "sizes": ["1K"],
-            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "5:4", "4:5", "21:9"],
         },
         # ── GPT Image 編輯（沿用一般 /v1/images/edits 流程）──────────
         {
@@ -512,22 +512,22 @@ MODELS = {
         {
             "id": "gemini-3-pro-image", "name": "Gemini 3 Pro Image（編輯）", "group": "Gemini Image",
             "desc": "Google 旗艦圖像編輯，畫質最佳", "type": "i2i", "max_n": 1, "no_ref_strength": True, "sizes": ["1K", "2K", "4K"],
-            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "5:4", "4:5", "21:9"],
         },
         {
             "id": "gemini-3.1-flash-image", "name": "Gemini 3.1 Flash Image（編輯）", "group": "Gemini Image",
             "desc": "速度與品質平衡，建議日常使用", "type": "i2i", "max_n": 1, "no_ref_strength": True, "sizes": ["1K", "2K", "4K"],
-            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "5:4", "4:5", "21:9"],
         },
         {
             "id": "gemini-2.5-flash-image", "name": "Gemini 2.5 Flash Image（編輯）", "group": "Gemini Image",
             "desc": "穩定版，較成熟的圖像模型", "type": "i2i", "max_n": 1, "no_ref_strength": True, "sizes": ["1K"],
-            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "5:4", "4:5", "21:9"],
         },
         {
             "id": "gemini-3.1-flash-lite-image", "name": "Gemini 3.1 Flash Lite Image（編輯）", "group": "Gemini Image",
             "desc": "輕量極速圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True, "sizes": ["1K"],
-            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "5:4", "4:5", "21:9"],
         },
     ],
     "video": [
@@ -1471,12 +1471,29 @@ async def _extract_images_from_data(data_list: list) -> list:
 # 指令前綴可顯著改善成功率，仍會不穩定則再靠重試補強。
 _GEMINI_IMAGE_MAX_RETRIES = 2
 
-# imageConfig.imageSize 的合法值。各型號支援度不同（2026-08-10 對正式網關逐一實測，
-# 每個型號 × 每個值都實際產圖量過寬高）：
+# ─── Gemini 圖像尺寸的運作方式（2026-08-10 對正式網關實測歸納）────────────────
+# 輸出像素**不是**直接指定寬高，而是由兩個參數共同決定：
+#   imageConfig.imageSize   = 總像素預算（1K ≈ 105 萬、2K ≈ 4×、4K ≈ 16×）
+#   imageConfig.aspectRatio = 形狀
+# 上游取「符合該比例、且總像素最接近預算」的一組寬高，且兩邊都對齊到 16 的倍數。
+# 以 1K 實測（gemini-3.1-flash-lite-image）：
+#   1:1  1024x1024 (1,048,576)   4:3  1200x896  (1,075,200)   3:4  896x1200
+#   3:2  1264x848  (1,071,872)   2:3  848x1264  (1,071,872)
+#   5:4  1152x928  (1,069,056)   4:5  928x1152  (1,069,056)
+#   16:9 1376x768  (1,056,768)   9:16 768x1376  (1,056,768)   21:9 1584x672 (1,064,448)
+# 注意「4K」是像素預算而不是 UHD 解析度——4K + 16:9 實測是 5504x3072（約 1,690 萬
+# 像素），不是 3840x2160。想要精確的寬高就得自己換算，這個 API 沒有直接指定的方式。
+#
+# imageSize 各型號支援度不同（每個型號 × 每個值都實際產圖量過寬高）：
 #   gemini-3-pro-image / gemini-3.1-flash-image  1K/2K/4K 都真的生效（1024/2048/4096）
 #   gemini-2.5-flash-image                       接受參數但**靜默忽略**，永遠回 1024
 #   gemini-3.1-flash-lite-image                  2K/4K 直接回 400
 # 所以 MODELS 裡後兩個型號的 sizes 只列 1K——列出來卻做不到的選項比沒有更糟。
+#
+# aspectRatio 則是四個型號都支援全部 10 種（含最偏門的 21:9，四個型號都實測過；
+# gemini-2.5-flash-image 的量化略有不同，21:9 給的是 1536x672 而非 1584x672）。
+# 非法值（99:1、banana、8K）一律回 400，不會被靜默忽略——但錯誤訊息是通用的
+# "Request contains an invalid argument."，看不出是哪個欄位有問題。
 _GEMINI_IMAGE_SIZES = {"1K", "2K", "4K"}
 
 async def _gemini_image_once(client: httpx.AsyncClient, model: str, parts: list,
