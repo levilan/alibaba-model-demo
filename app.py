@@ -493,11 +493,11 @@ MODELS = {
         #       只有「首幀生成」一種模式。
         # ── 萬相 3.0（All-in-One）──────────────────────────────────
         # 單一模型 id 統一支援文生／圖生／參考生／視頻編輯，模型名沒有 i2v/r2v/
-        # videoedit 後綴，所以上游無法從模型名判斷每個媒體的用途，改由「副檔名 ＋
-        # 位置」推斷。**這對本專案行不通**——我們的媒體一律是 multipart 上傳轉成的
-        # `data:video/mp4;base64,...` data URI，根本沒有副檔名，推斷必定落空。因此
-        # 改走上游提供的覆寫管道，直接以 metadata.input.media 送出我們自己已經標好
-        # 型別的陣列（見 _WAN30_ALLINONE_MODELS）。
+        # videoedit 後綴，所以上游無法從模型名判斷每個媒體的用途，改由「MIME／副檔名
+        # ＋ 位置」推斷（data URI 取 data: 與第一個 ;／, 之間的 MIME 判定，HTTP URL
+        # 先切掉 query string 再比副檔名，判不出來才回退到位置）。我們送的 data URI
+        # 是判得出來的，但仍改走上游提供的覆寫管道，直接以 metadata.input.media 送出
+        # 我們自己已標好型別的陣列（見 _WAN30_ALLINONE_MODELS）——理由見該處註解。
         #
         # ⚠️ 尚未實測：wan3.0-video 的官方 API 文檔目前是邀請制、尚未公開。可公開
         #    查證的只有模型名、端點、resolution/ratio/duration 三個參數與定價；
@@ -1549,10 +1549,16 @@ _FIRST_FRAME_ONLY_I2V_MODELS = {
 _REF_IMAGES_ONLY_MODELS = {m["id"] for m in MODELS["video"] if m.get("ref_images_only")}
 
 # 萬相 3.0 這種 all-in-one 模型的模型名沒有 i2v/r2v/videoedit 後綴，上游無法從模型名
-# 判斷每個媒體的用途，改以「副檔名 ＋ 位置」推斷（影片副檔名→video、音訊副檔名→
-# driving_audio、第一張圖→first_frame、其餘圖→reference_image）。我們送的媒體全都是
-# multipart 上傳轉成的 data URI、沒有副檔名，這套推斷必定落空，所以改走上游提供的
-# metadata 覆寫管道：直接把我們自己已經標好 type 的 media 陣列放進 metadata.input.media。
+# 判斷每個媒體的用途，改以「MIME／副檔名 ＋ 位置」推斷：影片→video、音訊→
+# driving_audio、第一張圖→first_frame、其餘圖→reference_image。我們送的 data URI
+# 是判得出來的（上游會從 data:<mime>; 取 MIME），但仍然改走上游提供的覆寫管道，
+# 直接把我們自己已標好 type 的陣列放進 metadata.input.media，原因有二：
+#   1. 位置推斷表達不了我們實際有的語意。上游對影片一律推成 `video`（video-edit 的
+#      來源影片），永遠不會產出 `first_clip`（影片續寫的起始片段）——這兩者在 wan2.7
+#      是不同語意，而我們的 i2v「影片延伸」模式送的正是 first_clip。
+#   2. 實測階段的除錯價值：完全不依賴上游的推斷，萬一失敗就能確定問題出在 type 詞彙
+#      本身，而不是推斷邏輯，範圍收斂得比較快。
+# 上游確認這是預期用法。
 _WAN30_ALLINONE_MODELS = {"wan3.0-video"}
 # 同一批模型的 ratio 預設是 adaptive（跟隨輸入自適應），而不是其他家族慣用的 16:9；
 # ratio 與 resolution 是兩個互相獨立的參數
