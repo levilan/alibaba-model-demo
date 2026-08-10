@@ -649,12 +649,22 @@ function onImgModelChange() {
         "960*1280": "960×1280 (3:4)", "1280*960": "1280×960 (4:3)",
         "960*1696": "960×1696 (9:16)", "1696*960": "1696×960 (16:9)",
         "2048*2048": "2048×2048 (2K)", "4096*4096": "4096×4096 (4K)",
-        // Gemini 圖像模型用 imageConfig.imageSize，實際像素由它和比例一起決定
-        "1K": "1K（長邊約 1024）", "2K": "2K（長邊約 2048）", "4K": "4K（長邊約 4096）",
+        // 規格值：萬相 2.7 走 size 的「方式一」（1K=1024*1024 等效總像素，比例
+        // 跟隨輸入圖、無輸入圖則為正方形）；Gemini 走 imageConfig.imageSize。
+        // 兩家的實際輸出像素算法不同，標籤只寫規格本身、不寫死換算結果
+        "1K": "1K", "2K": "2K（預設）", "4K": "4K",
     };
-    sizeEl.innerHTML = sizes.map(s =>
+    // 組圖模式（萬相 2.7）下 4K 不可用——官方文件寫明組圖只到 2K，但網關的驗證
+    // 擋不住這個組合（實測送 4K + enable_sequential 一樣通過驗證），所以要在這裡擋，
+    // 否則使用者要等到生成階段才會失敗
+    const seqOn = document.getElementById('imgEnableSequential').checked
+        && document.getElementById('imgSequentialGroup').style.display !== 'none';
+    const seqCap = seqOn ? modelInfo.sequential_max_size : null;
+    const usable = (seqCap === '2K') ? sizes.filter(s => s !== '4K' && s !== '4096*4096') : sizes;
+    sizeEl.innerHTML = usable.map(s =>
         `<option value="${s}"${s === currentSize ? ' selected' : ''}>${sizeLabels[s] || s}</option>`
     ).join('');
+    if (!usable.includes(currentSize) && usable.length) sizeEl.value = usable[0];
 
     // 圖片比例（僅 Gemini T2I 支援，用自然語言注入 prompt 的方式模擬比例控制）
     const aspectRatioGroup = document.getElementById('imgAspectRatioGroup');
@@ -707,6 +717,8 @@ function onImgModelChange() {
 }
 
 // 組圖模式開啟時，n 上限由 4 提高到 12（實際生成張數由模型決定、不保證等於設定值）
+let _imgSizeRefreshing = false;   // 見 onImgSequentialToggle 末端的遞迴保護
+
 function onImgSequentialToggle() {
     const on = document.getElementById('imgEnableSequential').checked;
     const nSlider = document.getElementById('imgN');
@@ -721,6 +733,12 @@ function onImgSequentialToggle() {
     document.getElementById('imgNLabel').innerHTML =
         (on ? '最大張數（組圖模式，實際張數由模型決定）' : '生成張數') +
         ` <span class="param-val" id="imgNVal">${nSlider.value}</span>`;
+    // 組圖模式會限制可用的解析度規格（4K 不可用），重算尺寸選單。
+    // onImgModelChange() 在模型不支援組圖時會反過來呼叫這裡，用旗標擋掉無限遞迴
+    if (!_imgSizeRefreshing) {
+        _imgSizeRefreshing = true;
+        try { onImgModelChange(); } finally { _imgSizeRefreshing = false; }
+    }
 }
 
 // ── Video 任務/模型切換 ────────────────────────────────────────
