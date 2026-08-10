@@ -119,6 +119,16 @@
   - 非法值（`99:1`、`banana`、`8K`）一律回 400、**不會被靜默忽略**，但錯誤訊息是通用的 `Request contains an invalid argument.`，看不出是哪個欄位有問題——所以沒辦法像萬相那樣用「非法哨兵參數」免費列舉，這輪的比例列舉是實際產圖驗的（用最便宜的 flash-lite，共 13 張）。
   - 前端不用改：比例選單是從 `/api/models` 動態產生的，加值即生效。
 
+- feat：Gemini 文字模型（7 個）的路由改走 Gemini 原生 API，`/v1beta/models/{model}:generateContent`（串流 `:streamGenerateContent?alt=sse`）（commit 待補）。網關：正式環境 `https://nen.com.tw`。
+  - **這不只是換端點，是換回兩個先前做不到的能力。** 走 OpenAI 相容端點時 Gemini 的思考過程既看不到也關不掉——`README.md` 與 MODELS 的註解一度據此寫「Gemini 3.x 系列無條件思考、關不掉」、七個模型全部標 `thinking: False`。原生端點實測兩件事都做得到：`thinkingConfig.includeThoughts` 會回傳帶 `"thought": true` 的 content part（思考全文，串流時也逐段送），`thinkingConfig.thinkingBudget: 0` 能真的關掉思考。**同一題關閉思考後 completion token 從 170～210 降到 1**——這是實際的費用差距，先前使用者完全沒有辦法省下來。
+  - 新增 `_GEMINI_NATIVE_TEXT_MODELS` 分流與 `_build_gemini_body()` / `_gemini_text_generate()` / `_gemini_text_stream()`。請求轉換：`system_prompt` → 頂層 `systemInstruction`、`max_tokens` → `generationConfig.maxOutputTokens`、`stop` → `stopSequences`、`top_p`/`top_k` → `topP`/`topK`、`presence/frequency_penalty` → `presencePenalty`/`frequencyPenalty`；回應的 `thought` part → 前端既有的 `reasoning` 事件，一般 part → `content`。前端不用改。
+  - **支援度各型號不同，送錯直接 400**，所以有兩個例外集合（逐一實測）：
+    - `gemini-2.5-pro` 不接受 `thinkingBudget: 0`（`The model does not support setting thinking_budget to 0`）→ 思考關不掉，`thinking` 維持 `False` 不給開關，但改成一律送 `includeThoughts` 把過程顯示出來（先前是白花 token 又看不到）
+    - `gemini-2.5-flash-lite` 不接受 `includeThoughts`（`Thinking_config.include_thoughts is not supported`）→ 有開關但不顯示思考區塊
+  - **`gemini-2.5-flash-lite` 還有一個差點漏掉的陷阱**：它的思考**預設是關的**（不帶 `thinkingConfig` 時 `thoughtsTokenCount` 是 `None`）。第一版實作對它在「思考開」時什麼都不送，結果開/關都是 1 個 token——那個開關等於沒有作用。實測後改成送 `thinkingBudget: -1`（動態預算）才真的啟動思考（124 vs 1 個 token）。
+  - **計費**：`thoughtsTokenCount` 也是實際收費的輸出 token，`usage.completion_tokens` 算成 `candidatesTokenCount + thoughtsTokenCount`，否則 header 的「本次花費」會嚴重低估（思考往往佔了絕大部分）。
+  - 端到端實測：7 個模型 × 非串流思考開/關 × 串流,全部通過,行為與上表一致。
+
 ## 2026-08-08
 
 - fix：手機版登入頁三個問題（使用者回報「手機看好像燈不見了」）。**燈在手機上被隱藏其實是功能退化，不只是美觀問題**——燈同時是登入頁切換淺色/深色模式的唯一入口，`@media (max-width: 760px) { .login-lamp { display: none } }` 等於讓手機使用者完全沒辦法切主題。改成把燈排到卡片下方（那裡本來就是一大片空白）並縮小到 58%；因為 `transform: scale()` 不會改變版面高度，要用負 margin 把縮放後多出來的空白（236px × 0.42 ≈ 99px）收掉，否則底下會留一段幽靈空隙。順手抓到一個既有 bug：`.login-card` 只寫了 `width: 420px` 沒有 `max-width`，在比 420px 窄的手機上卡片會直接撐破視窗、左右被切掉，補上 `max-width: calc(100vw - 28px)`。另外雲照原尺寸放在窄螢幕上會大到擠住登入卡片，等比例縮到 62%——實作上把雲的寬度改成透過 CSS 變數傳遞而不是 JS 直接設 `style.width`，因為 inline style 的優先權比 media query 高，直接設的話得靠 `!important` 才蓋得掉。已用 Playwright 在 390px 寬（iPhone 14 Pro）實測：無橫向溢出、卡片 362px、用真實觸控座標點燈確認能正常切換 dark→light、燈的底緣與場景底緣一致（無幽靈空隙）。

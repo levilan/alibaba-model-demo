@@ -91,9 +91,25 @@ python app.py
 | claude-fable-5 | Claude Fable 5 | Claude | — |
 | gpt-5.6-terra / sol / luna | GPT 5.6 特化系列 | GPT | reasoning_effort |
 | gpt-5.5 / 5.4 / 5.4-mini / 5.4-nano / 5.2 / 5-mini | GPT 5.x 系列 | GPT | reasoning_effort |
-| gemini-3.1-pro-preview 等 7 個 Gemini 模型 | Gemini 系列 | Gemini | — |
+| gemini-3.1-pro-preview 等 7 個 Gemini 模型 | Gemini 系列 | Gemini | thinkingConfig（走原生 API） |
 
-> **思考模式的三種機制，不能混用**：Qwen/DeepSeek/GLM 用布林值 `enable_thinking`（這幾家幾乎都實測預設就是開啟，必須明確送 `enable_thinking:false` 才會關閉並省 token——完全不帶這個欄位並不會關閉思考，後端一律會明確帶上 `true`/`false`，只有 GPT 系列例外不帶）；GPT 系列改用字串 `reasoning_effort`（實測這個網關接受的枚舉是 `none/low/medium/high/xhigh`，跟 OpenAI 官方文件常見的 `minimal/low/medium/high` 不同，帶錯值或帶 `enable_thinking` 給 GPT 都會被直接拒絕）；Claude／Gemini／ByteDance Seed 2.0 系列目前實測皆無法透過這個網關控制（Claude 送了無效、Gemini 3.x 與 Seed 2.0 系列無條件思考、關不掉），因此 UI 不提供對應開關；`qwen3-coder-plus`/`qwen3-coder-flash` 則是實測 `enable_thinking` 完全沒有效果（true/false 都不會有思考過程），同樣不顯示開關。開啟後若上游回傳 `reasoning_content`（Qwen/DeepSeek/GLM 大部分模型，以及無法關閉思考的 Seed 2.0 系列），會在回答上方顯示成可收合的「思考過程」區塊。
+> **思考模式的三種機制，不能混用**：Qwen/DeepSeek/GLM 用布林值 `enable_thinking`（這幾家幾乎都實測預設就是開啟，必須明確送 `enable_thinking:false` 才會關閉並省 token——完全不帶這個欄位並不會關閉思考，後端一律會明確帶上 `true`/`false`，只有 GPT 系列例外不帶）；GPT 系列改用字串 `reasoning_effort`（實測這個網關接受的枚舉是 `none/low/medium/high/xhigh`，跟 OpenAI 官方文件常見的 `minimal/low/medium/high` 不同，帶錯值或帶 `enable_thinking` 給 GPT 都會被直接拒絕）；Claude 與 ByteDance Seed 2.0 系列目前實測無法透過這個網關控制（Claude 送了無效、Seed 2.0 系列無條件思考關不掉），因此 UI 不提供對應開關；**Gemini 系列改走原生 API 後已經可以控制**，詳見下方；`qwen3-coder-plus`/`qwen3-coder-flash` 則是實測 `enable_thinking` 完全沒有效果（true/false 都不會有思考過程），同樣不顯示開關。開啟後若上游回傳 `reasoning_content`（Qwen/DeepSeek/GLM 大部分模型，以及無法關閉思考的 Seed 2.0 系列），會在回答上方顯示成可收合的「思考過程」區塊。
+
+> **Gemini 文字模型走 Gemini 原生 API**：`/v1beta/models/{model}:generateContent`，串流是 `:streamGenerateContent?alt=sse`（見 `_GEMINI_NATIVE_TEXT_MODELS`）。後端把請求轉成原生格式（`system_prompt` → 頂層 `systemInstruction`、`max_tokens` → `generationConfig.maxOutputTokens`、`stop` → `stopSequences`、`top_p`/`top_k` → `topP`/`topK`），並把回應轉回前端既有的協定。
+>
+> **改走原生 API 換到的能力**：先前走 OpenAI 相容端點時，Gemini 的思考過程既看不到也關不掉（本文件一度據此寫「Gemini 3.x 無條件思考、關不掉」）。原生端點兩件事都做得到——`thinkingConfig.includeThoughts` 會回傳帶 `"thought": true` 的 content part（就是思考全文，串流時也逐段送），`thinkingConfig.thinkingBudget: 0` 能真的關掉思考。實測同一題關閉後 completion token 從 170～210 降到 **1**，省下來的是實際費用。
+>
+> 但支援度**各型號不同**，送錯會直接 400，所以有兩個例外（2026-08-10 逐一實測）：
+>
+> | 模型 | 顯示思考過程 | 關閉思考 | UI 開關 |
+> |---|---|---|---|
+> | `gemini-3.1-pro-preview`、`3.6-flash`、`3.5-flash`、`3-flash-preview`、`2.5-flash` | ✓ | ✓ | 有 |
+> | `gemini-2.5-pro` | ✓ | ✗ `The model does not support setting thinking_budget to 0` | 無（關不掉，一律顯示過程） |
+> | `gemini-2.5-flash-lite` | ✗ `Thinking_config.include_thoughts is not supported` | ✓ | 有（但不顯示思考區塊） |
+>
+> `gemini-2.5-flash-lite` 還有一個陷阱：它的思考**預設是關的**，不帶 `thinkingConfig` 時 `thoughtsTokenCount` 是 `None`。因為它又不接受 `includeThoughts`，開關要送 `thinkingBudget: -1`（動態預算）才會真的啟動思考，否則那個開關會完全沒有作用（實測開/關都是 1 個 token）。
+>
+> 計費上要注意 `thoughtsTokenCount` 也是實際收費的輸出 token，後端的 `usage.completion_tokens` 是 `candidatesTokenCount + thoughtsTokenCount`，否則「本次花費」會嚴重低估。
 
 > **`glm-5.2` 走的是 Anthropic Messages 格式的 `/v1/messages`**，不是其餘文字模型共用的 OpenAI 相容 `/v1/chat/completions`（見 `_ANTHROPIC_MESSAGES_MODELS`）。後端會把請求轉成 Anthropic 格式（`system` 提到頂層、`stop` → `stop_sequences`、`max_tokens` 必填），並把回應轉回前端既有的協定。實測（2026-08-10，正式網關）這條路徑有兩個差異：
 > - **思考過程只有串流模式看得到**：串流時思考會走獨立的 `thinking` content block（`thinking_delta` 事件），後端轉成前端的 `reasoning` 事件，顯示效果與 `reasoning_content` 相同；**非串流回應則完全不含思考過程**，只有 `text` block（token 照樣被消耗）。

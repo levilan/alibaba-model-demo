@@ -295,16 +295,23 @@ MODELS = {
         {"id": "gpt-5.4-nano",  "name": "GPT 5.4 Nano",  "group": "GPT", "desc": "超輕量極速",   "thinking": False, "reasoning_effort": True},
         {"id": "gpt-5.2",       "name": "GPT 5.2",       "group": "GPT", "desc": "前代均衡模型", "thinking": False, "reasoning_effort": True},
         {"id": "gpt-5-mini",    "name": "GPT 5 Mini",    "group": "GPT", "desc": "前代輕量模型", "thinking": False, "reasoning_effort": True},
-        # ── Gemini（3.x 系列實測會無條件消耗 reasoning_tokens 思考，enable_thinking/
-        #    reasoning_effort 兩種參數都試過，沒有任何一個能讓它降到 0——這個網關上
-        #    目前無法關閉，thinking 維持 False，沒有開關讓使用者假裝能控制）──
-        {"id": "gemini-3.1-pro-preview",      "name": "Gemini 3.1 Pro Preview",      "group": "Gemini", "desc": "旗艦，最強推理",   "thinking": False},
-        {"id": "gemini-3.6-flash",            "name": "Gemini 3.6 Flash",            "group": "Gemini", "desc": "新一代均衡模型",   "thinking": False},
-        {"id": "gemini-3.5-flash",            "name": "Gemini 3.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": False},
-        {"id": "gemini-3-flash-preview",      "name": "Gemini 3 Flash Preview",      "group": "Gemini", "desc": "前代均衡模型",     "thinking": False},
-        {"id": "gemini-2.5-pro",              "name": "Gemini 2.5 Pro",              "group": "Gemini", "desc": "前代旗艦",         "thinking": False},
-        {"id": "gemini-2.5-flash",            "name": "Gemini 2.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": False},
-        {"id": "gemini-2.5-flash-lite",       "name": "Gemini 2.5 Flash Lite",       "group": "Gemini", "desc": "前代輕量極速",     "thinking": False},
+        # ── Gemini（改走 Gemini 原生 API，見 _GEMINI_NATIVE_TEXT_MODELS）──────────
+        # 先前走 OpenAI 相容端點時，Gemini 的思考既看不到也關不掉，這裡一度全部標成
+        # thinking: False。改走原生端點後兩件事都做得到了（實測 2026-08-10）：
+        # thinkingConfig.includeThoughts 拿得到思考過程全文、thinkingBudget=0 能真的
+        # 關掉思考。但支援度各型號不同，兩個例外見 _GEMINI_NO_THINKING_OFF /
+        # _GEMINI_NO_INCLUDE_THOUGHTS：
+        #   gemini-2.5-pro        思考關不掉（送 budget=0 直接 400），但過程看得到，
+        #                         所以不給開關、一律顯示思考過程
+        #   gemini-2.5-flash-lite 思考關得掉，但過程拿不到（送 includeThoughts 直接
+        #                         400），所以有開關、但不會顯示思考區塊
+        {"id": "gemini-3.1-pro-preview",      "name": "Gemini 3.1 Pro Preview",      "group": "Gemini", "desc": "旗艦，最強推理",   "thinking": True},
+        {"id": "gemini-3.6-flash",            "name": "Gemini 3.6 Flash",            "group": "Gemini", "desc": "新一代均衡模型",   "thinking": True},
+        {"id": "gemini-3.5-flash",            "name": "Gemini 3.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
+        {"id": "gemini-3-flash-preview",      "name": "Gemini 3 Flash Preview",      "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
+        {"id": "gemini-2.5-pro",              "name": "Gemini 2.5 Pro",              "group": "Gemini", "desc": "前代旗艦（思考無法關閉）", "thinking": False},
+        {"id": "gemini-2.5-flash",            "name": "Gemini 2.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
+        {"id": "gemini-2.5-flash-lite",       "name": "Gemini 2.5 Flash Lite",       "group": "Gemini", "desc": "前代輕量極速（不顯示思考過程）", "thinking": True},
     ],
     "image": [
         # ── 千問文生圖 ────────────────────────────────────────────
@@ -1087,6 +1094,150 @@ async def _anthropic_stream(data: "TextGenerateRequest", messages: list,
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
 
+# ─── Gemini 文字模型走 Gemini 原生 API ────────────────────────────────────────
+# 端點 /v1beta/models/{model}:generateContent（串流是 :streamGenerateContent?alt=sse）。
+# 先前跟其他家族一樣走 OpenAI 相容的 /v1/chat/completions，那條路徑上 Gemini 的思考
+# 過程既看不到、也關不掉（README 一度據此寫「Gemini 3.x 無條件思考、關不掉」）。
+# 2026-08-10 實測原生端點兩件事都做得到：
+#   generationConfig.thinkingConfig.includeThoughts=true → 回傳帶 "thought": true 的
+#     content part，裡面就是思考過程全文；串流時同樣以 thought part 逐段送出
+#   generationConfig.thinkingConfig.thinkingBudget=0     → thoughtsTokenCount 消失，
+#     思考真的被關掉（同一題原本要花 300~800 個 thought token）
+# 但支援度**各型號不同**，送錯會直接 400，所以下面兩個例外集合是必要的。
+_GEMINI_NATIVE_TEXT_MODELS = {
+    m["id"] for m in MODELS["text"] if m["id"].startswith("gemini-")
+}
+# gemini-2.5-pro 不接受 thinkingBudget=0（回 "The model does not support setting
+# thinking_budget to 0"）——它的思考關不掉，只能顯示過程
+_GEMINI_NO_THINKING_OFF = {"gemini-2.5-pro"}
+# gemini-2.5-flash-lite 不接受 includeThoughts（回 "Thinking_config.include_thoughts
+# is not supported"）——它的思考可以關掉，但過程拿不到
+_GEMINI_NO_INCLUDE_THOUGHTS = {"gemini-2.5-flash-lite"}
+
+
+def _build_gemini_body(data: "TextGenerateRequest", messages: list) -> dict:
+    """把內部的 OpenAI 風格請求轉成 Gemini 原生格式。"""
+    contents = []
+    for m in messages:
+        role = m.get("role")
+        if role == "system":
+            continue          # Gemini 的 system 是頂層 systemInstruction
+        contents.append({"role": "model" if role == "assistant" else "user",
+                         "parts": [{"text": m.get("content") or ""}]})
+
+    gen: dict = {
+        "temperature": data.temperature,
+        "topP": data.top_p,
+        "maxOutputTokens": data.max_tokens,
+    }
+    if data.top_k is not None and data.top_k > 0:
+        gen["topK"] = data.top_k
+    if data.stop:
+        gen["stopSequences"] = data.stop[:4]
+    if data.seed is not None:
+        gen["seed"] = data.seed
+    if data.presence_penalty:
+        gen["presencePenalty"] = data.presence_penalty
+    if data.frequency_penalty:
+        gen["frequencyPenalty"] = data.frequency_penalty
+
+    thinking: dict = {}
+    if data.enable_thinking:
+        if data.model in _GEMINI_NO_INCLUDE_THOUGHTS:
+            # 這些型號拿不到思考過程，而且思考預設是關的（實測不帶 thinkingConfig 時
+            # thoughtsTokenCount 是 None），要用 -1（動態預算）才會真的開始思考——
+            # 否則這個開關會變成完全沒有作用
+            thinking["thinkingBudget"] = -1
+        else:
+            thinking["includeThoughts"] = True
+    else:
+        if data.model in _GEMINI_NO_THINKING_OFF:
+            # 關不掉，那就至少把過程顯示出來，而不是白花 token 又看不到
+            if data.model not in _GEMINI_NO_INCLUDE_THOUGHTS:
+                thinking["includeThoughts"] = True
+        else:
+            thinking["thinkingBudget"] = 0
+    if thinking:
+        gen["thinkingConfig"] = thinking
+
+    body: dict = {"contents": contents, "generationConfig": gen}
+    if data.system_prompt:
+        body["systemInstruction"] = {"parts": [{"text": data.system_prompt}]}
+    return body
+
+
+def _gemini_usage(um: dict) -> dict:
+    """thoughtsTokenCount 也是實際計費的輸出 token，要一起算進 completion。"""
+    return {"prompt_tokens": um.get("promptTokenCount", 0),
+            "completion_tokens": (um.get("candidatesTokenCount", 0) or 0)
+                                 + (um.get("thoughtsTokenCount", 0) or 0)}
+
+
+async def _gemini_text_generate(data: "TextGenerateRequest", messages: list, api_key: str):
+    body = _build_gemini_body(data, messages)
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        resp = await client.post(f"{NENAI_BASE}/v1beta/models/{data.model}:generateContent",
+                                 headers=headers, json=body)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text[:500])
+        rj = resp.json()
+    texts, thoughts = [], []
+    for cand in rj.get("candidates", []):
+        for part in (cand.get("content") or {}).get("parts", []):
+            if not part.get("text"):
+                continue
+            (thoughts if part.get("thought") else texts).append(part["text"])
+    result: dict = {"content": "".join(texts), "done": True}
+    if thoughts:
+        result["reasoning_content"] = "".join(thoughts)
+    if rj.get("usageMetadata"):
+        result["usage"] = _gemini_usage(rj["usageMetadata"])
+    return result
+
+
+async def _gemini_text_stream(data: "TextGenerateRequest", messages: list,
+                              api_key: str) -> AsyncGenerator[str, None]:
+    body = _build_gemini_body(data, messages)
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    url = f"{NENAI_BASE}/v1beta/models/{data.model}:streamGenerateContent?alt=sse"
+    usage: dict = {}
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            async with client.stream("POST", url, headers=headers, json=body) as resp:
+                if resp.status_code != 200:
+                    detail = (await resp.aread()).decode("utf-8", "replace")[:500]
+                    yield f"data: {json.dumps({'error': detail})}\n\n"
+                    return
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    raw = line[5:].strip()
+                    if not raw or raw == "[DONE]":
+                        continue
+                    try:
+                        ev = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                    for cand in ev.get("candidates", []):
+                        for part in (cand.get("content") or {}).get("parts", []):
+                            text = part.get("text")
+                            if not text:
+                                continue
+                            key = "reasoning" if part.get("thought") else "content"
+                            yield f"data: {json.dumps({key: text})}\n\n"
+                    # usageMetadata 每個 chunk 都可能出現，但只有最後一個是完整的
+                    um = ev.get("usageMetadata") or {}
+                    if um.get("promptTokenCount"):
+                        usage = _gemini_usage(um)
+        done_payload: dict = {"done": True}
+        if usage:
+            done_payload["usage"] = usage
+        yield f"data: {json.dumps(done_payload)}\n\n"
+    except Exception as e:
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+
 @app.post("/api/text/generate")
 async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_api_key)):
     if not data.prompt:
@@ -1097,6 +1248,16 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
         messages.append({"role": "system", "content": data.system_prompt})
     messages.extend(data.history)
     messages.append({"role": "user", "content": data.prompt})
+
+    # Gemini 文字模型走 Gemini 原生 API
+    if data.model in _GEMINI_NATIVE_TEXT_MODELS:
+        if not data.stream:
+            return await _gemini_text_generate(data, messages, api_key)
+        return StreamingResponse(
+            _gemini_text_stream(data, messages, api_key),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     # 走 Anthropic Messages 格式的模型在這裡分流出去，不經過下面整套 OpenAI 相容的
     # 參數組裝（enable_thinking / reasoning_effort / penalty 這些欄位在那條路上都不適用）
