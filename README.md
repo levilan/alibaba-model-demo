@@ -80,8 +80,8 @@ python app.py
 | deepseek-v4-pro | DeepSeek V4 Pro | 第三方 | enable_thinking（預設開啟） |
 | deepseek-v4-flash | DeepSeek V4 Flash | 第三方 | enable_thinking（預設開啟） |
 | deepseek-v3.2 | DeepSeek V3.2 | 第三方 | enable_thinking（預設開啟） |
-| glm-5.1 | GLM 5.1 | 第三方 | enable_thinking（預設開啟） |
-| glm-5.2 | GLM 5.2 | 第三方 | —（走 `/v1/messages`，思考關不掉） |
+| glm-5.1 | GLM 5.1 | 第三方 | enable_thinking + reasoning_effort（6 段） |
+| glm-5.2 | GLM 5.2 | 第三方 | enable_thinking + reasoning_effort（7 段） |
 | dola-seed-sc | Seed SC | ByteDance | — |
 | dola-seed-2.0-lite | Seed 2.0 Lite | ByteDance | — （無條件思考，關不掉） |
 | dola-seed-2.0-pro | Seed 2.0 Pro | ByteDance | — （無條件思考，關不掉） |
@@ -93,7 +93,7 @@ python app.py
 | gpt-5.5 / 5.4 / 5.4-mini / 5.4-nano / 5.2 / 5-mini | GPT 5.x 系列 | GPT | reasoning_effort |
 | gemini-3.1-pro-preview 等 7 個 Gemini 模型 | Gemini 系列 | Gemini | thinkingConfig（走原生 API） |
 
-> **思考模式的三種機制，不能混用**：Qwen/DeepSeek/GLM 用布林值 `enable_thinking`（這幾家幾乎都實測預設就是開啟，必須明確送 `enable_thinking:false` 才會關閉並省 token——完全不帶這個欄位並不會關閉思考，後端一律會明確帶上 `true`/`false`，只有 GPT 系列例外不帶）；GPT 系列改用字串 `reasoning_effort`（實測這個網關接受的枚舉是 `none/low/medium/high/xhigh`，跟 OpenAI 官方文件常見的 `minimal/low/medium/high` 不同，帶錯值或帶 `enable_thinking` 給 GPT 都會被直接拒絕）；Claude 與 ByteDance Seed 2.0 系列目前實測無法透過這個網關控制（Claude 送了無效、Seed 2.0 系列無條件思考關不掉），因此 UI 不提供對應開關；**Gemini 系列改走原生 API 後已經可以控制**，詳見下方；`qwen3-coder-plus`/`qwen3-coder-flash` 則是實測 `enable_thinking` 完全沒有效果（true/false 都不會有思考過程），同樣不顯示開關。開啟後若上游回傳 `reasoning_content`（Qwen/DeepSeek/GLM 大部分模型，以及無法關閉思考的 Seed 2.0 系列），會在回答上方顯示成可收合的「思考過程」區塊。
+> **思考模式的三種機制，不能混用**：Qwen/DeepSeek/GLM 用布林值 `enable_thinking`（這幾家幾乎都實測預設就是開啟，必須明確送 `enable_thinking:false` 才會關閉並省 token——完全不帶這個欄位並不會關閉思考，後端一律會明確帶上 `true`/`false`，只有 GPT 系列例外不帶）；GPT 系列改用字串 `reasoning_effort`（實測這個網關接受的枚舉是 `none/low/medium/high/xhigh`，跟 OpenAI 官方文件常見的 `minimal/low/medium/high` 不同，帶錯值或帶 `enable_thinking` 給 GPT 都會被直接拒絕）；**GLM 5.x 是唯一兩種都支援的家族**，詳見下方；Claude 與 ByteDance Seed 2.0 系列目前實測無法透過這個網關控制（Claude 送了無效、Seed 2.0 系列無條件思考關不掉），因此 UI 不提供對應開關；**Gemini 系列改走原生 API 後已經可以控制**，詳見下方；`qwen3-coder-plus`/`qwen3-coder-flash` 則是實測 `enable_thinking` 完全沒有效果（true/false 都不會有思考過程），同樣不顯示開關。開啟後若上游回傳 `reasoning_content`（Qwen/DeepSeek/GLM 大部分模型，以及無法關閉思考的 Seed 2.0 系列），會在回答上方顯示成可收合的「思考過程」區塊。
 
 > **Gemini 文字模型走 Gemini 原生 API**：`/v1beta/models/{model}:generateContent`，串流是 `:streamGenerateContent?alt=sse`（見 `_GEMINI_NATIVE_TEXT_MODELS`）。後端把請求轉成原生格式（`system_prompt` → 頂層 `systemInstruction`、`max_tokens` → `generationConfig.maxOutputTokens`、`stop` → `stopSequences`、`top_p`/`top_k` → `topP`/`topK`），並把回應轉回前端既有的協定。
 >
@@ -111,9 +111,11 @@ python app.py
 >
 > 計費上要注意 `thoughtsTokenCount` 也是實際收費的輸出 token，後端的 `usage.completion_tokens` 是 `candidatesTokenCount + thoughtsTokenCount`，否則「本次花費」會嚴重低估。
 
-> **`glm-5.2` 走的是 Anthropic Messages 格式的 `/v1/messages`**，不是其餘文字模型共用的 OpenAI 相容 `/v1/chat/completions`（見 `_ANTHROPIC_MESSAGES_MODELS`）。後端會把請求轉成 Anthropic 格式（`system` 提到頂層、`stop` → `stop_sequences`、`max_tokens` 必填），並把回應轉回前端既有的協定。實測（2026-08-10，正式網關）這條路徑有兩個差異：
-> - **思考過程只有串流模式看得到**：串流時思考會走獨立的 `thinking` content block（`thinking_delta` 事件），後端轉成前端的 `reasoning` 事件，顯示效果與 `reasoning_content` 相同；**非串流回應則完全不含思考過程**，只有 `text` block（token 照樣被消耗）。
-> - **思考關不掉**：`thinking.type=disabled`、`enable_thinking:false` 實測都無效（同一題 output token 150／151／111，關不掉）。相對地走 `/v1/chat/completions` 時 `enable_thinking:false` 是真的有效的（同題 completion token 從 139 掉到 1）。因此 `glm-5.2` 的思考模式開關已從 UI 移除，不顯示一個沒有作用的開關。
+> **GLM 5.x 有兩層思考控制**：布林的 `enable_thinking` 與字串的 `reasoning_effort`（分段推理強度）。實測各段的 `reasoning_tokens`：`none`／`minimal` → 0、`low` 182、`medium` 198、`high` 202、`xhigh` 239、`max` 208。可用枚舉各型號不同——`glm-5.2` 七段全有，`glm-5.1` **不支援 `max`**（送了回 400 並列出正確清單），故以 MODELS 的 `reasoning_efforts` 標明、前端選項依此動態產生。
+>
+> 兩者同時送時，**`enable_thinking:false` 的優先權高於 `reasoning_effort`**；但反向不成立——實測 `enable_thinking:true` 配 `reasoning_effort:none` 仍然不會思考，也就是「關」的那一方永遠贏。
+>
+> **`glm-5.2` 曾短暫改走 Anthropic Messages 格式的 `/v1/messages`，已改回 OpenAI 相容路徑。** 原因是那條路徑上**整個 `thinking` 物件完全無效**：`type=disabled` 不會關閉思考、`budget_tokens` 128 與 2048 的輸出 token 中位數（195 vs 178）完全重疊、`reasoning_effort` 回 200 但被靜默忽略。經 nen-ai-platform 端查證，根因在 `service/convert.go` 的 `ClaudeToOpenAIRequest`——`claudeRequest.Thinking` **只在 `isOpenRouter` 分支被讀取**，其餘所有渠道一律丟棄；`reasoning_effort` 更是連 `dto.ClaudeRequest` 都沒有這個欄位，反序列化階段就消失了。等網關補上渠道閘控的映射後可再評估是否切回。
 
 ### 圖片生成
 

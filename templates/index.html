@@ -256,18 +256,14 @@
                     <label data-tip="啟用後模型會先進行內部推理（Chain-of-Thought），再給出回答，大幅提升複雜問題的準確性，但會消耗更多 tokens 且速度較慢。思考過程會顯示在回答上方">思考模式</label>
                     <label class="toggle"><input type="checkbox" id="textThinking"><span class="toggle-slider"></span></label>
                 </div>
-                <!-- GPT 系列用 reasoning_effort 字串控制推理強度，跟其他家族的「思考模式」
-                     開關是完全不同的機制（送 enable_thinking 給 GPT 會直接 400），
-                     兩組欄位互斥顯示，依 onTextModelChange() 判斷 -->
+                <!-- 推理強度 reasoning_effort：GPT 與 GLM 5.x 支援。GPT 只有這個機制
+                     （送 enable_thinking 給 GPT 會直接 400）；GLM 則是兩種都支援，
+                     「思考模式」關掉時優先權高於這裡的強度設定。可用的枚舉各型號不同，
+                     選項由 onTextModelChange() 依 MODELS 的 reasoning_efforts 動態產生 -->
                 <div class="form-group" id="textReasoningEffortGroup" style="display:none">
-                    <label class="form-label" data-tip="GPT 系列專屬的推理強度控制。higher 會讓模型思考更久、答案品質可能更好，但耗時與 token 成本也更高；none 幾乎不思考、最快最省">推理強度 (reasoning_effort)</label>
+                    <label class="form-label" data-tip="推理強度控制。越高思考越充分、答案品質可能更好，但耗時與 token 成本也更高；none 完全不推理、最快最省。GLM 系列若同時關閉「思考模式」，會以關閉為準">推理強度 (reasoning_effort)</label>
                     <select id="textReasoningEffort" class="select-input">
                         <option value="">預設</option>
-                        <option value="none">none（幾乎不思考）</option>
-                        <option value="low">low</option>
-                        <option value="medium">medium</option>
-                        <option value="high">high</option>
-                        <option value="xhigh">xhigh（思考最久）</option>
                     </select>
                 </div>
                 <div class="toggle-row">
@@ -947,6 +943,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=58"></script>
+<script src="/static/js/app.js?v=59"></script>
 </body>
 </html>

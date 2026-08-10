@@ -129,6 +129,21 @@
   - **計費**：`thoughtsTokenCount` 也是實際收費的輸出 token，`usage.completion_tokens` 算成 `candidatesTokenCount + thoughtsTokenCount`，否則 header 的「本次花費」會嚴重低估（思考往往佔了絕大部分）。
   - 端到端實測：7 個模型 × 非串流思考開/關 × 串流,全部通過,行為與上表一致。
 
+## 2026-08-11
+
+- fix/feat：`glm-5.2` 改回走 OpenAI 相容的 `/v1/chat/completions`，恢復思考開關；並為 GLM 5.x 新增分段推理強度 `reasoning_effort`（commit 待補）。網關：正式環境 `https://nen.com.tw`。
+  - **這是把 2026-08-10 那筆「glm-5.2 改走 `/v1/messages`」改回來。** 當時改完就發現那條路徑關不掉思考，這次查清楚了根因，確認短期內無解，所以撤回。
+  - **根因（由 nen-ai-platform 端查證原始碼確認）**：`service/convert.go` 的 `ClaudeToOpenAIRequest` 裡，`claudeRequest.Thinking` **只在 `isOpenRouter` 分支被讀取**，其餘所有渠道走的 else 分支只做「模型名以 `-thinking` 結尾就補後綴」的處理——所以上游根本沒收到任何思考設定，走自己的預設（思考開啟），網關再把回傳的思考包裝成 Anthropic thinking 區塊。`reasoning_effort` 更早就消失：`dto.ClaudeRequest` 根本沒有這個欄位，JSON 反序列化階段就被丟棄，連 adaptor 都沒看到（這解釋了為什麼送它會「回 200 但完全無效果」）。
+  - 這不是只影響 glm 的問題，**除了 OpenRouter 以外的所有渠道都沒映射**。要修得比照 `isOpenRouter` 做渠道類型閘控（`enable_thinking` 是智譜/阿里方言，無條件發給 OpenAI 等嚴格上游會 400），超出對方被交辦的範圍，他們會轉給他們的使用者決定，並建議我們短期先改回 OpenAI 相容路徑。
+  - 我這邊的實測證據（各參數跑 3 次取中位數，排除雜訊）：`thinking.type=disabled` 串流區塊照樣是 `['thinking','text']`；`budget_tokens` 128 與 2048 的中位數 195 vs 178 完全重疊；頂層 `enable_thinking:false` 中位數 138。對照組同一模型走 `/v1/chat/completions` 時 `enable_thinking:false` 讓 completion_tokens 從 159 掉到 **19**。
+  - **順帶補上一個我們一直沒用到的能力**：GLM 5.x 除了布林開關，還支援字串的 `reasoning_effort` 分段推理強度。實測各段的 `reasoning_tokens`：`none`／`minimal` → 0、`low` 182、`medium` 198、`high` 202、`xhigh` 239、`max` 208。**可用枚舉各型號不同**——`glm-5.2` 七段全有，`glm-5.1` 不支援 `max`（送了回 400 並列出正確清單）。
+  - 兩者的優先權關係也實測過：`enable_thinking:false` 高於 `reasoning_effort`（配 `effort=max` 仍然是 1 個 token）；但**反向不成立**——`enable_thinking:true` 配 `effort=none` 仍然不思考，也就是「關」的那一方永遠贏。這點官方文件只寫了前半段。
+  - 前端的推理強度選項原本是寫死在 HTML 裡的五個值（`none/low/medium/high/xhigh`），少了 GLM 需要的 `minimal` 與 `max`。改成由 MODELS 的 `reasoning_efforts` 動態產生，並在切換到不支援當前值的模型時自動退回「預設」——避免使用者選到一個會被上游 400 的值。GPT 條目也一併補上各自的枚舉。
+  - 移除了 `_ANTHROPIC_MESSAGES_MODELS` 與三個相關函式（共 114 行）。那條路徑的知識保留在 `README.md` 與這裡，需要時可從 commit `a37c75b` 取回。
+  - 端到端實測：思考開 185 tokens／關 1 token、七段強度逐一驗過、串流拿到 316 字思考過程、`glm-5.1` 送 `max` 確實被上游擋下（前端已不會提供該選項）。
+  - 前端改動：`app.js?v=58` → `?v=59`。
+  - 附帶情報：`glm-5.2` 不在任何編譯進去的 ModelList 裡，網關上看到的 glm-5.1/5.2 是管理員手動加進渠道「支援模型」清單的結果。所以要上架 `glm-5.2-us` / `glm-5.2-fast-preview` **不需要改程式碼**，後台加模型名即可（前提是上游帳號有權限）。
+
 ## 2026-08-08
 
 - fix：手機版登入頁三個問題（使用者回報「手機看好像燈不見了」）。**燈在手機上被隱藏其實是功能退化，不只是美觀問題**——燈同時是登入頁切換淺色/深色模式的唯一入口，`@media (max-width: 760px) { .login-lamp { display: none } }` 等於讓手機使用者完全沒辦法切主題。改成把燈排到卡片下方（那裡本來就是一大片空白）並縮小到 58%；因為 `transform: scale()` 不會改變版面高度，要用負 margin 把縮放後多出來的空白（236px × 0.42 ≈ 99px）收掉，否則底下會留一段幽靈空隙。順手抓到一個既有 bug：`.login-card` 只寫了 `width: 420px` 沒有 `max-width`，在比 420px 窄的手機上卡片會直接撐破視窗、左右被切掉，補上 `max-width: calc(100vw - 28px)`。另外雲照原尺寸放在窄螢幕上會大到擠住登入卡片，等比例縮到 62%——實作上把雲的寬度改成透過 CSS 變數傳遞而不是 JS 直接設 `style.width`，因為 inline style 的優先權比 media query 高，直接設的話得靠 `!important` 才蓋得掉。已用 Playwright 在 390px 寬（iPhone 14 Pro）實測：無橫向溢出、卡片 362px、用真實觸控座標點燈確認能正常切換 dark→light、燈的底緣與場景底緣一致（無幽靈空隙）。

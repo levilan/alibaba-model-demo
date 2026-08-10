@@ -255,11 +255,16 @@ MODELS = {
         {"id": "deepseek-v4-pro",    "name": "DeepSeek V4 Pro",  "group": "第三方", "desc": "最新旗艦推理",           "thinking": True},
         {"id": "deepseek-v4-flash",  "name": "DeepSeek V4 Flash","group": "第三方", "desc": "最新極速推理",           "thinking": True},
         {"id": "deepseek-v3.2",      "name": "DeepSeek V3.2",    "group": "第三方", "desc": "前代深度推理",           "thinking": True},
-        {"id": "glm-5.1",            "name": "GLM 5.1",          "group": "第三方", "desc": "智譜 GLM 前一版",        "thinking": True},
-        # glm-5.2 改走 Anthropic Messages 格式的 /v1/messages（見 _ANTHROPIC_MESSAGES_MODELS）。
-        # 那條路徑上 thinking.type=disabled / enable_thinking:false 都關不掉思考，所以
-        # thinking 旗標關掉，不顯示一個沒有作用的開關；思考過程在串流模式下仍看得到。
-        {"id": "glm-5.2",            "name": "GLM 5.2",          "group": "第三方", "desc": "智譜 GLM 最新版（Anthropic Messages 格式）", "thinking": False},
+        # GLM 5.x 除了布林的 enable_thinking，另外支援字串的 reasoning_effort 分段推理
+        # 強度（實測 2026-08-10，各段的 reasoning_tokens：none/minimal → 0、low 182、
+        # medium 198、high 202、xhigh 239、max 208）。兩者可同時送，enable_thinking:false
+        # 的優先權高於 reasoning_effort；但反向不成立——實測 enable_thinking:true 配
+        # reasoning_effort:none 仍然不會思考，也就是「關」的那一方永遠贏。
+        # 支援的枚舉各型號不同，送錯值會回 400 並列出正確清單，故以 reasoning_efforts 標明。
+        {"id": "glm-5.1",            "name": "GLM 5.1",          "group": "第三方", "desc": "智譜 GLM 前一版",        "thinking": True,
+         "reasoning_effort": True, "reasoning_efforts": ["none", "minimal", "low", "medium", "high", "xhigh"]},
+        {"id": "glm-5.2",            "name": "GLM 5.2",          "group": "第三方", "desc": "智譜 GLM 最新版（1M context）", "thinking": True,
+         "reasoning_effort": True, "reasoning_efforts": ["none", "minimal", "low", "medium", "high", "xhigh", "max"]},
         # ── ByteDance Seed（字節跳動豆包大模型；seed-2.0 系列無條件會回思考過程
         #    reasoning_content，實測過 enable_thinking:false 對它們沒有效果
         #    （跟 Gemini 3.x 系列同樣「關不掉」），thinking 維持 False 不顯示
@@ -286,15 +291,15 @@ MODELS = {
         #    OpenAI 官方文件常見的 minimal/low/medium/high），reasoning_effort=none
         #    會讓 reasoning_tokens 掉到 0，證實真的有效，但這個閘道沒有回傳可讀的
         #    思考過程文字，只影響耗費的 token 數/延遲）──
-        {"id": "gpt-5.6-terra", "name": "GPT 5.6 Terra", "group": "GPT", "desc": "最新特化模型", "thinking": False, "reasoning_effort": True},
-        {"id": "gpt-5.6-sol",   "name": "GPT 5.6 Sol",   "group": "GPT", "desc": "最新特化模型", "thinking": False, "reasoning_effort": True},
-        {"id": "gpt-5.6-luna",  "name": "GPT 5.6 Luna",  "group": "GPT", "desc": "最新特化模型", "thinking": False, "reasoning_effort": True},
-        {"id": "gpt-5.5",       "name": "GPT 5.5",       "group": "GPT", "desc": "均衡模型",     "thinking": False, "reasoning_effort": True},
-        {"id": "gpt-5.4",       "name": "GPT 5.4",       "group": "GPT", "desc": "均衡模型",     "thinking": False, "reasoning_effort": True},
-        {"id": "gpt-5.4-mini",  "name": "GPT 5.4 Mini",  "group": "GPT", "desc": "輕量極速",     "thinking": False, "reasoning_effort": True},
-        {"id": "gpt-5.4-nano",  "name": "GPT 5.4 Nano",  "group": "GPT", "desc": "超輕量極速",   "thinking": False, "reasoning_effort": True},
-        {"id": "gpt-5.2",       "name": "GPT 5.2",       "group": "GPT", "desc": "前代均衡模型", "thinking": False, "reasoning_effort": True},
-        {"id": "gpt-5-mini",    "name": "GPT 5 Mini",    "group": "GPT", "desc": "前代輕量模型", "thinking": False, "reasoning_effort": True},
+        {"id": "gpt-5.6-terra", "name": "GPT 5.6 Terra", "group": "GPT", "desc": "最新特化模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
+        {"id": "gpt-5.6-sol",   "name": "GPT 5.6 Sol",   "group": "GPT", "desc": "最新特化模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
+        {"id": "gpt-5.6-luna",  "name": "GPT 5.6 Luna",  "group": "GPT", "desc": "最新特化模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
+        {"id": "gpt-5.5",       "name": "GPT 5.5",       "group": "GPT", "desc": "均衡模型",     "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
+        {"id": "gpt-5.4",       "name": "GPT 5.4",       "group": "GPT", "desc": "均衡模型",     "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
+        {"id": "gpt-5.4-mini",  "name": "GPT 5.4 Mini",  "group": "GPT", "desc": "輕量極速",     "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
+        {"id": "gpt-5.4-nano",  "name": "GPT 5.4 Nano",  "group": "GPT", "desc": "超輕量極速",   "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
+        {"id": "gpt-5.2",       "name": "GPT 5.2",       "group": "GPT", "desc": "前代均衡模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
+        {"id": "gpt-5-mini",    "name": "GPT 5 Mini",    "group": "GPT", "desc": "前代輕量模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
         # ── Gemini（改走 Gemini 原生 API，見 _GEMINI_NATIVE_TEXT_MODELS）──────────
         # 先前走 OpenAI 相容端點時，Gemini 的思考既看不到也關不掉，這裡一度全部標成
         # thinking: False。改走原生端點後兩件事都做得到了（實測 2026-08-10）：
@@ -980,120 +985,6 @@ async def ws_omni_proxy(websocket: WebSocket, api_key: str, model: str = "qwen3.
         except:
             pass
 
-# 這些文字模型改走 Anthropic Messages 格式的 /v1/messages，而不是 OpenAI 相容的
-# /v1/chat/completions。實測（2026-08-10，正式網關）兩條路徑對 glm-5.2 的差異：
-#   - 串流：/v1/messages 會把思考過程放在獨立的 thinking content block 裡（
-#     content_block_delta 的 thinking_delta 事件），拿得到，跟 chat/completions 的
-#     reasoning_content 等價。
-#   - 非串流：/v1/messages **不回傳思考過程**，只有 text block；chat/completions 則
-#     會給 reasoning_content。所以非串流模式下這個模型的思考過程會看不到。
-#   - 思考開關：chat/completions 送 enable_thinking:false 真的能關（同一題
-#     completion_tokens 從 139 掉到 1）；Messages 格式下 thinking.type=disabled、
-#     enable_thinking:false 都無效（150 / 151 / 111 個 output token，關不掉）。
-# 因此走這條路的模型在 MODELS 裡要把 thinking 旗標關掉，不要顯示一個沒有作用的開關。
-_ANTHROPIC_MESSAGES_MODELS = {"glm-5.2"}
-_ANTHROPIC_VERSION = "2023-06-01"
-
-
-def _build_anthropic_body(data: "TextGenerateRequest", messages: list) -> dict:
-    """把內部的 OpenAI 風格請求轉成 Anthropic Messages 格式。"""
-    # Anthropic 的 system 是頂層欄位，不是 messages 裡的一個 role
-    convo = [m for m in messages if m.get("role") != "system"]
-    body: dict = {
-        "model": data.model,
-        "max_tokens": data.max_tokens,   # Anthropic 格式必填
-        "messages": convo,
-        "temperature": data.temperature,
-        "top_p": data.top_p,
-    }
-    if data.system_prompt:
-        body["system"] = data.system_prompt
-    if data.top_k is not None and data.top_k > 0:
-        body["top_k"] = data.top_k
-    if data.stop:
-        body["stop_sequences"] = data.stop[:4]   # Anthropic 的欄位名是 stop_sequences
-    return body
-
-
-async def _anthropic_generate(data: "TextGenerateRequest", messages: list, api_key: str):
-    """非串流：呼叫 /v1/messages 並轉回本專案前端慣用的回應格式。"""
-    body = _build_anthropic_body(data, messages)
-    headers = {"Authorization": f"Bearer {api_key}", "anthropic-version": _ANTHROPIC_VERSION,
-               "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=300.0) as client:
-        resp = await client.post(f"{NENAI_V1}/messages", headers=headers, json=body)
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=resp.text[:500])
-        rj = resp.json()
-    texts, thoughts = [], []
-    for block in rj.get("content", []):
-        if block.get("type") == "text":
-            texts.append(block.get("text") or "")
-        elif block.get("type") == "thinking":
-            thoughts.append(block.get("thinking") or "")
-    result: dict = {"content": "".join(texts), "done": True}
-    if any(thoughts):
-        result["reasoning_content"] = "".join(thoughts)
-    usage = rj.get("usage") or {}
-    if usage:
-        result["usage"] = {"prompt_tokens": usage.get("input_tokens", 0),
-                           "completion_tokens": usage.get("output_tokens", 0)}
-    return result
-
-
-async def _anthropic_stream(data: "TextGenerateRequest", messages: list,
-                            api_key: str) -> AsyncGenerator[str, None]:
-    """串流：把 Anthropic 的 SSE 事件轉成前端既有的 {reasoning}/{content}/{done} 協定。"""
-    body = {**_build_anthropic_body(data, messages), "stream": True}
-    headers = {"Authorization": f"Bearer {api_key}", "anthropic-version": _ANTHROPIC_VERSION,
-               "Content-Type": "application/json"}
-    usage: dict = {}
-    try:
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            async with client.stream("POST", f"{NENAI_V1}/messages",
-                                     headers=headers, json=body) as resp:
-                if resp.status_code != 200:
-                    detail = (await resp.aread()).decode("utf-8", "replace")[:500]
-                    yield f"data: {json.dumps({'error': detail})}\n\n"
-                    return
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    raw = line[5:].strip()
-                    if not raw or raw == "[DONE]":
-                        continue
-                    try:
-                        ev = json.loads(raw)
-                    except json.JSONDecodeError:
-                        continue
-                    etype = ev.get("type")
-                    if etype == "content_block_delta":
-                        delta = ev.get("delta") or {}
-                        if delta.get("type") == "thinking_delta" and delta.get("thinking"):
-                            yield f"data: {json.dumps({'reasoning': delta['thinking']})}\n\n"
-                        elif delta.get("type") == "text_delta" and delta.get("text"):
-                            yield f"data: {json.dumps({'content': delta['text']})}\n\n"
-                    elif etype == "message_start":
-                        # input_tokens 只出現在這裡，output_tokens 要等 message_delta
-                        u = ((ev.get("message") or {}).get("usage")) or {}
-                        if u:
-                            usage["prompt_tokens"] = u.get("input_tokens", 0)
-                            usage["completion_tokens"] = u.get("output_tokens", 0)
-                    elif etype == "message_delta":
-                        u = ev.get("usage") or {}
-                        if "output_tokens" in u:
-                            usage["completion_tokens"] = u["output_tokens"]
-                    elif etype == "error":
-                        yield f"data: {json.dumps({'error': str(ev.get('error'))})}\n\n"
-                        return
-        done_payload: dict = {"done": True}
-        if usage:
-            done_payload["usage"] = usage
-        yield f"data: {json.dumps(done_payload)}\n\n"
-    except Exception as e:
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
-
-
 # ─── Gemini 文字模型走 Gemini 原生 API ────────────────────────────────────────
 # 端點 /v1beta/models/{model}:generateContent（串流是 :streamGenerateContent?alt=sse）。
 # 先前跟其他家族一樣走 OpenAI 相容的 /v1/chat/completions，那條路徑上 Gemini 的思考
@@ -1255,17 +1146,6 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
             return await _gemini_text_generate(data, messages, api_key)
         return StreamingResponse(
             _gemini_text_stream(data, messages, api_key),
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
-
-    # 走 Anthropic Messages 格式的模型在這裡分流出去，不經過下面整套 OpenAI 相容的
-    # 參數組裝（enable_thinking / reasoning_effort / penalty 這些欄位在那條路上都不適用）
-    if data.model in _ANTHROPIC_MESSAGES_MODELS:
-        if not data.stream:
-            return await _anthropic_generate(data, messages, api_key)
-        return StreamingResponse(
-            _anthropic_stream(data, messages, api_key),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )

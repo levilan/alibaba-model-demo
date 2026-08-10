@@ -523,11 +523,29 @@ function populateSelectors() {
 // 家族會直接 400（例如對 GPT 送 enable_thinking 會回 "Unknown parameter"）。
 // Claude/Gemini 兩組都不支援（Claude 送了沒反應，Gemini 一律無條件思考關不掉），
 // 所以兩個欄位都隱藏。
+const _EFFORT_LABELS = {
+    none: 'none（不推理）', minimal: 'minimal（最少）', low: 'low',
+    medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max（最高）',
+};
+
 function onTextModelChange() {
     const modelId = document.getElementById('textModel').value;
     const modelInfo = models.text.find(m => m.id === modelId) || {};
     document.getElementById('textThinkingGroup').style.display = modelInfo.thinking ? '' : 'none';
     document.getElementById('textReasoningEffortGroup').style.display = modelInfo.reasoning_effort ? '' : 'none';
+
+    // 可用的推理強度各家族不同（GLM 5.2 有 minimal/max、GLM 5.1 沒有 max、GPT 兩者都沒有），
+    // 送出不支援的值上游會直接 400，所以選項改成由 MODELS 的 reasoning_efforts 產生，
+    // 不再寫死一份可能跟後端不同步的清單
+    const efforts = modelInfo.reasoning_efforts || [];
+    if (efforts.length) {
+        const el = document.getElementById('textReasoningEffort');
+        const cur = el.value;
+        el.innerHTML = '<option value="">預設</option>' + efforts.map(v =>
+            `<option value="${v}"${v === cur ? ' selected' : ''}>${_EFFORT_LABELS[v] || v}</option>`
+        ).join('');
+        if (cur && !efforts.includes(cur)) el.value = '';
+    }
     updateModelPriceHint('textModelPrice', modelId);
 }
 
