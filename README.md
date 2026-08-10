@@ -81,7 +81,7 @@ python app.py
 | deepseek-v4-flash | DeepSeek V4 Flash | 第三方 | enable_thinking（預設開啟） |
 | deepseek-v3.2 | DeepSeek V3.2 | 第三方 | enable_thinking（預設開啟） |
 | glm-5.1 | GLM 5.1 | 第三方 | enable_thinking（預設開啟） |
-| glm-5.2 | GLM 5.2 | 第三方 | enable_thinking（預設開啟） |
+| glm-5.2 | GLM 5.2 | 第三方 | —（走 `/v1/messages`，思考關不掉） |
 | dola-seed-sc | Seed SC | ByteDance | — |
 | dola-seed-2.0-lite | Seed 2.0 Lite | ByteDance | — （無條件思考，關不掉） |
 | dola-seed-2.0-pro | Seed 2.0 Pro | ByteDance | — （無條件思考，關不掉） |
@@ -95,6 +95,10 @@ python app.py
 
 > **思考模式的三種機制，不能混用**：Qwen/DeepSeek/GLM 用布林值 `enable_thinking`（這幾家幾乎都實測預設就是開啟，必須明確送 `enable_thinking:false` 才會關閉並省 token——完全不帶這個欄位並不會關閉思考，後端一律會明確帶上 `true`/`false`，只有 GPT 系列例外不帶）；GPT 系列改用字串 `reasoning_effort`（實測這個網關接受的枚舉是 `none/low/medium/high/xhigh`，跟 OpenAI 官方文件常見的 `minimal/low/medium/high` 不同，帶錯值或帶 `enable_thinking` 給 GPT 都會被直接拒絕）；Claude／Gemini／ByteDance Seed 2.0 系列目前實測皆無法透過這個網關控制（Claude 送了無效、Gemini 3.x 與 Seed 2.0 系列無條件思考、關不掉），因此 UI 不提供對應開關；`qwen3-coder-plus`/`qwen3-coder-flash` 則是實測 `enable_thinking` 完全沒有效果（true/false 都不會有思考過程），同樣不顯示開關。開啟後若上游回傳 `reasoning_content`（Qwen/DeepSeek/GLM 大部分模型，以及無法關閉思考的 Seed 2.0 系列），會在回答上方顯示成可收合的「思考過程」區塊。
 
+> **`glm-5.2` 走的是 Anthropic Messages 格式的 `/v1/messages`**，不是其餘文字模型共用的 OpenAI 相容 `/v1/chat/completions`（見 `_ANTHROPIC_MESSAGES_MODELS`）。後端會把請求轉成 Anthropic 格式（`system` 提到頂層、`stop` → `stop_sequences`、`max_tokens` 必填），並把回應轉回前端既有的協定。實測（2026-08-10，正式網關）這條路徑有兩個差異：
+> - **思考過程只有串流模式看得到**：串流時思考會走獨立的 `thinking` content block（`thinking_delta` 事件），後端轉成前端的 `reasoning` 事件，顯示效果與 `reasoning_content` 相同；**非串流回應則完全不含思考過程**，只有 `text` block（token 照樣被消耗）。
+> - **思考關不掉**：`thinking.type=disabled`、`enable_thinking:false` 實測都無效（同一題 output token 150／151／111，關不掉）。相對地走 `/v1/chat/completions` 時 `enable_thinking:false` 是真的有效的（同題 completion token 從 139 掉到 1）。因此 `glm-5.2` 的思考模式開關已從 UI 移除，不顯示一個沒有作用的開關。
+
 ### 圖片生成
 
 **文生圖 (T2I)**
@@ -107,6 +111,7 @@ python app.py
 | wan2.7-image | 萬相 2.7 Image | 萬相文生圖 |
 | wan2.6-t2i | 萬相 2.6 T2I | 萬相文生圖 |
 | z-image-turbo | Z-Image Turbo | Z-Image |
+| MAI-Image-2.5-Pro | MAI-Image-2.5-Pro | MAI Image |
 | MAI-Image-2.5 | MAI-Image-2.5 | MAI Image |
 | MAI-Image-2.5-Flash | MAI-Image-2.5-Flash | MAI Image |
 
@@ -121,12 +126,17 @@ python app.py
 | wan2.6-image | 萬相 2.6 Image | 萬相圖像編輯 |
 | qwen-image-2.0-pro（編輯） | 千問圖像 2.0 Pro | 千問圖像編輯 |
 | qwen-image-2.0（編輯） | 千問圖像 2.0 | 千問圖像編輯 |
+| MAI-Image-2.5-Pro（編輯） | MAI-Image-2.5-Pro | MAI Image |
 | MAI-Image-2.5（編輯） | MAI-Image-2.5 | MAI Image |
 | MAI-Image-2.5-Flash（編輯） | MAI-Image-2.5-Flash | MAI Image |
 | dola-seedream-5.0-pro（編輯） | Seedream 5.0 Pro | ByteDance Seedream |
 | dola-seedream-5.0-lite（編輯） | Seedream 5.0 Lite | ByteDance Seedream |
 
 > qwen-image-2.0 系列為生成與編輯融合模型：最多 3 張參考圖、可一次輸出 1–6 張，並以 `prompt_extend` 取代 `ref_strength` 參數。
+
+> **MAI Image 家族（2.5 / 2.5-Flash / 2.5-Pro）的尺寸不是固定枚舉，而是兩條同時成立的約束**（2026-08-10 對正式網關實測，三個型號行為一致）：**每邊至少 768 像素**，且**總像素不得超過 1,056,768**。違反時分別回 `'width'/'height' must be at least 768 pixels` 與 `Invalid dimensions WxH: total pixel count (N) exceeds the maximum of 1056768`。
+>
+> 先前這裡列的 `1536x1024` 與 `1024x1536` 都是 1,572,864 像素，**超過上限、一定會被拒**——三個尺寸裡有兩個從來就不能用。現在列的五個（`1024x1024`／`1366x768`／`768x1366`／`1152x896`／`896x1152`）都逐一實測確認可用，定義在 `_MAI_IMAGE_SIZES`。三個型號共用同一組尺寸，也都不支援 `ref_strength`。
 
 **GPT Image（文生圖 + 圖像編輯，尺寸格式為 `WIDTHxHEIGHT`）**
 

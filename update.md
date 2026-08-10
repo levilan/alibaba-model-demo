@@ -42,6 +42,18 @@
   - 前端改動：`app.js?v=53` → `?v=54`。
   - **UI 文案不標「尚未實測」**（使用者指示）：這個模型在官方模型頁上已是正式發佈的狀態（定價、輸入輸出模態、能力說明都公開可查，只有 API 文檔是邀請制），所以四個條目的 `desc` 照官方說明寫，不在使用者看得到的地方加註測試狀態。`README.md` 與本檔屬開發者文件，該保留的驗證狀態警告照留。
 
+- feat/fix：新增 `MAI-Image-2.5-Pro`，並修掉整個 MAI Image 家族列了兩個永遠不能用的尺寸的既有 bug（commit 待補）。網關選擇：正式環境 `https://nen.com.tw`（使用者指定），已從 `/v1/models` 確認 `MAI-Image-2.5-Pro` 確實存在。
+  - 新增 `MAI-Image-2.5-Pro` 的 t2i 與 i2i 兩個條目，並加進 `_NO_REF_STRENGTH_EDIT_MODELS`（與家族其餘型號一致，不支援 `ref_strength`）。
+  - **既有 bug**：`MAI-Image-2.5` 與 `MAI-Image-2.5-Flash` 的四個條目都列了 `1536x1024` 與 `1024x1536`，兩者總像素都是 1,572,864，**超過上游 1,056,768 的上限、一定會被拒**——三個尺寸裡有兩個從來就不能用，使用者選到就是必然失敗。實測確認三個型號行為一致。
+  - 尺寸不是固定枚舉而是兩條約束：**每邊 ≥ 768 像素**、**總像素 ≤ 1,056,768**。違反時分別回 `'width'/'height' must be at least 768 pixels` 與 `Invalid dimensions WxH: total pixel count (N) exceeds the maximum of 1056768`。改成共用的 `_MAI_IMAGE_SIZES` 常數，五個尺寸（`1024x1024`／`1366x768`／`768x1366`／`1152x896`／`896x1152`）逐一實測確認可用——這次特別逐一驗證，因為這個 bug 的成因正是「列了沒驗證過的尺寸」。
+
+- feat：`glm-5.2` 的呼叫方式改走 Anthropic Messages 格式的 `/v1/messages`（原本與其餘文字模型共用 OpenAI 相容的 `/v1/chat/completions`）（commit 待補）。
+  - 新增 `_ANTHROPIC_MESSAGES_MODELS` 分流集合與三個轉換函式：`_build_anthropic_body()`（`system` 提到頂層、`stop` → `stop_sequences`、`max_tokens` 必填、丟掉不適用的 penalty/enable_thinking/reasoning_effort）、`_anthropic_generate()`（非串流）、`_anthropic_stream()`（串流，把 Anthropic 的 SSE 事件轉成前端既有的 `{reasoning}`／`{content}`／`{done,usage}` 協定）。前端完全不用改。
+  - **實測出來的兩個行為差異，動手前先驗過才寫**：
+    - **思考過程只有串流看得到**。串流時思考走獨立的 `thinking` content block（`thinking_delta` 事件），拿得到、顯示效果與原本的 `reasoning_content` 相同；**非串流回應完全不含思考過程**，只有 `text` block，但 token 照樣被消耗（實測回一個「2」花掉 159 個 completion token）。
+    - **思考關不掉**。`thinking.type=disabled`、`thinking.type=enabled`、額外欄位 `enable_thinking:false` 實測都無效（同一題 output token 150／151／148／111）。相對地 `/v1/chat/completions` 上 `enable_thinking:false` 是真的有效的（同題 completion token 139 → 1）。因此 MODELS 裡把 `glm-5.2` 的 `thinking` 旗標關掉，不顯示一個沒有作用的開關——這與本專案既有的處理慣例一致。
+  - 端到端實測（本機服務打正式網關）：非串流拿到 `content='2'` 與 usage、串流拿到 195 字元的思考過程 + `content='一，二，三！'` + usage，兩條路徑都正常。
+
 ## 2026-08-08
 
 - fix：手機版登入頁三個問題（使用者回報「手機看好像燈不見了」）。**燈在手機上被隱藏其實是功能退化，不只是美觀問題**——燈同時是登入頁切換淺色/深色模式的唯一入口，`@media (max-width: 760px) { .login-lamp { display: none } }` 等於讓手機使用者完全沒辦法切主題。改成把燈排到卡片下方（那裡本來就是一大片空白）並縮小到 58%；因為 `transform: scale()` 不會改變版面高度，要用負 margin 把縮放後多出來的空白（236px × 0.42 ≈ 99px）收掉，否則底下會留一段幽靈空隙。順手抓到一個既有 bug：`.login-card` 只寫了 `width: 420px` 沒有 `max-width`，在比 420px 窄的手機上卡片會直接撐破視窗、左右被切掉，補上 `max-width: calc(100vw - 28px)`。另外雲照原尺寸放在窄螢幕上會大到擠住登入卡片，等比例縮到 62%——實作上把雲的寬度改成透過 CSS 變數傳遞而不是 JS 直接設 `style.width`，因為 inline style 的優先權比 media query 高，直接設的話得靠 `!important` 才蓋得掉。已用 Playwright 在 390px 寬（iPhone 14 Pro）實測：無橫向溢出、卡片 362px、用真實觸控座標點燈確認能正常切換 dark→light、燈的底緣與場景底緣一致（無幽靈空隙）。

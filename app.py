@@ -223,6 +223,10 @@ _GEMINI_TTS_VOICES = [
     {"id": "Sadaltager", "name": "Sadaltager", "desc": "Knowledgeable"}, {"id": "Sulafat", "name": "Sulafat", "desc": "Warm"},
 ]
 
+# MAI Image 家族（2.5 / 2.5-Flash / 2.5-Pro）共用的尺寸清單。約束見 MODELS 裡的註解：
+# 每邊 ≥ 768 像素、總像素 ≤ 1,056,768。這五個都逐一對正式網關實測確認可用。
+_MAI_IMAGE_SIZES = ["1024x1024", "1366x768", "768x1366", "1152x896", "896x1152"]
+
 # ─── Model Registry ───────────────────────────────────────────
 # sizes: 支援的尺寸清單；max_n: 最大生成張數；audio: 支援配音；min/max_dur: 影片時長範圍
 MODELS = {
@@ -252,7 +256,10 @@ MODELS = {
         {"id": "deepseek-v4-flash",  "name": "DeepSeek V4 Flash","group": "第三方", "desc": "最新極速推理",           "thinking": True},
         {"id": "deepseek-v3.2",      "name": "DeepSeek V3.2",    "group": "第三方", "desc": "前代深度推理",           "thinking": True},
         {"id": "glm-5.1",            "name": "GLM 5.1",          "group": "第三方", "desc": "智譜 GLM 前一版",        "thinking": True},
-        {"id": "glm-5.2",            "name": "GLM 5.2",          "group": "第三方", "desc": "智譜 GLM 最新版",        "thinking": True},
+        # glm-5.2 改走 Anthropic Messages 格式的 /v1/messages（見 _ANTHROPIC_MESSAGES_MODELS）。
+        # 那條路徑上 thinking.type=disabled / enable_thinking:false 都關不掉思考，所以
+        # thinking 旗標關掉，不顯示一個沒有作用的開關；思考過程在串流模式下仍看得到。
+        {"id": "glm-5.2",            "name": "GLM 5.2",          "group": "第三方", "desc": "智譜 GLM 最新版（Anthropic Messages 格式）", "thinking": False},
         # ── ByteDance Seed（字節跳動豆包大模型；seed-2.0 系列無條件會回思考過程
         #    reasoning_content，實測過 enable_thinking:false 對它們沒有效果
         #    （跟 Gemini 3.x 系列同樣「關不掉」），thinking 維持 False 不顯示
@@ -339,15 +346,27 @@ MODELS = {
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
         # ── MAI Image（Azure OpenAI 管道，尺寸格式與 GPT Image 相同為 WIDTHxHEIGHT）──
+        # 尺寸不是固定枚舉，而是兩條同時成立的約束（2026-08-10 對正式網關實測，三個
+        # 型號的錯誤訊息完全一致）：**每邊至少 768 像素**，且**總像素不得超過
+        # 1,056,768**。違反時分別回
+        #   'width'/'height' must be at least 768 pixels
+        #   Invalid dimensions WxH: total pixel count (N) exceeds the maximum of 1056768
+        # 先前這裡列的 1536x1024 / 1024x1536 都是 1,572,864 像素，超過上限、**一定會被
+        # 拒**——三個尺寸裡有兩個從來就不能用。_MAI_IMAGE_SIZES 那組是逐一實測確認可用的。
+        {
+            "id": "MAI-Image-2.5-Pro", "name": "MAI-Image-2.5-Pro", "group": "MAI Image",
+            "desc": "旗艦圖像生成 Pro", "type": "t2i", "max_n": 4,
+            "sizes": _MAI_IMAGE_SIZES,
+        },
         {
             "id": "MAI-Image-2.5", "name": "MAI-Image-2.5", "group": "MAI Image",
             "desc": "旗艦圖像生成", "type": "t2i", "max_n": 4,
-            "sizes": ["1024x1024","1536x1024","1024x1536"],
+            "sizes": _MAI_IMAGE_SIZES,
         },
         {
             "id": "MAI-Image-2.5-Flash", "name": "MAI-Image-2.5-Flash", "group": "MAI Image",
             "desc": "極速圖像生成", "type": "t2i", "max_n": 4,
-            "sizes": ["1024x1024","1536x1024","1024x1536"],
+            "sizes": _MAI_IMAGE_SIZES,
         },
         # ── 萬相圖像編輯 ──────────────────────────────────────────
         # 上游 WanImageInput.images 的硬上限是 2 張，超過會被拒——前端的參考圖欄位
@@ -455,14 +474,19 @@ MODELS = {
         },
         # ── MAI Image 編輯（Azure OpenAI 管道，沿用一般 /v1/images/edits 流程，不支援 ref_strength）──
         {
+            "id": "MAI-Image-2.5-Pro", "name": "MAI-Image-2.5-Pro（編輯）", "group": "MAI Image",
+            "desc": "旗艦圖像編輯 Pro", "type": "i2i", "max_n": 1, "no_ref_strength": True,
+            "sizes": _MAI_IMAGE_SIZES,
+        },
+        {
             "id": "MAI-Image-2.5", "name": "MAI-Image-2.5（編輯）", "group": "MAI Image",
             "desc": "旗艦圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True,
-            "sizes": ["1024x1024","1536x1024","1024x1536"],
+            "sizes": _MAI_IMAGE_SIZES,
         },
         {
             "id": "MAI-Image-2.5-Flash", "name": "MAI-Image-2.5-Flash（編輯）", "group": "MAI Image",
             "desc": "極速圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True,
-            "sizes": ["1024x1024","1536x1024","1024x1536"],
+            "sizes": _MAI_IMAGE_SIZES,
         },
         # ── Gemini Image 編輯（走 /v1/chat/completions + modalities，帶入參考圖）──
         {
@@ -925,6 +949,120 @@ async def ws_omni_proxy(websocket: WebSocket, api_key: str, model: str = "qwen3.
         except:
             pass
 
+# 這些文字模型改走 Anthropic Messages 格式的 /v1/messages，而不是 OpenAI 相容的
+# /v1/chat/completions。實測（2026-08-10，正式網關）兩條路徑對 glm-5.2 的差異：
+#   - 串流：/v1/messages 會把思考過程放在獨立的 thinking content block 裡（
+#     content_block_delta 的 thinking_delta 事件），拿得到，跟 chat/completions 的
+#     reasoning_content 等價。
+#   - 非串流：/v1/messages **不回傳思考過程**，只有 text block；chat/completions 則
+#     會給 reasoning_content。所以非串流模式下這個模型的思考過程會看不到。
+#   - 思考開關：chat/completions 送 enable_thinking:false 真的能關（同一題
+#     completion_tokens 從 139 掉到 1）；Messages 格式下 thinking.type=disabled、
+#     enable_thinking:false 都無效（150 / 151 / 111 個 output token，關不掉）。
+# 因此走這條路的模型在 MODELS 裡要把 thinking 旗標關掉，不要顯示一個沒有作用的開關。
+_ANTHROPIC_MESSAGES_MODELS = {"glm-5.2"}
+_ANTHROPIC_VERSION = "2023-06-01"
+
+
+def _build_anthropic_body(data: "TextGenerateRequest", messages: list) -> dict:
+    """把內部的 OpenAI 風格請求轉成 Anthropic Messages 格式。"""
+    # Anthropic 的 system 是頂層欄位，不是 messages 裡的一個 role
+    convo = [m for m in messages if m.get("role") != "system"]
+    body: dict = {
+        "model": data.model,
+        "max_tokens": data.max_tokens,   # Anthropic 格式必填
+        "messages": convo,
+        "temperature": data.temperature,
+        "top_p": data.top_p,
+    }
+    if data.system_prompt:
+        body["system"] = data.system_prompt
+    if data.top_k is not None and data.top_k > 0:
+        body["top_k"] = data.top_k
+    if data.stop:
+        body["stop_sequences"] = data.stop[:4]   # Anthropic 的欄位名是 stop_sequences
+    return body
+
+
+async def _anthropic_generate(data: "TextGenerateRequest", messages: list, api_key: str):
+    """非串流：呼叫 /v1/messages 並轉回本專案前端慣用的回應格式。"""
+    body = _build_anthropic_body(data, messages)
+    headers = {"Authorization": f"Bearer {api_key}", "anthropic-version": _ANTHROPIC_VERSION,
+               "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        resp = await client.post(f"{NENAI_V1}/messages", headers=headers, json=body)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text[:500])
+        rj = resp.json()
+    texts, thoughts = [], []
+    for block in rj.get("content", []):
+        if block.get("type") == "text":
+            texts.append(block.get("text") or "")
+        elif block.get("type") == "thinking":
+            thoughts.append(block.get("thinking") or "")
+    result: dict = {"content": "".join(texts), "done": True}
+    if any(thoughts):
+        result["reasoning_content"] = "".join(thoughts)
+    usage = rj.get("usage") or {}
+    if usage:
+        result["usage"] = {"prompt_tokens": usage.get("input_tokens", 0),
+                           "completion_tokens": usage.get("output_tokens", 0)}
+    return result
+
+
+async def _anthropic_stream(data: "TextGenerateRequest", messages: list,
+                            api_key: str) -> AsyncGenerator[str, None]:
+    """串流：把 Anthropic 的 SSE 事件轉成前端既有的 {reasoning}/{content}/{done} 協定。"""
+    body = {**_build_anthropic_body(data, messages), "stream": True}
+    headers = {"Authorization": f"Bearer {api_key}", "anthropic-version": _ANTHROPIC_VERSION,
+               "Content-Type": "application/json"}
+    usage: dict = {}
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            async with client.stream("POST", f"{NENAI_V1}/messages",
+                                     headers=headers, json=body) as resp:
+                if resp.status_code != 200:
+                    detail = (await resp.aread()).decode("utf-8", "replace")[:500]
+                    yield f"data: {json.dumps({'error': detail})}\n\n"
+                    return
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    raw = line[5:].strip()
+                    if not raw or raw == "[DONE]":
+                        continue
+                    try:
+                        ev = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                    etype = ev.get("type")
+                    if etype == "content_block_delta":
+                        delta = ev.get("delta") or {}
+                        if delta.get("type") == "thinking_delta" and delta.get("thinking"):
+                            yield f"data: {json.dumps({'reasoning': delta['thinking']})}\n\n"
+                        elif delta.get("type") == "text_delta" and delta.get("text"):
+                            yield f"data: {json.dumps({'content': delta['text']})}\n\n"
+                    elif etype == "message_start":
+                        # input_tokens 只出現在這裡，output_tokens 要等 message_delta
+                        u = ((ev.get("message") or {}).get("usage")) or {}
+                        if u:
+                            usage["prompt_tokens"] = u.get("input_tokens", 0)
+                            usage["completion_tokens"] = u.get("output_tokens", 0)
+                    elif etype == "message_delta":
+                        u = ev.get("usage") or {}
+                        if "output_tokens" in u:
+                            usage["completion_tokens"] = u["output_tokens"]
+                    elif etype == "error":
+                        yield f"data: {json.dumps({'error': str(ev.get('error'))})}\n\n"
+                        return
+        done_payload: dict = {"done": True}
+        if usage:
+            done_payload["usage"] = usage
+        yield f"data: {json.dumps(done_payload)}\n\n"
+    except Exception as e:
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+
 @app.post("/api/text/generate")
 async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_api_key)):
     if not data.prompt:
@@ -935,6 +1073,17 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
         messages.append({"role": "system", "content": data.system_prompt})
     messages.extend(data.history)
     messages.append({"role": "user", "content": data.prompt})
+
+    # 走 Anthropic Messages 格式的模型在這裡分流出去，不經過下面整套 OpenAI 相容的
+    # 參數組裝（enable_thinking / reasoning_effort / penalty 這些欄位在那條路上都不適用）
+    if data.model in _ANTHROPIC_MESSAGES_MODELS:
+        if not data.stream:
+            return await _anthropic_generate(data, messages, api_key)
+        return StreamingResponse(
+            _anthropic_stream(data, messages, api_key),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     # 這裡不能只在 enable_thinking=True 時才帶這個欄位——實測發現 qwen3.5-flash/
     # qwen3.6-flash/qwen3.8-max/deepseek-v4-*/glm-5.* 這些模型預設就是思考模式開啟，
@@ -1425,7 +1574,8 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
         raise HTTPException(status_code=500, detail=str(e))
 
 # GPT Image 系列的 /images/edits 不接受 ref_strength 參數，帶入會被上游拒絕（400 Unknown parameter）
-_NO_REF_STRENGTH_EDIT_MODELS = _QWEN2_EDIT_MODELS | {"gpt-image-2", "gpt-image-1.5", "MAI-Image-2.5", "MAI-Image-2.5-Flash"}
+_NO_REF_STRENGTH_EDIT_MODELS = _QWEN2_EDIT_MODELS | {"gpt-image-2", "gpt-image-1.5",
+                                                     "MAI-Image-2.5", "MAI-Image-2.5-Flash", "MAI-Image-2.5-Pro"}
 
 # ─── API: Image Edit (I2I) ────────────────────────────────────────
 @app.post("/api/image/edit")
