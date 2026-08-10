@@ -369,21 +369,23 @@ MODELS = {
             "sizes": _MAI_IMAGE_SIZES,
         },
         # ── 萬相圖像編輯 ──────────────────────────────────────────
-        # 上游 WanImageInput.images 的硬上限是 2 張，超過會被拒——前端的參考圖欄位
-        # 預設是 9 張（max_ref 未設時的 fallback），這裡必須明確標成 2
+        # 參考圖張數上限逐一實測（2026-08-10，正式網關）：萬相 2.7 兩個型號 9 張都生效；
+        # 萬相 2.6 上限是 4（送 5 張回 "the last message must contain 1 to 4 images"）。
+        # 先前這裡標成 2 是依閘道端 Go struct 的 WanImageInput.images(<=2) 推斷的，
+        # 沒有實測——實際上那條約束不適用於 /v1/images/edits 這條路徑。
         {
             "id": "wan2.7-image-pro", "name": "萬相 2.7 Image Pro（編輯）", "group": "萬相圖像編輯",
-            "desc": "多圖融合、風格遷移（最多 2 張）", "type": "i2i", "max_n": 1, "max_ref": 2,
+            "desc": "多圖融合、風格遷移（最多 9 張）", "type": "i2i", "max_n": 1, "max_ref": 9,
             "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960"],
         },
         {
             "id": "wan2.7-image", "name": "萬相 2.7 Image（編輯）", "group": "萬相圖像編輯",
-            "desc": "標準圖像編輯（最多 2 張）", "type": "i2i", "max_n": 1, "max_ref": 2,
+            "desc": "標準圖像編輯（最多 9 張）", "type": "i2i", "max_n": 1, "max_ref": 9,
             "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960"],
         },
         {
             "id": "wan2.6-image", "name": "萬相 2.6 Image", "group": "萬相圖像編輯",
-            "desc": "前代編輯模型（最多 2 張）", "type": "i2i", "max_n": 1, "max_ref": 2,
+            "desc": "前代編輯模型（最多 4 張）", "type": "i2i", "max_n": 1, "max_ref": 4,
             "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960"],
         },
         # ── 千問圖像 2.0（生成與編輯融合模型，同一模型 ID 兼具 T2I 與 I2I）──
@@ -1561,11 +1563,17 @@ _QWEN2_EDIT_MODELS = {"qwen-image-2.0-pro", "qwen-image-2.0"}
 _GPT_IMAGE_MODELS = {"gpt-image-2", "gpt-image-1.5"}
 # 支援組圖模式（enable_sequential）與更高解析度的萬相 2.7 系列
 _WAN27_IMAGE_MODELS = {"wan2.7-image-pro", "wan2.7-image"}
-# 萬相圖像編輯系列：上游 WanImageInput.images 的硬上限是 2 張參考圖
-_WAN_EDIT_MODELS = {"wan2.7-image-pro", "wan2.7-image", "wan2.6-image"}
-# MAI 系列的 /v1/images/edits 只接受「剛好一張」參考圖，多送會直接 400
-# （Invalid request. Error => Exactly one image file must be attached for edit requests.）
-_MAI_EDIT_MODELS = {"MAI-Image-2.5", "MAI-Image-2.5-Flash", "MAI-Image-2.5-Pro"}
+# 圖像編輯的參考圖張數上限，以 MODELS 的 max_ref 為單一來源（前端讀同一份資料）。
+# 2026-08-10 對正式網關逐一實測——做法是「前 N 張純紅 + 最後一張純藍 + 要求模型輸出
+# 所有參考圖的混色」，量輸出的平均 RGB：出現藍色成分就代表最後那張真的被讀進去了。
+# 只驗「送得出去」是不夠的，上游可能接受請求卻靜默忽略多出來的圖。
+#   wan2.7-image / -pro       9 張都生效（實測第 9 張有效）
+#   wan2.6-image              上限 4（送 5 張回 "the last message must contain 1 to 4 images"）
+#   qwen-image-2.0 / -pro     上限 3（送 4 張回 "supports 0~3 image content items"）
+#   MAI-Image-2.5 / -Flash / -Pro   只接受剛好 1 張（多送回 "Exactly one image file must be attached"）
+#   gpt-image-2 / -1.5、seedream、Gemini   9 張都生效
+_EDIT_MAX_REF = {m["id"]: m["max_ref"] for m in MODELS["image"]
+                 if m.get("type") == "i2i" and m.get("max_ref")}
 # 圖片端點統一的上游逾時。有些圖片模型（例如萬相 2.7 系列）在閘道端走的是非同步
 # 端點、由閘道代為輪詢到 SUCCEEDED 才回應，客戶端看到的是一次很慢的同步請求，
 # 原本的 120 秒不夠用
@@ -1670,19 +1678,9 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
 
-    # Read and optionally resize reference images in memory
-    # qwen-image-2.0 系列（生成與編輯融合模型）最多 3 張參考圖；萬相編輯系列上游
-    # WanImageInput.images 的硬上限是 2 張；MAI 系列的編輯端點只接受「剛好一張」
-    # （多送會直接 400 "Exactly one image file must be attached for edit requests"）；
-    # 其餘模型最多 9 張
-    if is_qwen2_edit:
-        max_refs = 3
-    elif model in _WAN_EDIT_MODELS:
-        max_refs = 2
-    elif model in _MAI_EDIT_MODELS:
-        max_refs = 1
-    else:
-        max_refs = 9
+    # 參考圖張數上限一律以 MODELS 的 max_ref 為單一來源（跟前端讀同一份資料），
+    # 未標的模型沿用 9 張。各家族的實測值與依據見 MODELS 裡的註解。
+    max_refs = _EDIT_MAX_REF.get(model, 9)
     image_files: list[tuple[str, bytes, str]] = []
     for i in range(1, max_refs + 1):
         f = form.get(f"image_{i}")

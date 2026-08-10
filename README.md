@@ -136,7 +136,19 @@ python app.py
 
 > **多張參考圖必須用「重複的 `image` 欄位」送 multipart，不能用 `image_2`／`image_3` 這種編號欄位名。** 2026-08-10 實測（兩張純色圖 + 要求模型混色，量輸出的平均 RGB）：`image` + `image_2` 得到紅色（**只有第一張生效，第二張被靜默丟棄**）；重複的 `image` 或 `image[]` 得到紫色（兩張都吃）。這是使用者實際回報的問題（「wan2.7 上傳兩張照片，似乎只會吃第一張」）。已改用重複 `image`，並在 `wan2.7-image`／`wan2.6-image`／`qwen-image-2.0`／`gpt-image-2`／`dola-seedream-5.0-pro` 上都驗過。
 >
-> **MAI Image 的編輯端點只接受「剛好一張」參考圖**——多送會直接回 `Exactly one image file must be attached for edit requests`，因此三個 MAI 編輯條目都設 `max_ref: 1`。
+> **各編輯模型的參考圖張數上限差很多**，已逐一實測（2026-08-10，正式網關）。做法是「前 N 張純紅 + 最後一張純藍 + 要求模型輸出所有參考圖的混色」，量輸出圖片的平均 RGB——出現藍色成分就代表最後那張真的被讀進去了。**只驗「送得出去」是不夠的**，上游可能接受請求卻靜默忽略多出來的圖。
+>
+> | 模型 | 上限 | 超過時的上游訊息 |
+> |---|---|---|
+> | `wan2.7-image` / `wan2.7-image-pro` | 9（第 9 張實測有效） | — |
+> | `wan2.6-image` | **4** | `the last message must contain 1 to 4 images` |
+> | `qwen-image-2.0` / `-pro` | **3** | `supports 0~3 image content items` |
+> | `MAI-Image-2.5` / `-Flash` / `-Pro` | **1** | `Exactly one image file must be attached for edit requests` |
+> | `gpt-image-2` / `-1.5`、Seedream、Gemini | 9（第 9 張實測有效） | — |
+>
+> 上限以 MODELS 的 `max_ref` 為單一來源，後端 `_EDIT_MAX_REF` 與前端 `imgMaxRef` 讀同一份資料，未標的模型沿用 9 張。
+
+> **注意**：萬相編輯先前在這裡被標成「最多 2 張」，那是依閘道端 `WanImageInput.images (≤2)` 這個 Go struct 推斷的、沒有實測——**實測後確認那條約束不適用於 `/v1/images/edits` 這條路徑**，萬相 2.7 實際上 9 張都會生效。這個錯誤的限制曾讓使用者反映「wan2.7 nen 只能支援兩張上傳，之前阿里的可以上傳到 9 張」。
 
 > **MAI Image 家族（2.5 / 2.5-Flash / 2.5-Pro）的尺寸不是固定枚舉，而是兩條同時成立的約束**（2026-08-10 對正式網關實測，三個型號行為一致）：**每邊至少 768 像素**，且**總像素不得超過 1,056,768**。違反時分別回 `'width'/'height' must be at least 768 pixels` 與 `Invalid dimensions WxH: total pixel count (N) exceeds the maximum of 1056768`。
 >

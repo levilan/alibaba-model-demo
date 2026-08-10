@@ -89,6 +89,17 @@
     - 只為**有實據的**模型標上限：`happyhorse-1.x-r2v` 9 張、`happyhorse-1.0-video-edit` 5 張（desc 本來就這樣寫）、`gemini-omni-flash-preview` r2v 3 張（後端本來就 `image_files[:3]`）。其餘沒有實測過上限的模型維持不設限——不硬編一個猜測值進去擋人，這正是先前 MAI 尺寸那個 bug 的成因。
   - 前端改動：`app.js?v=56` → `?v=57`。
 
+- fix：逐一實測所有圖像編輯模型的參考圖張數上限，**並更正我先前設錯的萬相上限**（commit 待補）。網關：正式環境 `https://nen.com.tw`。
+  - **更正一個我造成的迴歸**：前面把萬相編輯的 `max_ref` 設成 2，依據是閘道端 `WanImageInput.images (≤2)` 這個 Go struct——**那是推斷、沒有實測**。實測後確認那條約束不適用於 `/v1/images/edits` 這條路徑：`wan2.7-image` 與 `wan2.7-image-pro` 送 9 張都被接受，而且第 9 張確實有生效。這個錯誤的限制正好對應使用者反映的「wan2.7 nen 只能支援兩張上傳，之前阿里的可以上傳到 9 張」——我當時還回覆說那是上游硬限制、不是我們砍功能，那個說法是錯的。已改回 9。
+  - **驗法**：「送得出去」不等於「有用到」，上游可能接受請求卻靜默忽略多出來的圖。所以用「前 N 張純紅 + 最後一張純藍 + 要求模型輸出所有參考圖的混色」，量輸出的平均 RGB——出現藍色成分才代表最後那張真的被讀進去。探測上限時由大往小試，被拒絕不會產圖也就不花錢，只有第一次被接受才有成本。
+  - 實測結果：
+    - `wan2.7-image` / `wan2.7-image-pro` → 9 張，第 9 張有效（RGB 120,0,236 / 83,1,254）
+    - `wan2.6-image` → **上限 4**（第 4 張有效 RGB 197,31,185；送 5 張回 `the last message must contain 1 to 4 images`）——跟同家族的 2.7 不一樣
+    - `qwen-image-2.0` / `-pro` → **上限 3**（第 3 張有效 RGB 161,24,115；送 4 張回 `supports 0~3 image content items`）
+    - `MAI-Image-2.5` / `-Flash` / `-Pro` → **只接受剛好 1 張**
+    - `gpt-image-2` / `-1.5`、`dola-seedream-5.0-pro` / `-lite`、Gemini 四個型號 → 9 張，第 9 張有效
+  - 後端把原本 `is_qwen2_edit → 3 / _WAN_EDIT_MODELS → 2 / _MAI_EDIT_MODELS → 1 / 其餘 9` 這串特例判斷收掉，改成從 MODELS 推導的 `_EDIT_MAX_REF`，與前端 `imgMaxRef` 讀同一份資料——先前這類「兩邊各自寫死、各自演化」正是張數不一致的來源。
+
 ## 2026-08-08
 
 - fix：手機版登入頁三個問題（使用者回報「手機看好像燈不見了」）。**燈在手機上被隱藏其實是功能退化，不只是美觀問題**——燈同時是登入頁切換淺色/深色模式的唯一入口，`@media (max-width: 760px) { .login-lamp { display: none } }` 等於讓手機使用者完全沒辦法切主題。改成把燈排到卡片下方（那裡本來就是一大片空白）並縮小到 58%；因為 `transform: scale()` 不會改變版面高度，要用負 margin 把縮放後多出來的空白（236px × 0.42 ≈ 99px）收掉，否則底下會留一段幽靈空隙。順手抓到一個既有 bug：`.login-card` 只寫了 `width: 420px` 沒有 `max-width`，在比 420px 窄的手機上卡片會直接撐破視窗、左右被切掉，補上 `max-width: calc(100vw - 28px)`。另外雲照原尺寸放在窄螢幕上會大到擠住登入卡片，等比例縮到 62%——實作上把雲的寬度改成透過 CSS 變數傳遞而不是 JS 直接設 `style.width`，因為 inline style 的優先權比 media query 高，直接設的話得靠 `!important` 才蓋得掉。已用 Playwright 在 390px 寬（iPhone 14 Pro）實測：無橫向溢出、卡片 362px、用真實觸控座標點燈確認能正常切換 dark→light、燈的底緣與場景底緣一致（無幽靈空隙）。
