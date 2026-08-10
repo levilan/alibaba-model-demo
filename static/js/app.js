@@ -1421,12 +1421,15 @@ async function sendImage() {
 
     if (!prompt) { toast('請輸入 Prompt', 'error'); return; }
 
-    const btn = document.getElementById('imageSendBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg> 生成中...';
-    showLoading('圖片生成中，請稍候...');
+    if (taskType === 'i2i' && !imgRefFiles.length) { toast('請先上傳至少一張參考圖片', 'error'); return; }
 
+    // 改成跟影片一樣的「行內佔位卡」而不是全螢幕遮罩：圖片生成動輒數十秒，
+    // 遮罩會把整個平台鎖住，連切到別的頁籤看結果都不行。改成插入一張生成中的
+    // 卡片、送出鈕也不再鎖定，使用者可以同時做別的事、甚至再送下一張（卡片會
+    // 立刻出現，本身就是「已收到」的回饋，不需要靠鎖按鈕來防重複點）。
+    const card = addImagePendingCard(model, prompt);
     const startTime = Date.now();
+
     try {
         let res;
         if (taskType === 't2i') {
@@ -1439,7 +1442,6 @@ async function sendImage() {
             if (outputFormat) body.output_format = outputFormat;
             res = await apiPost('/api/image/generate', body);
         } else {
-            if (!imgRefFiles.length) { toast('請先上傳至少一張參考圖片', 'error'); hideLoading(); btn.disabled = false; btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg> 生成'; return; }
             const fd = new FormData();
             fd.append('model', model); fd.append('prompt', prompt);
             fd.append('negative_prompt', negPrompt); fd.append('size', size);
@@ -1456,37 +1458,82 @@ async function sendImage() {
 
         if (res.success && res.images?.length) {
             const elapsed = fmtElapsed(Date.now() - startTime);
-            const gallery = document.getElementById('imageResults');
-            gallery.querySelector('.empty-state')?.remove();
-            res.images.forEach(img => {
-                const src = img.local_path || img.url;
-                const card = el('div', { className: 'img-card' });
-                card.innerHTML = `
-                    <img src="${src}" alt="Generated" loading="lazy" onclick="openLightbox('${src}')">
-                    <div class="img-card-footer">
-                        <span class="img-model-tag">${res.model}（耗時 ${elapsed}）</span>
-                        <a href="${src}" download class="img-dl">下載</a>
-                    </div>`;
-                if (img.actual_prompt) {
-                    const extEl = el('div', { className: 'img-actual-prompt' });
-                    extEl.textContent = 'Prompt Extend 擴充後：' + img.actual_prompt;
-                    card.appendChild(extEl);
-                }
-                gallery.insertBefore(card, gallery.firstChild);
-            });
+            finishImagePendingCard(card, res, elapsed);
             toast(`圖片生成完成！共 ${res.images.length} 張`, 'success');
             addFixedCost(res.model, res.images.length);
         } else {
             const errMsg = res.error || '生成失敗';
+            failImagePendingCard(card, errMsg);
             toast(errMsg, 'error');
             console.error('Image generation error:', res);
         }
     } catch (e) {
+        failImagePendingCard(card, e.message);
         toast(`錯誤：${e.message}`, 'error');
     }
-    hideLoading();
-    btn.disabled = false;
-    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg> 生成';
+}
+
+// ── 圖片生成的行內佔位卡（沿用影片那組 vtc-* 樣式，維持兩個頁籤觀感一致）──
+function addImagePendingCard(model, prompt) {
+    const gallery = document.getElementById('imageResults');
+    gallery.querySelector('.empty-state')?.remove();
+    const card = el('div', { className: 'video-task-card' });
+    card.innerHTML = `
+        <div class="vtc-header">
+            <span class="vtc-model">${model}</span>
+            <span class="vtc-timer">(耗時 0s)</span>
+            <span class="vtc-status pending">生成中</span>
+        </div>
+        <div class="vtc-prompt">${prompt.substring(0, 120)}${prompt.length > 120 ? '...' : ''}</div>
+        <div class="vtc-progress"><div class="vtc-progress-bar indeterminate"></div></div>
+        <div class="img-pending-body"><span class="spinner-sm"></span>圖片生成中…</div>`;
+    gallery.insertBefore(card, gallery.firstChild);
+
+    // 計時器掛在卡片上，完成/失敗時要清掉，否則分頁一直開著會累積 interval
+    const startTime = Date.now();
+    const timerEl = card.querySelector('.vtc-timer');
+    card._timer = setInterval(() => {
+        timerEl.textContent = `(耗時 ${fmtElapsed(Date.now() - startTime)})`;
+    }, 1000);
+    return card;
+}
+
+function _stopPendingTimer(card) {
+    if (card && card._timer) { clearInterval(card._timer); card._timer = null; }
+}
+
+function finishImagePendingCard(card, res, elapsed) {
+    _stopPendingTimer(card);
+    const gallery = document.getElementById('imageResults');
+    const frag = document.createDocumentFragment();
+    res.images.forEach(img => {
+        const src = img.local_path || img.url;
+        const c = el('div', { className: 'img-card' });
+        c.innerHTML = `
+            <img src="${src}" alt="Generated" loading="lazy" onclick="openLightbox('${src}')">
+            <div class="img-card-footer">
+                <span class="img-model-tag">${res.model}（耗時 ${elapsed}）</span>
+                <a href="${src}" download class="img-dl">下載</a>
+            </div>`;
+        if (img.actual_prompt) {
+            const extEl = el('div', { className: 'img-actual-prompt' });
+            extEl.textContent = 'Prompt Extend 擴充後：' + img.actual_prompt;
+            c.appendChild(extEl);
+        }
+        frag.appendChild(c);
+    });
+    // 就地換掉佔位卡，結果才會留在當初送出的位置，不會插到後來完成的任務前面
+    gallery.replaceChild(frag, card);
+}
+
+function failImagePendingCard(card, message) {
+    _stopPendingTimer(card);
+    card.querySelector('.vtc-status').className = 'vtc-status failed';
+    card.querySelector('.vtc-status').textContent = '失敗';
+    card.querySelector('.vtc-progress')?.remove();
+    const body = card.querySelector('.img-pending-body');
+    body.style.color = 'var(--red)';
+    body.textContent = message || '生成失敗';
 }
 
 // ── Video Generation ──────────────────────────────────────────
