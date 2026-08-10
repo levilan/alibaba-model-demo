@@ -536,13 +536,18 @@ function onTextModelChange() {
 // 後端不對價格做固定小數位 round（避免像語音辨識 $0.000035/次 這種極小值被
 // 捨去顯示成 0，讓人誤以為免費），改成這裡依數值大小動態決定要顯示幾位小數——
 // 至少抓到第一個非零小數位、再多留一位，取到合理的精度
+// 顯示完整價格，不做四捨五入。原本 >= 0.01 的金額會被 round 到小數第二位，
+// 導致 wan2.7 的 $0.075 顯示成 $0.08——使用者看到會以為這個平台比原廠貴，
+// 是實際被回報過的問題。後端的 /api/pricing 本來就保留原始精度，捨入只發生在這裡。
 function formatUsd(n) {
-    if (!n) return '0';
-    if (n >= 0.01) return (Math.round(n * 100) / 100).toString();
-    let decimals = 2;
-    while (decimals < 8 && Math.abs(n) < Math.pow(10, -decimals)) decimals++;
-    const factor = Math.pow(10, decimals + 1);
-    return (Math.round(n * factor) / factor).toString();
+    if (!n || !isFinite(n)) return '0';
+    // toPrecision(12) 的用途只是消掉浮點誤差（例如 0.1+0.2 會得到
+    // 0.30000000000000004），12 位有效數字遠超過任何實際單價需要的精度，
+    // 不會改變真正的數值
+    const v = Number(n.toPrecision(12));
+    // 小於 1e-6 時 String() 會輸出 "1e-7" 這種科學記號，展開成一般小數再去掉尾隨的 0
+    if (Math.abs(v) < 1e-6) return v.toFixed(12).replace(/0+$/, '').replace(/\.$/, '');
+    return String(v);
 }
 
 // ── 即時花費統計 ──────────────────────────────────────────────
