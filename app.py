@@ -320,6 +320,28 @@ MODELS = {
     ],
     "image": [
         # ── 千問文生圖 ────────────────────────────────────────────
+        # 千問 3.0 系列的尺寸不是固定枚舉，而是一條面積約束（2026-08-11 對正式網關
+        # 實測，兩個型號一致、上下界都驗過）：**總像素 262,144（512×512）～
+        # 6,553,600（2560×2560）**，格式必須是 `寬*高`。違反時分別回
+        #   Image area must be between 262144 (512x512) and 6553600 (2560x2560) pixels
+        #   Expected format: '<width>*<height>'   ← 送 1K/2K/4K 這種規格值會踩到
+        # 注意錯誤訊息寫的是「for t2i requests」——i2i 不套用這條，實測 i2i 送
+        # size=10*10 照樣會成功產圖。下面列的尺寸都落在上述範圍內（1024*1024、
+        # 1280*720、2048*2048 三個另外實際產圖驗過）。
+        # 計費：3.0 每次 $0.03、3.0-pro $0.04，但那是**1K 輸出價**；輸出 2K 時網關會
+        # 依上游回傳的 usage.output_image_type 自動補倍率（pro 的 2K 是 $0.075，近一倍），
+        # 而 /api/pricing 只讀得到 1K 價，所以 UI 顯示的參考單價在 2K 情境會低估。
+        # 另外輸入圖是加法附加費 $0.003/張，不受輸出張數或解析度倍率影響。
+        {
+            "id": "qwen-image-3.0-pro", "name": "千問圖像 3.0 Pro", "group": "千問文生圖",
+            "desc": "最新旗艦文生圖（2K 輸出計價較高）", "type": "t2i", "max_n": 6,
+            "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024","1664*928","928*1664","2048*2048"],
+        },
+        {
+            "id": "qwen-image-3.0", "name": "千問圖像 3.0", "group": "千問文生圖",
+            "desc": "最新文生圖，1K/2K 同價", "type": "t2i", "max_n": 6,
+            "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024","1664*928","928*1664","2048*2048"],
+        },
         {
             "id": "qwen-image-2.0-pro", "name": "千問圖像 2.0 Pro", "group": "千問文生圖",
             "desc": "文字渲染突出", "type": "t2i", "max_n": 4,
@@ -413,6 +435,22 @@ MODELS = {
             "id": "wan2.6-image", "name": "萬相 2.6 Image", "group": "萬相圖像編輯",
             "desc": "前代編輯模型（最多 4 張）", "type": "i2i", "max_n": 1, "max_ref": 4,
             "sizes": ["1024*1024","1280*720","720*1280","960*1280","1280*960"],
+        },
+        # ── 千問圖像 3.0（同一模型 ID 兼具 T2I 與 I2I；上游規定 input.messages 只能一則，
+        #    I2I 的 content 是 1～3 個 image ＋ **恰好一個** text，所以參考圖上限 3 張）──
+        # no_size：**編輯情境下 size 完全不生效**，輸出尺寸由輸入圖／模型自己決定。實測
+        # 送 1280*720（橫向）與 512*512 都一樣得到 2048x2048，連 t2i 的面積約束都不套用
+        # （送 10*10 也不會被拒），所以那個尺寸選單放著只會誤導。這不是 3.0 專屬——
+        # qwen-image-2.0 與 wan2.7-image 的編輯情境實測也一樣忽略 size（見 README）。
+        {
+            "id": "qwen-image-3.0-pro", "name": "千問圖像 3.0 Pro（編輯）", "group": "千問圖像編輯",
+            "desc": "最新旗艦圖像編輯（最多 3 張，輸出尺寸跟隨輸入圖）", "type": "i2i",
+            "max_n": 6, "max_ref": 3, "no_ref_strength": True, "fusion_edit": True, "no_size": True,
+        },
+        {
+            "id": "qwen-image-3.0", "name": "千問圖像 3.0（編輯）", "group": "千問圖像編輯",
+            "desc": "最新圖像編輯（最多 3 張，輸出尺寸跟隨輸入圖）", "type": "i2i",
+            "max_n": 6, "max_ref": 3, "no_ref_strength": True, "fusion_edit": True, "no_size": True,
         },
         # ── 千問圖像 2.0（生成與編輯融合模型，同一模型 ID 兼具 T2I 與 I2I）──
         {
@@ -1629,8 +1667,10 @@ async def _generate_gemini_image(model: str, prompt: str, n: int, api_key: str,
         "error": f"模型未回傳圖片，改用純文字回覆（重試 {_GEMINI_IMAGE_MAX_RETRIES} 次仍失敗）：{preview}"
     })
 
-# qwen-image-2.0 系列為「生成與編輯融合模型」：最多 3 張參考圖、可輸出 1-6 張，且不支援 ref_strength 參數
-_QWEN2_EDIT_MODELS = {"qwen-image-2.0-pro", "qwen-image-2.0"}
+# 千問「生成與編輯融合模型」：最多 3 張參考圖、可輸出 1-6 張，且不支援 ref_strength 參數，
+# 改以 prompt_extend 控制（3.0 系列的上游規格同樣是 n 1~6、I2I 最多 3 張，行為一致）
+_QWEN_FUSION_EDIT_MODELS = {"qwen-image-2.0-pro", "qwen-image-2.0",
+                            "qwen-image-3.0-pro", "qwen-image-3.0"}
 # GPT Image 系列額外支援 OpenAI 標準的 quality/background/output_format 三個參數（已實測確認有效）
 _GPT_IMAGE_MODELS = {"gpt-image-2", "gpt-image-1.5"}
 # 支援組圖模式（enable_sequential）與更高解析度的萬相 2.7 系列
@@ -1718,7 +1758,7 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
         raise HTTPException(status_code=500, detail=str(e))
 
 # GPT Image 系列的 /images/edits 不接受 ref_strength 參數，帶入會被上游拒絕（400 Unknown parameter）
-_NO_REF_STRENGTH_EDIT_MODELS = _QWEN2_EDIT_MODELS | {"gpt-image-2", "gpt-image-1.5",
+_NO_REF_STRENGTH_EDIT_MODELS = _QWEN_FUSION_EDIT_MODELS | {"gpt-image-2", "gpt-image-1.5",
                                                      "MAI-Image-2.5", "MAI-Image-2.5-Flash", "MAI-Image-2.5-Pro"}
 
 # ─── API: Image Edit (I2I) ────────────────────────────────────────
@@ -1726,7 +1766,7 @@ _NO_REF_STRENGTH_EDIT_MODELS = _QWEN2_EDIT_MODELS | {"gpt-image-2", "gpt-image-1
 async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
     form = await request.form()
     model       = form.get("model", "wan2.6-image")
-    is_qwen2_edit = model in _QWEN2_EDIT_MODELS
+    is_fusion_edit = model in _QWEN_FUSION_EDIT_MODELS
     prompt      = form.get("prompt", "")
     neg_prompt  = form.get("negative_prompt", "")
     size        = form.get("size", "1024*1024")
@@ -1742,7 +1782,7 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
         n = int(form.get("n", "1"))
     except ValueError:
         n = 1
-    n = max(1, min(6, n)) if is_qwen2_edit else 1
+    n = max(1, min(6, n)) if is_fusion_edit else 1
     quality       = form.get("quality", "")
     background    = form.get("background", "")
     output_format = form.get("output_format", "")
@@ -1783,7 +1823,7 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
 
     try:
         form_data = {"model": model, "prompt": prompt, "size": size, "n": str(n)}
-        if is_qwen2_edit:
+        if is_fusion_edit:
             form_data["prompt_extend"] = "true" if prompt_extend else "false"
         if model not in _NO_REF_STRENGTH_EDIT_MODELS:
             form_data["ref_strength"] = str(ref_strength)
