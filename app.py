@@ -477,17 +477,17 @@ MODELS = {
         # ── MAI Image 編輯（Azure OpenAI 管道，沿用一般 /v1/images/edits 流程，不支援 ref_strength）──
         {
             "id": "MAI-Image-2.5-Pro", "name": "MAI-Image-2.5-Pro（編輯）", "group": "MAI Image",
-            "desc": "旗艦圖像編輯 Pro", "type": "i2i", "max_n": 1, "no_ref_strength": True,
+            "desc": "旗艦圖像編輯 Pro", "type": "i2i", "max_n": 1, "no_ref_strength": True, "max_ref": 1,
             "sizes": _MAI_IMAGE_SIZES,
         },
         {
             "id": "MAI-Image-2.5", "name": "MAI-Image-2.5（編輯）", "group": "MAI Image",
-            "desc": "旗艦圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True,
+            "desc": "旗艦圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True, "max_ref": 1,
             "sizes": _MAI_IMAGE_SIZES,
         },
         {
             "id": "MAI-Image-2.5-Flash", "name": "MAI-Image-2.5-Flash（編輯）", "group": "MAI Image",
-            "desc": "極速圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True,
+            "desc": "極速圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True, "max_ref": 1,
             "sizes": _MAI_IMAGE_SIZES,
         },
         # ── Gemini Image 編輯（同樣走原生 generateContent，參考圖以 inlineData 帶入。
@@ -1563,6 +1563,9 @@ _GPT_IMAGE_MODELS = {"gpt-image-2", "gpt-image-1.5"}
 _WAN27_IMAGE_MODELS = {"wan2.7-image-pro", "wan2.7-image"}
 # 萬相圖像編輯系列：上游 WanImageInput.images 的硬上限是 2 張參考圖
 _WAN_EDIT_MODELS = {"wan2.7-image-pro", "wan2.7-image", "wan2.6-image"}
+# MAI 系列的 /v1/images/edits 只接受「剛好一張」參考圖，多送會直接 400
+# （Invalid request. Error => Exactly one image file must be attached for edit requests.）
+_MAI_EDIT_MODELS = {"MAI-Image-2.5", "MAI-Image-2.5-Flash", "MAI-Image-2.5-Pro"}
 # 圖片端點統一的上游逾時。有些圖片模型（例如萬相 2.7 系列）在閘道端走的是非同步
 # 端點、由閘道代為輪詢到 SUCCEEDED 才回應，客戶端看到的是一次很慢的同步請求，
 # 原本的 120 秒不夠用
@@ -1669,11 +1672,15 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
 
     # Read and optionally resize reference images in memory
     # qwen-image-2.0 系列（生成與編輯融合模型）最多 3 張參考圖；萬相編輯系列上游
-    # WanImageInput.images 的硬上限是 2 張；其餘模型最多 9 張
+    # WanImageInput.images 的硬上限是 2 張；MAI 系列的編輯端點只接受「剛好一張」
+    # （多送會直接 400 "Exactly one image file must be attached for edit requests"）；
+    # 其餘模型最多 9 張
     if is_qwen2_edit:
         max_refs = 3
     elif model in _WAN_EDIT_MODELS:
         max_refs = 2
+    elif model in _MAI_EDIT_MODELS:
+        max_refs = 1
     else:
         max_refs = 9
     image_files: list[tuple[str, bytes, str]] = []
@@ -1724,8 +1731,15 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
             if output_format:
                 form_data["output_format"] = output_format
 
-        files = [(("image" if i == 0 else f"image_{i+1}"), (fname, fbytes, ftype))
-                 for i, (fname, fbytes, ftype) in enumerate(image_files)]
+        # 多張參考圖必須用「重複的 image 欄位」，不能用 image_2 / image_3 這種編號欄位名。
+        # 2026-08-10 對正式網關實測（兩張純色圖 + 要求模型混色，量輸出的平均 RGB）：
+        #   image + image_2   → RGB(202,61,69) 紅色，**只有第一張生效**，第二張被靜默丟棄
+        #   image + image     → RGB(159,9,247) 紫色，兩張都吃 ✅
+        #   image[] + image[] → RGB(165,3,247) 紫色，兩張都吃 ✅
+        # 這是使用者實際回報的問題（「wan2.7 上傳兩張照片，似乎只會吃第一張」）。
+        # 重複 image 欄位在 wan2.7-image / wan2.6-image / qwen-image-2.0 / gpt-image-2 /
+        # dola-seedream-5.0-pro 上都實測正常；MAI 系列則是只接受一張（見 _MAI_EDIT_MAX_REF）。
+        files = [("image", (fname, fbytes, ftype)) for fname, fbytes, ftype in image_files]
 
         async with httpx.AsyncClient(timeout=_IMAGE_TIMEOUT) as client:
             resp = await client.post(

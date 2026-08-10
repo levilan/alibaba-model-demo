@@ -134,6 +134,10 @@ python app.py
 
 > qwen-image-2.0 系列為生成與編輯融合模型：最多 3 張參考圖、可一次輸出 1–6 張，並以 `prompt_extend` 取代 `ref_strength` 參數。
 
+> **多張參考圖必須用「重複的 `image` 欄位」送 multipart，不能用 `image_2`／`image_3` 這種編號欄位名。** 2026-08-10 實測（兩張純色圖 + 要求模型混色，量輸出的平均 RGB）：`image` + `image_2` 得到紅色（**只有第一張生效，第二張被靜默丟棄**）；重複的 `image` 或 `image[]` 得到紫色（兩張都吃）。這是使用者實際回報的問題（「wan2.7 上傳兩張照片，似乎只會吃第一張」）。已改用重複 `image`，並在 `wan2.7-image`／`wan2.6-image`／`qwen-image-2.0`／`gpt-image-2`／`dola-seedream-5.0-pro` 上都驗過。
+>
+> **MAI Image 的編輯端點只接受「剛好一張」參考圖**——多送會直接回 `Exactly one image file must be attached for edit requests`，因此三個 MAI 編輯條目都設 `max_ref: 1`。
+
 > **MAI Image 家族（2.5 / 2.5-Flash / 2.5-Pro）的尺寸不是固定枚舉，而是兩條同時成立的約束**（2026-08-10 對正式網關實測，三個型號行為一致）：**每邊至少 768 像素**，且**總像素不得超過 1,056,768**。違反時分別回 `'width'/'height' must be at least 768 pixels` 與 `Invalid dimensions WxH: total pixel count (N) exceeds the maximum of 1056768`。
 >
 > 先前這裡列的 `1536x1024` 與 `1024x1536` 都是 1,572,864 像素，**超過上限、一定會被拒**——三個尺寸裡有兩個從來就不能用。現在列的五個（`1024x1024`／`1366x768`／`768x1366`／`1152x896`／`896x1152`）都逐一實測確認可用，定義在 `_MAI_IMAGE_SIZES`。三個型號共用同一組尺寸，也都不支援 `ref_strength`。
