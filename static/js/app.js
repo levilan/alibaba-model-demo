@@ -27,7 +27,12 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbo
 let apiKey = sessionStorage.getItem('nenai_api_key') || '';
 let models = { text: [], image: [], video: [], muleai: [], voice: { asr: [], tts: [] } };
 let pricingMap = {}; // model id -> {type:'token', input, output} 或 {type:'fixed', price}，僅供參考
-let textChatHistory = []; // 文字生成多輪對話歷史，[{role, content}]，隨對話累積、清除對話時清空
+// 文字生成多輪對話歷史，[{role, content}]，隨對話累積、清除對話時清空。
+// 注意這裡一律累積，「記住上下文」開關（#textRememberContext）只決定送出時要不要帶上，
+// 不會影響累積本身——關掉再打開能接著先前的內容繼續。
+// 每一輪都必須重送完整歷史，所以 prompt_tokens 是累加的：聊到第 N 輪要付前 N-1 輪的錢，
+// 總花費大致隨輪數平方成長。那個開關存在的主要理由就是這個。
+let textChatHistory = [];
 let sessionCost = 0; // 本次瀏覽器分頁累積的估計花費（USD），僅供參考、重新整理後歸零
 let refFiles = [];
 let editRefFiles = [];  // for video editing reference images
@@ -1387,6 +1392,7 @@ async function sendText() {
     const stopRaw           = document.getElementById('textStop').value.trim();
     const stop              = stopRaw ? stopRaw.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 4) : [];
     const enableThinking    = document.getElementById('textThinking').checked;
+    const rememberContext   = document.getElementById('textRememberContext').checked;
     const reasoningEffort   = document.getElementById('textReasoningEffort').value;
     const useStream         = document.getElementById('textStream').checked;
     const modelInfo         = models.text.find(m => m.id === model);
@@ -1430,7 +1436,10 @@ async function sendText() {
             presence_penalty: presencePenalty, frequency_penalty: frequencyPenalty,
             stream: useStream,
             enable_thinking: enableThinking && !!modelInfo?.thinking,
-            history: textChatHistory,
+            // 「記住上下文」關閉時不帶歷史訊息，每一輪都是全新對話。畫面上的對話紀錄
+            // 與 textChatHistory 照常累積——開關只決定「這一輪送什麼給模型」，重新
+            // 打開後就能接著先前的內容繼續，不必重新問一次
+            history: rememberContext ? textChatHistory : [],
         };
         if (topK > 0) body.top_k = topK;
         if (seed !== null) body.seed = seed;

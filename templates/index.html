@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=28">
+    <link rel="stylesheet" href="/static/css/style.css?v=29">
     <link rel="icon" type="image/png" href="/static/img/logo.png">
     <script>
         // 在 CSS 套用前就先決定 light/dark，避免登入畫面先閃一下錯的主題再跳回來
@@ -264,6 +264,12 @@
                 <div class="toggle-row" id="textThinkingGroup">
                     <label data-tip="啟用後模型會先進行內部推理（Chain-of-Thought），再給出回答，大幅提升複雜問題的準確性，但會消耗更多 tokens 且速度較慢。思考過程會顯示在回答上方">思考模式</label>
                     <label class="toggle"><input type="checkbox" id="textThinking"><span class="toggle-slider"></span></label>
+                </div>
+                <!-- 記住上下文：關閉時每次送出都是全新對話（不帶歷史訊息）。畫面上的對話
+                     紀錄照常保留，開關只影響「這一輪送給模型的內容」 -->
+                <div class="toggle-row">
+                    <label data-tip="開啟時模型會記得先前的對話內容，可以接續提問；關閉後每次送出都視為全新對話。由於每一輪都必須重送完整對話紀錄，對話越長、單次消耗的 tokens 越多，關閉可以明顯節省">記住上下文</label>
+                    <label class="toggle"><input type="checkbox" id="textRememberContext" checked><span class="toggle-slider"></span></label>
                 </div>
                 <!-- 推理強度 reasoning_effort：GPT 與 GLM 5.x 支援。GPT 只有這個機制
                      （送 enable_thinking 給 GPT 會直接 400）；GLM 則是兩種都支援，
@@ -952,6 +958,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=63"></script>
+<script src="/static/js/app.js?v=64"></script>
 </body>
 </html>
