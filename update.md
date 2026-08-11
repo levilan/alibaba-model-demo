@@ -131,11 +131,13 @@
 
 ## 2026-08-11
 
-- fix：修掉 `qwen-image-3.0` 在 `n > 1` 時**付了 n 張的錢卻只拿到一張**的問題（由文檔站 session 交叉查核時發現）。
+- fix：修掉 `qwen-image-3.0` 在 `n > 1` 時**只顯示一張產出**的問題（由文檔站 session 交叉查核時發現）。
   - 千問 3.0 走的 multimodal-generation adaptor 在 `n>1` 時，OpenAI 相容的 `data[]` **只回第一張**，但 `usage.output_image_count` 是實際張數、也照那個張數計費——其餘的圖在 `metadata.output.choices[].message.content` 裡。實測 `n=2`：`data[]` 1 筆、metadata 2 張、計費 2 張。
-  - 我們的取圖只讀 `data[]`，所以使用者選 n=2 會被扣兩張的費用卻只看到一張。新增 `_extract_images_from_metadata()`，在 `/api/image/generate` 與 `/api/image/edit` 兩處補齊（以 URL 去重，不會重複計入 `data[]` 已有的）。
+  - 我們的取圖只讀 `data[]`，所以使用者選 n=2 只看得到一張。新增 `_extract_images_from_metadata()`，在 `/api/image/generate` 與 `/api/image/edit` 兩處補齊（以 URL 去重，不會重複計入 `data[]` 已有的）。
   - 端到端驗證：修正後 `n=2` 正確回傳 2 張；萬相 `n=2` 維持原本的 2 張，未受影響（它走另一條 adaptor，`data[]` 本來就完整）。
-  - 根本解需要網關端把 `data[]` 補齊，已知會但由他們決定。
+  - 根本解需要網關端把 `data[]` 補齊，已回報，他們已修（`AliOutput.ChoicesToOpenAIImageDate` 原本「每個 choice 組一筆 ImageData」、內層迴圈把 `data.Url` 覆蓋掉，改成每張圖產出一筆並跨 choice 攤平），待部署。
+  - **⚠️ 更正一個我判斷反了的結論**：我原本寫「使用者付了 2 張的錢卻只拿到 1 張」，**不成立**。網關是數 `data[]` 裡的實際圖片數計費（`aliImageHandler` 的 `actualImageCount`），不是看 `usage.output_image_count`——所以使用者只被收一張、沒有被多收，真正吃虧的是**平台方**（上游按 2 張收、平台只收使用者 1 張）。這是網關端查用量日誌釐清的（`quota 15000` = $0.03 × QuotaPerUnit＝一張的價錢）。我把上游回報的產出張數當成了計費依據，這個錯誤已經流進文檔站，已請他們一併更正。
+  - 附帶影響：網關修好部署之前，我們補齊後顯示 2 張但實際只被收 1 張，header 的「本次花費」在這個情境會**高估**；部署後兩邊就會一致。
 
 - docs：更正我先前對千問 3.0 編輯輸出尺寸的錯誤描述。我寫「送任何 size 都得到 2048×2048」，**實際上輸出尺寸是跟著輸入圖的長寬比走**——我會量到固定值只是因為測試用的輸入圖剛好是正方形。文檔站用 900×506（16:9）複驗，兩種 size 都得到 2720×1520（≈16:9）。`README.md` 已改成「以回應的 `usage.output_width`/`output_height` 為準，不要假設是固定值」。`size` 被忽略這點則複驗成立。
   - 這是本輪第二次「用單一樣本推出通則」的錯誤（前一次是萬相參考圖上限）。`memory.md` 的教訓清單已涵蓋這一類。

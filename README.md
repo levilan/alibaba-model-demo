@@ -164,9 +164,13 @@ python app.py
 >
 > `qwen-image-3.0-pro` 的官方 **RPM = 1**，連續呼叫很容易撞到 429，測試時要留重試間隔。
 
-> ⚠️ **`n > 1` 時 OpenAI 相容的 `data[]` 只會回第一張**（千問 3.0 這條 multimodal-generation adaptor 特有；萬相與千問 2.0 走另一條 adaptor，`data[]` 本來就完整）。實測 `n=2`：`data[]` 只有 1 筆，但 `usage.output_image_count` 是 2、**也照 2 張計費**，另一張在 `metadata.output.choices[].message.content` 裡。
+> ⚠️ **`n > 1` 時 OpenAI 相容的 `data[]` 只會回第一張**（千問 3.0 這條 multimodal-generation adaptor 特有；萬相與千問 2.0 走另一條 adaptor，`data[]` 本來就完整）。實測 `n=2`：`data[]` 只有 1 筆，另一張在 `metadata.output.choices[].message.content` 裡（上游確實產了 2 張，`usage.output_image_count` 也是 2）。
 >
-> 後端已用 `_extract_images_from_metadata()` 從 metadata 補齊，否則使用者會被扣 n 張的錢卻只看到一張。根本解需要網關端把 `data[]` 補齊。
+> 後端已用 `_extract_images_from_metadata()` 從 metadata 補齊，讓使用者看得到全部的產出。
+>
+> **計費方向要講清楚，不要弄反**：網關是**數 `data[]` 裡的實際圖片數**來計費（`aliImageHandler` 的 `actualImageCount`），不是看 `usage.output_image_count`。所以在網關修好之前，使用者**只被收一張的錢**、沒有被多收——真正吃虧的是平台方（上游按 2 張收，平台只收使用者 1 張）。這一點我最初判斷反了，實際是由網關端查用量日誌釐清的（`quota 15000` = $0.03 × QuotaPerUnit，就是一張的價錢）。
+>
+> 附帶影響：在網關修好之前，我們補齊後顯示 2 張，但實際只被收 1 張，所以 header 的「本次花費」在這個情境會**高估**。網關端的修復（每張圖產出一筆 `data`）完成部署後，交付與計費都會是 2 張，估算就會與實際一致。
 
 > **圖像編輯情境下 `size` 是不生效的**（2026-08-11 實測，跨兩個家族三個模型確認）：送 `1280*720`（橫向）與 `512*512` 得到的輸出完全相同，連 T2I 的面積約束都不套用（送 `10*10` 也不會被拒）。
 >
