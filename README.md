@@ -125,6 +125,14 @@ python app.py
 > | `grok-4-1-fast-non-reasoning` | 不會 | ✗ 回 400 | ✗ 無效 |
 >
 > 四個都**不回傳 `reasoning_content`**，所以思考過程一律看不到，`thinking` 旗標全部為 `False`。只有 `grok-4-20-reasoning` 給 `reasoning_effort` 控制項；送非法值只回通用的 `openai_error`、問不出合法枚舉，所以 `reasoning_efforts` 只列實測有效的 `none`。
+>
+> **以上都是上游 xAI 的行為，不是網關的映射問題**（已由網關端查證）：網關對 `grok-4-*` 一律原樣轉發、不碰 `reasoning_effort`；`reasoning_content` 網關兩種欄位名（`reasoning_content` / `reasoning`）都會解析，是 xAI 對 grok-4 系列不回傳推理過程。錯誤訊息的枚舉也是上游回的（GLM 那句列出合法值的訊息來自智譜），網關只是轉發。所以同家族內行為不一致這件事，是 xAI 的產品決策，我們與網關都無法抹平。
+
+> **realtime（即時語音對話）目前不可用，測試平台沒有對應 UI。** `qwen3.5-omni-plus-realtime` / `-flash-realtime` 雖然出現在 `/v1/models` 清單裡，但 realtime 通道叫不動——**清單有它不代表通道可用**。
+>
+> 2026-08-11 實測 ＋ 網關端查證原始碼確認的原因：網關的 WebSocket 路由只有 `/v1/realtime` 與 `/v1/responses`（`app.py` 原本寫死的 `/api-ws/v1/realtime` 從來不是對外路徑，那是 DashScope 上游給 TTS/ASR 用的，已改正）；而 realtime 中繼**只有 OpenAI 系的 adaptor 有實作**，這兩個模型屬於阿里渠道，阿里 adaptor 的 WebSocket 支援只涵蓋 TTS 與 ASR、沒有 realtime 分支，請求會掉進一般 HTTP 路徑導致網關端型別斷言失敗而 panic——這就是實測看到「握手成功（HTTP 101）後立刻斷線、連 close frame 都沒有」的原因。
+>
+> 後端的 `/ws/omni` 代理保留著（路徑已修正），等阿里 adaptor 補上 realtime 就能直接用。前端 UI 在 `8c012ac` 之後被移除是**正確的決定**——那個功能當時就是壞的。
 
 > **`qwen3-vl-plus` / `qwen3-vl-flash` 是視覺語言模型**，可在對話中帶入圖片。用標準的 OpenAI `image_url` 格式（實測 data URI 可用），MODELS 以 `vision: True` 標記、前端據此顯示圖片上傳欄位。圖片只附在**當下這一輪**的提問上，不會進入對話歷史——上游對「歷史訊息裡的圖片」的行為未驗證，不主動送。切換到不支援視覺的模型時前端會清掉已選的圖，避免靜默夾帶造成 400。
 

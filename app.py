@@ -1013,10 +1013,27 @@ async def omni_chat(data: OmniChatRequest, api_key: str = Depends(get_api_key)):
     )
 
 
+# ⚠️ 這支 realtime 代理目前**沒有任何 UI 入口**，而且上游也還不支援——保留是因為
+# 阿里那邊補上 realtime 之後就能直接用，不必重寫。現況（2026-08-11 對正式環境實測
+# ＋ 網關端查證原始碼確認）：
+#
+#   - 網關的 WebSocket 路由只有 `/v1/realtime` 與 `/v1/responses` 兩條。原本這裡寫死的
+#     `/api-ws/v1/realtime` **從來就不是網關對外的路徑**（那是 DashScope 上游給 TTS/ASR
+#     用的內部路徑），所以一直回 404。已改成正確的 `/v1/realtime`。
+#   - 但改對路徑也還不能用：realtime 中繼**只有 OpenAI 系的 adaptor 有實作**，
+#     `qwen3.5-omni-*-realtime` 屬於阿里渠道，而阿里 adaptor 的 WebSocket 支援只涵蓋
+#     TTS 與 ASR，沒有 realtime 分支。請求會掉進一般 HTTP 路徑，導致網關端型別斷言
+#     失敗而 panic——這就是實測看到「握手成功（HTTP 101）後立刻斷線、連 close frame
+#     都沒有」的原因。網關端已修成回傳可讀的錯誤，但那只是讓失敗可診斷，不會讓
+#     qwen omni realtime 變得可用。
+#
+# 所以前端的 realtime UI 在 commit 8c012ac 之後被移除是**正確的決定**：那個功能當時
+# 就是壞的。要恢復需要阿里 adaptor 先補上整套 realtime 支援（撥上游 WS、DashScope
+# realtime 協定與 OpenAI realtime 事件格式互轉、usage 計費），那是獨立的功能開發。
 @app.websocket("/ws/omni")
 async def ws_omni_proxy(websocket: WebSocket, api_key: str, model: str = "qwen3.5-omni-flash-realtime"):
     await websocket.accept()
-    url = f"wss://nen.com.tw/api-ws/v1/realtime?model={model}"
+    url = f"{NENAI_BASE.replace('https://', 'wss://').replace('http://', 'ws://')}/v1/realtime?model={model}"
     headers = {"Authorization": f"Bearer {api_key}"}
     try:
         async with websockets.connect(url, additional_headers=headers) as target_ws:

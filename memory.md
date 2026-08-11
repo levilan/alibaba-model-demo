@@ -139,3 +139,5 @@ Go struct 描述的是某一條路徑的資料結構，不等於所有路徑的�
 - **閘道端已修但尚未部署**：`glm-5.2` 的 `thinking` 映射與非串流思考回傳（推到 `feat/carrothub-channel-support`，`main` 未合）。切回 `/v1/messages` 需要：程式碼部署 **＋** 渠道後台開啟「thinking 映射為 enable_thinking」開關（預設關）。目前刻意不切——現在走的 `/v1/chat/completions` 三項能力（開關思考、非串流看得到思考、7 段 `reasoning_effort`）都有，切回去反而少一項。
 - **`wan3.0-video`**：已上架但**從未成功呼叫過**，閘道端測試一直是 `AccessDenied`（模型層級未開通）。`input.media` 的 type 詞彙仍未驗證。
 - **`glm-5.2-us` / `glm-5.2-fast-preview`**：閘道上沒有，但上架**不需要改程式碼**，後台把模型名加進渠道即可。
+- **realtime（即時語音）整條路對阿里模型不通**：`qwen3.5-omni-*-realtime` 在 `/v1/models` 清單裡，但 realtime 中繼只有 OpenAI 系 adaptor 有實作，阿里 adaptor 沒有 realtime 分支。要能用需要在閘道端補一整套（撥上游 WS、DashScope 與 OpenAI realtime 事件格式互轉、usage 計費），屬獨立功能開發，已轉給閘道端的使用者決定是否排程。我們的 `/ws/omni` 代理保留著、路徑已修正，等上游補上就能直接用。
+- **`/v1/models` 清單有某個模型 ≠ 那條通道可用。** realtime 這次是最清楚的例子：模型在清單裡，但走 WebSocket 會讓閘道 panic。清單只代表「這個 key 的群組被允許使用這個模型名」，不保證任何特定端點或協定能用。新增模型時**先驗端點再做 UI**，不要反過來。

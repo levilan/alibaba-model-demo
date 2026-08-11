@@ -131,6 +131,15 @@
 
 ## 2026-08-11
 
+- fix/docs：`qwen3.5-omni-plus-realtime` **決定不加**，並修正 `/ws/omni` 代理寫死的錯誤路徑。
+  - 使用者要求加這個模型，我在動手建 UI 前先驗端點，結果打不通——這個順序是對的，不然會做出一個死功能。
+  - 實測（正式環境）：`/api-ws/v1/realtime`（我們程式碼寫死的）回 **404**；`/v1/realtime` 則是**握手成功（HTTP 101）後立刻斷線、連 close frame 都沒有**。兩個 realtime 型號行為一致，包括程式碼裡當預設值的 `flash-realtime`。
+  - 閘道端查證原始碼給出根因：（1）網關的 WebSocket 路由只有 `/v1/realtime` 與 `/v1/responses`，**`/api-ws/v1/realtime` 從來不是對外路徑**——那是 DashScope 上游給 TTS/ASR 用的內部路徑，寫進我們程式碼應該是誤抄；（2）realtime 中繼**只有 OpenAI 系 adaptor 有實作**，`qwen3.5-omni-*-realtime` 屬阿里渠道，阿里 adaptor 的 WebSocket 只涵蓋 TTS 與 ASR，realtime 會掉進一般 HTTP 路徑導致型別斷言失敗而 panic——正好對應「101 後無聲斷線」。
+  - 所以：**模型出現在 `/v1/models` 清單裡，不代表 realtime 通道可用**。已把這條寫進 `memory.md`（新增模型時先驗端點再做 UI，不要反過來）。
+  - 把 `/ws/omni` 的目標路徑改成正確的 `/v1/realtime`，並改成從 `NENAI_BASE` 推導而不是寫死 `nen.com.tw`（原本連測試網關都打不到）。代理保留著，等阿里 adaptor 補上 realtime 就能直接用，不必重寫。
+  - 也因此確認：前端 realtime UI 在 `8c012ac` 之後被移除是**正確的決定**，那個功能當時就是壞的。要恢復需要閘道端先補完整套 realtime 支援，那是獨立的功能開發，已轉給他們的使用者決定。
+  - 順帶把 Grok 的行為歸因寫進 `README.md`：`reasoning_effort` 在四個型號上表現不一、以及都拿不到 `reasoning_content`，**都是上游 xAI 的行為，不是網關的映射問題**（網關對 `grok-4-*` 原樣轉發、不碰該欄位；`reasoning_content` 兩種欄位名都會解析）。錯誤訊息的枚舉也是上游回的，網關只轉發——所以「補上合法枚舉」這件事網關做不到，硬編一份清單反而會隨上游更新而過期。
+
 - feat：新增 8 個模型——`claude-opus-5`、`gemini-3.5-flash-lite`、4 個 xAI Grok、2 個千問 VL，並為視覺語言模型做了前端的圖片輸入 UI。網關：正式環境（使用者指定）。
   - **xAI Grok 是新廠商，四個型號行為各不相同**（逐一實測）：`-reasoning` 版預設就推理、`-non-reasoning` 版完全不推理（`reasoning_tokens` 恆為 0）；四個都**不回傳 `reasoning_content`**，思考過程一律看不到，所以 `thinking` 全部 `False`。`reasoning_effort` 只有 `grok-4-20-reasoning` 有效（`none` → 0），`grok-4-1-fast-reasoning` 送了無效（各 3 次中位數 176 vs 245，沒有下降），兩個 `-non-reasoning` 版直接回 400。送非法值只回通用的 `openai_error`、問不出合法枚舉，所以 `reasoning_efforts` 只列實測有效的 `none`。
   - **`gemini-3.5-flash-lite` 的思考預設是關的**，跟 `gemini-2.5-flash-lite` 一樣要送 `thinkingBudget: -1` 才會啟動（不帶 thinkingConfig 時 `thoughtsTokenCount` 是 `None`）；但它**接受 `includeThoughts`**（2.5 版送了會 400），所以思考過程看得到。原本的判斷式是「在 NO_INCLUDE_THOUGHTS 就送 budget=-1、否則送 includeThoughts」二選一，無法表達這個組合，改成新增 `_GEMINI_THINKING_OFF_BY_DEFAULT` 集合、兩個條件獨立判斷。
