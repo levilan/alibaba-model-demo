@@ -2615,8 +2615,19 @@ async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
             if actual_prompt:
                 result["actual_prompt"] = actual_prompt
         elif status == "FAILED":
+            # 失敗原因各家放的位置不同：萬相／Veo 放 error.message，doubao（Seedance）
+            # 放頂層的 fail_reason——只讀 error 的話 Seedance 失敗會一律顯示
+            # "Unknown error"，使用者看不到真正的原因（例如版權過濾那類訊息：
+            # "The request failed because the output audio may be related to
+            # copyright restrictions."，那是模型自動配樂觸發的，跟畫面無關，
+            # 沒有訊息幾乎不可能猜到）
             err = rj.get("error") or rj.get("task_info", {}).get("error") or {}
-            result["error_message"] = (err.get("message") if isinstance(err, dict) else str(err)) or "Unknown error"
+            result["error_message"] = (
+                (err.get("message") if isinstance(err, dict) else str(err))
+                or rj.get("fail_reason")
+                or rj.get("task_info", {}).get("fail_reason")
+                or "Unknown error"
+            )
 
         return result
     except HTTPException:

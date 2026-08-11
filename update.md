@@ -131,6 +131,20 @@
 
 ## 2026-08-11
 
+- fix：**8 個按 token 計費的影片模型,先前完全沒被計入「本次花費」,而且價格顯示對使用者無意義。**
+  - 盤點 27 個影片模型後發現：19 個是 `quota_type=1`（按次固定價），但 **8 個是 `quota_type=0`（按 token）**——Seedance 全系列、`wan3.0-video`、兩個 Veo、`gemini-omni-flash-preview`。
+  - 兩個問題：（1）前端把它們顯示成「$10.7→$10.7/1M」，**沒人能心算一支影片是幾個 token**；（2）`addFixedCost()` 只計 `type==='fixed'`，所以這些模型的花費**完全不會累加**到 header 的「本次花費」。
+  - 新增 `estimateVideoTokenCost()` 用公式換算：`tokens = 寬 × 高 × 幀數 / 1024`，**幀數 = 要求秒數 × 24 + 1**（fps 固定 24；我端到端實測 480P/4 秒得到 854×480、97 幀，代入 = 38,830.31，與上游回傳的 38,830 吻合）。價格提示改成顯示「約 $X/次（解析度 秒數）」，切換解析度或拖時長會即時重算；新增 `addVideoCost()` 統一處理按次與按 token 兩種，讓花費徽章不再漏算。
+  - **兩個容易算錯的地方，都有實測依據**：
+    - **480p 的尺寸各世代不同**：Seedance 2.5 是 854×480、2.0 系列與 1.5-pro 是 864×496。共用尺寸表會差 4.5%。
+    - **1080p 與 4K 有解析度倍率**（1080p ×1.1、4K ×4/7，基準 720p）。純用像素數算會低估 1080p 10%、高估 4K 75%。我用 peer 的精確總價表反推驗證：純公式 ÷ 精確表 = 1.0997 與 0.5715，與 `constants.go` 的 1.1 和 4/7 吻合。
+  - 換算結果與 peer 的精確總價表**逐筆比對 10 組全部吻合**（2.5 的 480P/720P × 4/10/30 秒、2.0 的 480P/720P/1080P/4K）。
+  - **算不出來就不計**（沒有該模型的尺寸表時回 `null`）——寧可少算也不要顯示一個編出來的數字。所以 `wan3.0-video`、Veo、`gemini-omni` 目前仍不計入，那些沒有可靠的 token 公式。
+
+- fix：影片失敗時讀不到真正的錯誤原因。`video_status` 只讀 `error.message`，但 **doubao（Seedance）把失敗原因放在頂層的 `fail_reason`**，所以 Seedance 失敗一律顯示「Unknown error」。已補上 `fail_reason` 的讀取。
+  - 這在實務上很重要：peer 回報 Seedance 會偶發觸發**版權過濾**（`The request failed because the output audio may be related to copyright restrictions.`），而且是**模型自動配樂**觸發的、跟畫面內容無關——沒有這段訊息幾乎不可能猜到原因（他們踩到的提示詞是「Mist over a lake」）。想避開可以傳 `generate_audio: false`。
+  - 順帶確認我們的輪詢**沒有踩到另一個陷阱**：peer 提醒 doubao 的成功與失敗 `progress` 都是 `"100%"`，只看 progress 會把失敗誤判成成功。我們的 `pollVideo()` 判斷的是 `status`（`FAILURE` 也在失敗清單裡），不受影響。
+
 - feat：新增 `dreamina-seedance-2.5`（文生影片）。**網關：測試網關 `192.168.0.245`**（使用者指定並提供金鑰）——正式環境的 `/v1/models` 清單裡雖然有它，但網關端說程式碼尚未部署，那邊叫不動。這又是一個「清單有它 ≠ 通道可用」的例子。
   - 與 2.0 系列差異大到 UI 必須分開處理：**解析度只有 480p/720p**（2.0 到 4K）、時長 `[4,30]` 或 `-1`（2.0 是 2~15）、參考素材上限高很多（30 張圖／10 支影片／10 段音訊）、**支援純音訊輸入**、每秒單價 720p $0.2311 **比 2.0 貴約 53%**。
   - 約束逐一實測（不合法的組合被拒不會產影片，所以探測是免費的）：`1080p`／`4k` 回 `InvalidParameter`；`duration` 送 3 或 31 都被拒；`camera_fixed`／`frames`／`draft` 都回 `InvalidParameter`。MODELS 以 `resolutions: ["480P","720P"]` 與 `min_dur: 4` / `max_dur: 30` 限制住。

@@ -461,7 +461,7 @@
                 </div>
                 <div class="form-group" id="vidResolutionGroup">
                     <label class="form-label" data-tip="生成影片的畫面分辨率。480P 速度最快，720P 品質與速度平衡（建議），1080P 畫質最佳但生成時間較長">解析度</label>
-                    <select id="videoResolution" class="select-input">
+                    <select id="videoResolution" class="select-input" onchange="updateModelPriceHint('videoModelPrice', document.getElementById('videoModel').value)">
                         <option value="720P">720P</option>
                         <option value="1080P">1080P</option>
                         <option value="480P">480P</option>
@@ -518,7 +518,7 @@
                         <span class="param-hint" id="durHintZero" style="display:none">（0 = 保留來源）</span>
                     </label>
                     <input type="range" id="videoDuration" min="2" max="15" step="1" value="5"
-                           oninput="document.getElementById('durVal').textContent=this.value">
+                           oninput="document.getElementById('durVal').textContent=this.value; updateModelPriceHint('videoModelPrice', document.getElementById('videoModel').value)">
                 </div>
                 <!-- 自動配音（萬相 2.6/2.7 的 T2V/I2V/R2V 皆支援） -->
                 <div class="toggle-row" id="vidAudioRow" style="display:none">
@@ -952,6 +952,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=61"></script>
+<script src="/static/js/app.js?v=62"></script>
 </body>
 </html>

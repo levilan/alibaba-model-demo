@@ -622,6 +622,17 @@ function addCost(amount) {
     }
 }
 
+// 影片的計費入口：按次的用固定價，按 token 的（Seedance 系列）用解析度＋時長換算。
+// 先前只呼叫 addFixedCost()，所以 8 個按 token 計費的影片模型完全沒被計入「本次花費」
+function addVideoCost(modelId, costInfo) {
+    const p = pricingMap[modelId];
+    if (!p) return;
+    if (p.type === 'fixed') { addCost(p.price); return; }
+    const est = estimateVideoTokenCost(modelId, costInfo?.resolution, costInfo?.seconds);
+    if (est) addCost(est);
+    // 算不出來就不計——寧可少算也不要顯示一個編出來的數字
+}
+
 function addFixedCost(modelId, count = 1) {
     const p = pricingMap[modelId];
     if (p && p.type === 'fixed') addCost(p.price * count);
@@ -634,10 +645,55 @@ function addTokenTextCost(modelId, usage) {
     addCost(cost);
 }
 
+// ── 按 token 計費的影片模型 ────────────────────────────────────────────────
+// 27 個影片模型裡有 8 個是 quota_type=0（按 token），不是按次固定價。對這些模型：
+//   1. 顯示「$X→$Y/1M」對使用者毫無意義——沒人能心算一支影片是幾個 token
+//   2. addFixedCost() 只計 type==='fixed'，所以它們的花費**完全不會**累加到「本次花費」
+// Seedance 的 token 數有明確公式（網關端反推、我們端到端驗證過）：
+//   tokens = 寬 × 高 × 幀數 / 1024，幀數 = 要求秒數 × 24 + 1（fps 固定 24）
+// 我實測 480P/4 秒得到 854×480、97 幀，代入 = 38,830.31，與上游回傳的 38,830 吻合。
+//
+// ⚠️ **480p 的尺寸各世代不同**，這是最容易算錯 4.5% 的地方：
+//   Seedance 2.5      → 854×480
+//   2.0 系列 / 1.5-pro → 864×496
+// 720p 以上各世代都是 1280×720，沒有差異。
+const _SEEDANCE_DIMS = {
+    'dreamina-seedance-2.5':      { '480P': [854, 480],  '720P': [1280, 720] },
+    'dreamina-seedance-2.0':      { '480P': [864, 496],  '720P': [1280, 720], '1080P': [1920, 1080] },
+    'dreamina-seedance-2.0-fast': { '480P': [864, 496],  '720P': [1280, 720] },
+    'bytedance-seedance-1.5-pro': { '480P': [864, 496],  '720P': [1280, 720], '1080P': [1920, 1080] },
+};
+
+// 解析度倍率：純用像素數算會低估 1080p、高估 4K。倍率取自網關的計費設定
+// （2.0 系列的 1080p ×1.1、4k ×4/7，基準是 720p），我用 peer 的精確總價表反推
+// 驗證過：純公式 ÷ 精確表 = 1.0997 與 0.5715，與 1.1 和 4/7 吻合。
+// 2.5 只有 480p/720p 兩檔、都不套倍率（兩檔實測與精確表完全相符）。
+const _SEEDANCE_RES_RATIO = { '1080P': 1.1, '4K': 4 / 7 };
+
+// 回傳預估費用（USD），算不出來就回 null（例如沒有該模型的尺寸表）
+function estimateVideoTokenCost(modelId, resolution, seconds) {
+    const p = pricingMap[modelId];
+    if (!p || p.type !== 'token') return null;
+    const dims = _SEEDANCE_DIMS[modelId]?.[resolution];
+    if (!dims || !seconds) return null;
+    const frames = seconds * 24 + 1;              // fps 固定 24，實際幀數比要求秒數多 1 幀
+    const tokens = dims[0] * dims[1] * frames / 1024;
+    const ratio = _SEEDANCE_RES_RATIO[resolution] || 1;
+    return tokens / 1e6 * p.output * ratio;       // input/output 同價，用 output 即可
+}
+
 function formatPriceSuffix(modelId) {
     const p = pricingMap[modelId];
     if (!p) return '';
     if (p.type === 'fixed') return ` ・ $${formatUsd(p.price)}/次`;
+    // 影片模型按 token 計費時，改成用目前選到的解析度與時長換算成「這一次大約多少錢」，
+    // 那才是使用者看得懂的資訊；換算不出來才退回原本的每 1M 顯示
+    if (_SEEDANCE_DIMS[modelId]) {
+        const res = document.getElementById('videoResolution')?.value;
+        const sec = parseInt(document.getElementById('videoDuration')?.value) || 0;
+        const est = estimateVideoTokenCost(modelId, res, sec);
+        if (est) return ` ・ 約 $${formatUsd(Number(est.toFixed(4)))}/次（${res} ${sec}秒）`;
+    }
     return ` ・ $${formatUsd(p.input)}→$${formatUsd(p.output)}/1M`;
 }
 
@@ -1694,13 +1750,13 @@ async function sendVideo() {
         }
 
         if (res.success && res.task_id) {
-            addVideoTask(res.task_id, model, prompt, res.status);
+            addVideoTask(res.task_id, model, prompt, res.status, { resolution, seconds: duration });
             toast('任務已提交，輪詢中...', 'info');
         } else if (res.success && res.video_url) {
             addVideoResult(model, prompt, res.local_path || res.video_url, false, fmtElapsed(Date.now() - startTime));
             TaskHistory.save('video', model, prompt, res.local_path || res.video_url);
             toast('影片生成完成！', 'success');
-            addFixedCost(model);
+            addVideoCost(model, { resolution, seconds: duration });
         } else {
             toast(res.error || '生成失敗', 'error');
             console.error('Video generation error:', res);
@@ -1716,7 +1772,7 @@ function _vidBtnHTML() {
     return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> 生成';
 }
 
-function addVideoTask(taskId, model, prompt, status) {
+function addVideoTask(taskId, model, prompt, status, costInfo) {
     const cont = document.getElementById('videoResults');
     cont.querySelector('.empty-state')?.remove();
     const startTime = Date.now();
@@ -1731,7 +1787,7 @@ function addVideoTask(taskId, model, prompt, status) {
         <div class="vtc-progress"><div class="vtc-progress-bar" id="pb-${taskId}" style="width:5%"></div></div>
         <div id="rv-${taskId}"></div>`;
     cont.insertBefore(card, cont.firstChild);
-    pollVideo(taskId, startTime, model);
+    pollVideo(taskId, startTime, model, costInfo);
 }
 
 function addVideoResult(model, prompt, src, isHistory = false, elapsed = null) {
@@ -1749,7 +1805,7 @@ function addVideoResult(model, prompt, src, isHistory = false, elapsed = null) {
     cont.insertBefore(card, cont.firstChild);
 }
 
-async function pollVideo(taskId, startTime, model) {
+async function pollVideo(taskId, startTime, model, costInfo) {
     let tries = 0;
     const maxTries = 360; // 30 min max (5s * 360) — video-edit/重型任務常超過 15 min
     const poll = async () => {
@@ -1798,7 +1854,7 @@ async function pollVideo(taskId, startTime, model) {
                     }
                 }
                 toast('影片生成完成！', 'success');
-                addFixedCost(model);
+                addVideoCost(model, costInfo);
             } else if (isFailed) {
                 const errMsg = data.error_message || 'Unknown';
                 const isSchedulerErr = errMsg.toLowerCase().includes('scheduler');
