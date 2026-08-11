@@ -131,6 +131,15 @@
 
 ## 2026-08-11
 
+- fix：**影片輸入改走雲端網址**——上游不接受 base64 data URI 的影片（由文檔站 session 回報、我實測複驗）。
+  - 實測（正式環境，`wan2.2-animate-move`）：送 `data:video/mp4;base64,...` **提交回 200**，但輪詢到最後是 `failed`，錯誤 `InvalidVideo.FileFormat: Invalid video type. Only mp4/mov/avi is supported.`。只看提交結果會誤以為成功。
+  - 這代表**視頻編輯與動作動畫從來沒有成功過**。我先前為 animate 補 `images[]` 只是讓它跨過第一個錯誤（`Field required: input.media`），撞上第二個——而我當時沒有端到端驗證，所以沒發現。
+  - 新增 `_upload_video_for_url()`（比照既有的 `_upload_audio_for_url()`），四個送影片的地方都改用：`video_animate` 的參考影片、`video_vedit` 的來源影片、`video_i2v` 影片延伸的起始片段、`video_r2v` 帶入的參考影片。
+  - **⚠️ 但這需要雲端物件儲存才會生效，而實測正式環境目前沒有設定**（產出圖片的 `local_path` 是 `/outputs/images/...` 本機路徑而非簽名網址）。設定好之前這些功能會回明確的 400 而不是靜默失敗，但仍然不能用。
+  - 順帶暴露兩個既有風險：Cloud Run 每個實例檔案系統獨立且 `maxScale: 5`，產出圖片存在某實例、下次被路由到別的實例就會 404（實測當下只有單一實例，問題尚未浮現）；容器重啟後產出全部消失。已寫進 `README.md` 與 `memory.md`。
+
+- chore：確認 `gemini-omni-flash-preview` 在我們這邊是**正常的**，不需處理。文檔站測 `/v1/video/generations`（404）與 `/v1/chat/completions`（400）都不通，但那兩條本來就不是給它用的——錯誤訊息自己說了「only supported in the Interactions API」。我們走的 `/v1beta/interactions` 實測回 200 completed。這是一個「別人測到不通、但測錯路徑」的例子，值得在採信他人回報前先確認對方走的路徑跟我們一樣。
+
 - fix/docs：`qwen3.5-omni-plus-realtime` **決定不加**，並修正 `/ws/omni` 代理寫死的錯誤路徑。
   - 使用者要求加這個模型，我在動手建 UI 前先驗端點，結果打不通——這個順序是對的，不然會做出一個死功能。
   - 實測（正式環境）：`/api-ws/v1/realtime`（我們程式碼寫死的）回 **404**；`/v1/realtime` 則是**握手成功（HTTP 101）後立刻斷線、連 close frame 都沒有**。兩個 realtime 型號行為一致，包括程式碼裡當預設值的 `flash-realtime`。

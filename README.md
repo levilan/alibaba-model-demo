@@ -128,6 +128,14 @@ python app.py
 >
 > **以上都是上游 xAI 的行為，不是網關的映射問題**（已由網關端查證）：網關對 `grok-4-*` 一律原樣轉發、不碰 `reasoning_effort`；`reasoning_content` 網關兩種欄位名（`reasoning_content` / `reasoning`）都會解析，是 xAI 對 grok-4 系列不回傳推理過程。錯誤訊息的枚舉也是上游回的（GLM 那句列出合法值的訊息來自智譜），網關只是轉發。所以同家族內行為不一致這件事，是 xAI 的產品決策，我們與網關都無法抹平。
 
+> ⚠️ **影片輸入必須是雲端網址，不能用 base64 data URI。** 送 `data:video/mp4;base64,...` 時**提交會回 200**，但任務輪詢階段才失敗：`InvalidVideo.FileFormat: Invalid video type. Only mp4/mov/avi is supported.`（2026-08-11 用 `wan2.2-animate-move` 對正式環境實測確認）。這跟音訊是同一類限制——圖片可以用 data URI，影片與音訊都必須是上游抓得到的 URL。
+>
+> 受影響的是**視頻編輯的來源影片、動作動畫的參考影片、i2v 影片延伸的起始片段、r2v 帶入的參考影片**，都已改成先經 `_upload_video_for_url()` 上傳雲端再帶簽名網址。
+>
+> **但這需要有雲端物件儲存才會生效** —— 而 2026-08-11 實測**正式環境目前沒有設定**（產出的圖片 `local_path` 是 `/outputs/images/...` 本機路徑，不是簽名網址）。在設定好之前，這些影片功能會回一個明確的 400 錯誤而不是靜默失敗，但仍然不能用。
+>
+> 沒有雲端儲存另外還有兩個既有風險：**（1）** Cloud Run 每個實例的檔案系統獨立，`maxScale` 是 5，產出的圖片存在某個實例上、下次請求被路由到別的實例就會 404（實測當下只有單一實例在服務，問題尚未浮現但風險存在）；**（2）** 容器重啟後產出全部消失。要根治就是把 OSS／S3／GCS 任一個的憑證設進 Cloud Run。
+
 > **realtime（即時語音對話）目前不可用，測試平台沒有對應 UI。** `qwen3.5-omni-plus-realtime` / `-flash-realtime` 雖然出現在 `/v1/models` 清單裡，但 realtime 通道叫不動——**清單有它不代表通道可用**。
 >
 > 2026-08-11 實測 ＋ 網關端查證原始碼確認的原因：網關的 WebSocket 路由只有 `/v1/realtime` 與 `/v1/responses`（`app.py` 原本寫死的 `/api-ws/v1/realtime` 從來不是對外路徑，那是 DashScope 上游給 TTS/ASR 用的，已改正）；而 realtime 中繼**只有 OpenAI 系的 adaptor 有實作**，這兩個模型屬於阿里渠道，阿里 adaptor 的 WebSocket 支援只涵蓋 TTS 與 ASR、沒有 realtime 分支，請求會掉進一般 HTTP 路徑導致網關端型別斷言失敗而 panic——這就是實測看到「握手成功（HTTP 101）後立刻斷線、連 close frame 都沒有」的原因。

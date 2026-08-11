@@ -140,4 +140,5 @@ Go struct 描述的是某一條路徑的資料結構，不等於所有路徑的�
 - **`wan3.0-video`**：已上架但**從未成功呼叫過**，閘道端測試一直是 `AccessDenied`（模型層級未開通）。`input.media` 的 type 詞彙仍未驗證。
 - **`glm-5.2-us` / `glm-5.2-fast-preview`**：閘道上沒有，但上架**不需要改程式碼**，後台把模型名加進渠道即可。
 - **realtime（即時語音）整條路對阿里模型不通**：`qwen3.5-omni-*-realtime` 在 `/v1/models` 清單裡，但 realtime 中繼只有 OpenAI 系 adaptor 有實作，阿里 adaptor 沒有 realtime 分支。要能用需要在閘道端補一整套（撥上游 WS、DashScope 與 OpenAI realtime 事件格式互轉、usage 計費），屬獨立功能開發，已轉給閘道端的使用者決定是否排程。我們的 `/ws/omni` 代理保留著、路徑已修正，等上游補上就能直接用。
+- **正式環境目前沒有設定雲端物件儲存**（2026-08-11 實測：產出圖片的 `local_path` 是 `/outputs/images/...` 本機路徑）。這造成三件事：影片輸入功能（視頻編輯／動作動畫／影片延伸／r2v 參考影片）不能用（上游不收 base64 影片，一定要雲端網址）、音訊輸入同理、以及產出的圖片在多實例（`maxScale: 5`）或容器重啟後可能 404。要根治就是把 OSS／S3／GCS 任一個的憑證設進 Cloud Run。
 - **`/v1/models` 清單有某個模型 ≠ 那條通道可用。** realtime 這次是最清楚的例子：模型在清單裡，但走 WebSocket 會讓閘道 panic。清單只代表「這個 key 的群組被允許使用這個模型名」，不保證任何特定端點或協定能用。新增模型時**先驗端點再做 UI**，不要反過來。

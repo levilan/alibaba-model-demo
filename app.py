@@ -2044,6 +2044,32 @@ def _apply_audio_flag(payload: dict, meta: dict, audio: bool) -> None:
     meta["generate_audio"] = audio  # doubao（影響計費 audio_presence）
 
 
+async def _upload_video_for_url(raw: bytes, filename: str = "clip.mp4") -> tuple[Optional[str], Optional[str]]:
+    """把影片放到雲端物件儲存，回傳 (簽名網址, 錯誤訊息)。
+
+    **上游不接受 base64 data URI 的影片**——送 `data:video/mp4;base64,...` 會在任務
+    輪詢階段失敗，錯誤是 `InvalidVideo.FileFormat: Invalid video type. Only
+    mp4/mov/avi is supported.`（提交時回 200，所以只看提交結果會以為成功）。
+    2026-08-11 對正式環境用 wan2.2-animate-move 實測確認。
+
+    這跟音訊是同一類限制（見 `_upload_audio_for_url`）：圖片可以用 data URI，
+    但影片與音訊都必須是上游抓得到的 URL。本機 `outputs/` 路徑上游一樣抓不到，
+    所以沒有雲端後端可用時直接回報錯誤，而不是送出一個註定失敗的任務。
+    """
+    if not raw:
+        return None, None
+    suffix = Path(filename).suffix.lower() or ".mp4"
+    if suffix not in (".mp4", ".mov", ".avi"):
+        suffix = ".mp4"
+    name = f"vid_in_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{suffix}"
+    url = _cloud_put(raw, f"uploads/{name}")
+    if not url:
+        return None, ("影片需要先上傳到雲端物件儲存才能傳給上游模型，但目前沒有可用的"
+                      "儲存後端（OSS / S3 / GCS 都未設定憑證）。上游不接受 base64 內嵌的"
+                      "影片，請先設定雲端儲存。")
+    return url, None
+
+
 async def _upload_audio_for_url(file_obj) -> tuple[Optional[str], Optional[str]]:
     """把使用者上傳的音檔放到雲端物件儲存，回傳 (簽名網址, 錯誤訊息)。
 
@@ -2259,7 +2285,10 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
             pass
         finally:
             tmp_path.unlink(missing_ok=True)
-        clip_b64 = f"data:video/mp4;base64,{base64.b64encode(clip_bytes).decode()}"
+        # 影片延伸的起始片段同樣不能用 data URI
+        clip_b64, clip_err = await _upload_video_for_url(clip_bytes, clip_file.filename or "clip.mp4")
+        if clip_err:
+            return JSONResponse(status_code=400, content={"error": clip_err})
         media_arr.append({"url": clip_b64, "type": "first_clip"})
         actual_duration = max(duration, 15)
         _apply_res_and_duration(payload, meta, resolution, actual_duration, ratio)
@@ -2324,7 +2353,10 @@ async def video_vedit(request: Request, api_key: str = Depends(get_api_key)):
         return JSONResponse(status_code=400, content={"error": "影片檔案為必填"})
 
     video_bytes = await video_file.read()
-    video_b64 = f"data:video/mp4;base64,{base64.b64encode(video_bytes).decode()}"
+    # 同上：來源影片必須是上游抓得到的網址，data URI 會在輪詢階段被拒
+    video_b64, video_err = await _upload_video_for_url(video_bytes, video_file.filename or "source.mp4")
+    if video_err:
+        return JSONResponse(status_code=400, content={"error": video_err})
 
     media_arr: list = [{"url": video_b64, "type": "video"}]
     max_refs = _video_max_ref(model, "vedit", 3)
@@ -2399,8 +2431,14 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
         fb = await f.read()
         mime = "video/mp4" if ext in VIDEO_EXTS else "image/png"
         media_type = "reference_video" if ext in VIDEO_EXTS else "reference_image"
-        media_arr.append({"url": f"data:{mime};base64,{base64.b64encode(fb).decode()}", "type": media_type})
-        if media_type == "reference_image":
+        if media_type == "reference_video":
+            # 影片不能用 data URI（見 _upload_video_for_url）
+            ref_url, ref_err = await _upload_video_for_url(fb, f.filename)
+            if ref_err:
+                return JSONResponse(status_code=400, content={"error": ref_err})
+            media_arr.append({"url": ref_url, "type": media_type})
+        else:
+            media_arr.append({"url": f"data:{mime};base64,{base64.b64encode(fb).decode()}", "type": media_type})
             image_files.append((fb, mime))
 
     if not media_arr:
@@ -2467,7 +2505,10 @@ async def video_animate(request: Request, api_key: str = Depends(get_api_key)):
     vid_bytes = await video_file.read()
 
     img_url = f"data:{img_mime};base64,{base64.b64encode(img_bytes).decode()}"
-    vid_url = f"data:video/mp4;base64,{base64.b64encode(vid_bytes).decode()}"
+    # 影片不能用 data URI（上游只收 mp4/mov/avi 的實體檔案網址），必須先上雲端
+    vid_url, vid_err = await _upload_video_for_url(vid_bytes, video_file.filename or "clip.mp4")
+    if vid_err:
+        return JSONResponse(status_code=400, content={"error": vid_err})
 
     payload = {
         "model": model,
