@@ -131,6 +131,20 @@
 
 ## 2026-08-11
 
+- fix：**`/api/proxy/fetch` 的白名單漏了火山引擎（Seedance 的產出網域）**，AI Canvas 把 Seedance 的影片接成下一步輸入會被擋。
+  - 全平台健檢時發現：白名單只有 `.aliyuncs.com`／`.amazonaws.com`／`storage.googleapis.com`，但 Seedance 系列的產出網址是 `ark-acg-ap-southeast-1.tos-ap-southeast-1.volces.com`。實測代理對它回 **400 `URL host not allowed`**，對萬相的 aliyuncs 網址則放行。
+  - 平常不會踩到——後端會先把產出下載回本機再給前端，Canvas 拿到的是同源的 `/outputs/...`。但**下載失敗時會退回原始網址**（`video_status` 的 `local if local else video_url`），這時 Canvas 的「把上一步結果當下一步輸入」就會走到這支代理而失敗。
+  - 已補上 `.volces.com`，並在註解裡寫清楚這份白名單要涵蓋的兩類網域（我們自己的雲端儲存 ＋ 上游直接回傳產出網址的網域）。驗證過偽裝後綴（`volces.com.evil.com`）仍會被擋。
+  - 這正是 `CLAUDE.md` 早就警告過的那類問題——先前就因為只寫了 OSS 的網域，正式環境改用 GCS 之後 Canvas 的接續功能全部失效。**每次接入新廠商，都要檢查它的產出網域在不在白名單裡。**
+
+- test：AI Canvas 全功能健檢（正式站，用 Playwright ＋ 直接打端點）。
+  - 頁面載入**零 console 錯誤／警告**，10 個自訂節點（text／camera_angle／load_image／image／video／video_edit／video_animate／edit／audio／muleai）全部註冊成功，canvas 元素正常。
+  - canvas.js **沒有寫死任何模型 id**，全部從 `/api/models` 動態產生——所以這一輪新增的 14 個模型不需要另外改 canvas。
+  - 端點比對：canvas 呼叫的 9 個端點在後端都存在（影片的 t2v/i2v/r2v 是動態組路徑，不是寫死字串）。
+  - 實測通過：文字生成、圖片→文字（analyze_image）、TTS、文生圖、圖像編輯（**兩張參考圖都生效**，驗證了本輪的多圖修正在 canvas 路徑上也成立）。
+  - TTS 音色抽測：5 個模型的清單各抽 3 個音色，全部可用（沒有重演 MAI 尺寸那種「列了不能用的值」）。
+  - **已知阻塞**：影片編輯與動作動畫在正式站仍會失敗，因為 `b598e7c`（沒有雲端儲存時改用本站公開路徑）尚未部署。正式站目前在 `1c002c0`。
+
 - docs：釐清「`dreamina-seedance-2.0-fast` 是否支援 1080P」的觀察衝突——**結論維持原判：不支援**，現有的 `resolutions: ["480P","720P"]` 設定正確、不需更動。
   - 衝突起因：文檔站測到送 1080P「沒有被拒、任務跑到 SUCCESS」，與我們的「回 400 InvalidParameter」相反。
   - 用控制變因重測後，**兩邊的觀察都是真的、只是測到不同的東西**：只送頂層 `size=1080P` → 200（但輸出仍是 720p）；只送 `metadata.resolution=1080p` → **400**；兩者都送（本平台的作法）→ **400**。

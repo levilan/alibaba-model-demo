@@ -1,0 +1,4 @@
+- generic [ref=e2]:
+  - paragraph [ref=e3]: 請先登入才能使用 AI Canvas
+  - link "回登入頁" [ref=e4] [cursor=pointer]:
+    - /url: /

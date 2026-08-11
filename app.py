@@ -939,7 +939,17 @@ async def get_pricing(api_key: str = Depends(get_api_key)):
 # storage.googleapis.com）——一開始只寫了 OSS 的網域，導致正式環境改用 GCS 之後，
 # AI Canvas 裡任何需要把上一個節點的生成結果重新抓回來當輸入的功能（例如影片延伸
 # 接上一段影片、把生成的圖片再送進另一個節點）都會在這裡被拒絕，噴「無法取得來源檔案」。
-_PROXY_ALLOWED_SUFFIXES = (".aliyuncs.com", ".amazonaws.com", "storage.googleapis.com")
+# 這份白名單是刻意設計來防 SSRF 的，放寬要特別小心。除了我們自己的三個雲端儲存
+# 後端，還要涵蓋**上游模型直接回傳產出網址的網域**——後端雖然會先把產出下載回本機
+# 再給前端，但下載失敗時會退回原始網址（見 video_status 的 `local if local else
+# video_url`），這時 AI Canvas 把上一步結果接成下一步輸入就會走到這支代理。
+#   *.aliyuncs.com        阿里 OSS（萬相／千問的產出）
+#   *.amazonaws.com       AWS S3
+#   storage.googleapis.com GCS
+#   *.volces.com          火山引擎 TOS（Seedance 系列的產出，實測網址形如
+#                         ark-acg-ap-southeast-1.tos-ap-southeast-1.volces.com）
+_PROXY_ALLOWED_SUFFIXES = (".aliyuncs.com", ".amazonaws.com", "storage.googleapis.com",
+                           ".volces.com")
 
 @app.get("/api/proxy/fetch")
 async def proxy_fetch(url: str, api_key: str = Depends(get_api_key)):

@@ -1,0 +1,21 @@
+- generic [ref=f1e2]:
+  - banner [ref=f1e3]:
+    - link "‹" [ref=f1e4] [cursor=pointer]:
+      - /url: /
+    - generic [ref=f1e5]: Canvas
+    - generic [ref=f1e6]: /
+    - textbox [ref=f1e7]: Untitled Canvas
+    - generic [ref=f1e8]:
+      - button "匯入" [ref=f1e9] [cursor=pointer]
+      - button "匯出" [ref=f1e10] [cursor=pointer]
+      - button "清空畫布" [ref=f1e11] [cursor=pointer]
+      - button "返回主控台" [ref=f1e12] [cursor=pointer]
+  - generic [ref=f1e13]:
+    - button "+" [ref=f1e14] [cursor=pointer]
+    - button "▤" [ref=f1e15] [cursor=pointer]
+    - button "⤢" [ref=f1e16] [cursor=pointer]
+  - generic [ref=f1e17]:
+    - button "−" [ref=f1e18] [cursor=pointer]
+    - generic [ref=f1e19]: 100%
+    - button "+" [ref=f1e20] [cursor=pointer]
+    - button "重置" [ref=f1e21] [cursor=pointer]
