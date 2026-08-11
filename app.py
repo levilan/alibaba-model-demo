@@ -1544,6 +1544,28 @@ async def _extract_images_from_data(data_list: list) -> list:
             images.append({"url": None, "local_path": await _save_image_bytes(raw, "png"), "actual_prompt": item.get("actual_prompt")})
     return images
 
+
+async def _extract_images_from_metadata(rj: dict, already: list) -> list:
+    """從 metadata.output.choices 補抓 data[] 漏掉的圖片。
+
+    千問 3.0 這條 multimodal-generation adaptor 在 n>1 時，OpenAI 相容的 `data[]`
+    **只會回第一張**，但 `usage.output_image_count` 是實際張數、也照那個張數計費——
+    上游確實產了 n 張，全部都在 metadata.output.choices[].message.content 裡。
+    只讀 data[] 的話，使用者選 n=2 會被扣 2 張的錢卻只看到 1 張。
+    （萬相與千問 2.0 走另一條 adaptor，data[] 本來就是完整的，不受影響。）
+    """
+    seen = {img.get("url") for img in already if img.get("url")}
+    extra = []
+    for choice in ((rj.get("metadata") or {}).get("output") or {}).get("choices") or []:
+        for item in (choice.get("message") or {}).get("content") or []:
+            url = item.get("image")
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            extra.append({"url": url, "local_path": await _async_download_image(url),
+                          "actual_prompt": None})
+    return extra
+
 # Gemini 圖像模型偶爾會不出圖、只回一段純文字聊天式回覆——實測發現這跟 prompt
 # 讀起來像不像「聊天訊息」高度相關：越像一段對話/討論文字（例如上游文字節點
 # 生成的長篇分析），模型就越容易把它當成聊天來回覆而不畫圖。加上明確的繪圖
@@ -1751,6 +1773,9 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
                 return JSONResponse(status_code=resp.status_code,
                                     content={"error": rj.get("error", {}).get("message", resp.text)})
             images = await _extract_images_from_data(rj.get("data", []))
+            # data[] 可能少於實際產出（見 _extract_images_from_metadata），從 metadata 補齊，
+            # 否則使用者會被扣 n 張的錢卻只看到一張
+            images += await _extract_images_from_metadata(rj, images)
             if not images:
                 return JSONResponse(status_code=500, content={"error": f"No images in response: {rj}"})
             return {"success": True, "images": images, "model": data.model}
@@ -1863,6 +1888,7 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
                 return JSONResponse(status_code=resp.status_code,
                                     content={"error": rj.get("error", {}).get("message", resp.text)})
             images = await _extract_images_from_data(rj.get("data", []))
+            images += await _extract_images_from_metadata(rj, images)
             if not images:
                 return JSONResponse(status_code=500, content={"error": f"No images in response: {rj}"})
             return {"success": True, "images": images, "model": model}

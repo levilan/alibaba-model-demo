@@ -131,6 +131,17 @@
 
 ## 2026-08-11
 
+- fix：修掉 `qwen-image-3.0` 在 `n > 1` 時**付了 n 張的錢卻只拿到一張**的問題（由文檔站 session 交叉查核時發現）。
+  - 千問 3.0 走的 multimodal-generation adaptor 在 `n>1` 時，OpenAI 相容的 `data[]` **只回第一張**，但 `usage.output_image_count` 是實際張數、也照那個張數計費——其餘的圖在 `metadata.output.choices[].message.content` 裡。實測 `n=2`：`data[]` 1 筆、metadata 2 張、計費 2 張。
+  - 我們的取圖只讀 `data[]`，所以使用者選 n=2 會被扣兩張的費用卻只看到一張。新增 `_extract_images_from_metadata()`，在 `/api/image/generate` 與 `/api/image/edit` 兩處補齊（以 URL 去重，不會重複計入 `data[]` 已有的）。
+  - 端到端驗證：修正後 `n=2` 正確回傳 2 張；萬相 `n=2` 維持原本的 2 張，未受影響（它走另一條 adaptor，`data[]` 本來就完整）。
+  - 根本解需要網關端把 `data[]` 補齊，已知會但由他們決定。
+
+- docs：更正我先前對千問 3.0 編輯輸出尺寸的錯誤描述。我寫「送任何 size 都得到 2048×2048」，**實際上輸出尺寸是跟著輸入圖的長寬比走**——我會量到固定值只是因為測試用的輸入圖剛好是正方形。文檔站用 900×506（16:9）複驗，兩種 size 都得到 2720×1520（≈16:9）。`README.md` 已改成「以回應的 `usage.output_width`/`output_height` 為準，不要假設是固定值」。`size` 被忽略這點則複驗成立。
+  - 這是本輪第二次「用單一樣本推出通則」的錯誤（前一次是萬相參考圖上限）。`memory.md` 的教訓清單已涵蓋這一類。
+
+- chore：與網關 `/v1/models` 交叉比對後確認，`MODELS` 裡有 **3 個模型在目前這個 key 的群組看不到**：`veo-3.1-generate-001`、`veo-3.1-lite-generate-001`、`wan3.0-video`。`/v1/models` 在 new-api 是依群組回傳的，所以可能只是群組權限差異而非全平台沒有；**尚未從清單移除**，待確認是權限問題還是真的沒上架。反向則有 23 個平台有、我們沒列的模型（xAI Grok 4 個、`qwen3-vl-plus`/`-flash`、`gemini-embedding-*` 等），要不要補進測試平台待決定。
+
 - docs：新增專案根目錄的 **`memory.md`**，記錄「測試平台（本專案）／nen 閘道 `nen-ai-platform`／文檔站 `Nen-AI-Docs-V1`」三個 repo 的關係。`CLAUDE.md` 開頭加了指引把人導過去。
   - 內容包含：三個專案各自的路徑／遠端／分支／正式站與角色定位、資料流、**職責邊界**（不改別人的 repo、跨專案用 `ListAgents` + `SendMessage` 溝通）、基礎架構實查結果（兩者都在 us-east5、LB 都是 PREMIUM 全球 anycast、平台實測只多 0.8 秒）。
   - 最重要的是「**反覆踩過的坑**」一節，每一條都是實際造成過錯誤判斷的：通過閘道驗證不等於真的能用（閘道驗證比原廠寬鬆）、不要從閘道的 Go struct 推斷行為（萬相參考圖上限那次）、探測手法不能跨模型家族沿用（`n` 哨兵在千問失效、在 MAI/Seedream 會真的產圖）、官方文件會過時會寫錯、「參數送了沒作用」幾乎都是閘道沒映射（要找同模型不同路徑的對照組）、UI 不顯示沒有作用的控制項。
