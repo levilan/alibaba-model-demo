@@ -270,8 +270,8 @@ MODELS = {
         #    （跟 Gemini 3.x 系列同樣「關不掉」），thinking 維持 False 不顯示
         #    會誤導使用者以為能控制的開關；seed-sc 則完全沒有思考過程）──
         {"id": "dola-seed-sc",       "name": "Seed SC",          "group": "ByteDance", "desc": "字節跳動豆包，一般對話", "thinking": False},
-        {"id": "dola-seed-2.0-lite", "name": "Seed 2.0 Lite",    "group": "ByteDance", "desc": "字節跳動豆包，輕量推理（思考過程無法關閉）", "thinking": False},
-        {"id": "dola-seed-2.0-pro",  "name": "Seed 2.0 Pro",     "group": "ByteDance", "desc": "字節跳動豆包，旗艦推理（思考過程無法關閉）", "thinking": False},
+        {"id": "dola-seed-2.0-lite", "name": "Seed 2.0 Lite",    "group": "ByteDance", "desc": "字節跳動豆包，輕量推理", "thinking": False},
+        {"id": "dola-seed-2.0-pro",  "name": "Seed 2.0 Pro",     "group": "ByteDance", "desc": "字節跳動豆包，旗艦推理", "thinking": False},
         # ── Claude（實測過 enable_thinking 與 Anthropic 原生 thinking 參數在這個
         #    網關上都不會回傳任何思考過程，thinking 一律維持 False；temperature/
         #    top_p 也不能送，Bedrock 後端會直接回 400 "temperature is deprecated"）──
@@ -315,9 +315,9 @@ MODELS = {
         {"id": "gemini-3.6-flash",            "name": "Gemini 3.6 Flash",            "group": "Gemini", "desc": "新一代均衡模型",   "thinking": True},
         {"id": "gemini-3.5-flash",            "name": "Gemini 3.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
         {"id": "gemini-3-flash-preview",      "name": "Gemini 3 Flash Preview",      "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
-        {"id": "gemini-2.5-pro",              "name": "Gemini 2.5 Pro",              "group": "Gemini", "desc": "前代旗艦（思考無法關閉）", "thinking": False},
+        {"id": "gemini-2.5-pro",              "name": "Gemini 2.5 Pro",              "group": "Gemini", "desc": "前代旗艦，深度推理", "thinking": False},
         {"id": "gemini-2.5-flash",            "name": "Gemini 2.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
-        {"id": "gemini-2.5-flash-lite",       "name": "Gemini 2.5 Flash Lite",       "group": "Gemini", "desc": "前代輕量極速（不顯示思考過程）", "thinking": True},
+        {"id": "gemini-2.5-flash-lite",       "name": "Gemini 2.5 Flash Lite",       "group": "Gemini", "desc": "前代輕量極速", "thinking": True},
         # gemini-3.5-flash-lite 跟 2.5-flash-lite 一樣「思考預設是關的、要送 budget=-1
         # 才會啟動」，但它**接受** includeThoughts（2.5 版送了會 400），所以思考過程
         # 看得到。實測：無 thinkingConfig → thoughts=None；budget=-1 → 186；
@@ -343,7 +343,7 @@ MODELS = {
         {"id": "grok-4-20-reasoning",         "name": "Grok 4.20 Reasoning",         "group": "xAI Grok", "desc": "旗艦推理（可關閉推理）", "thinking": False,
          "reasoning_effort": True, "reasoning_efforts": ["none"]},
         {"id": "grok-4-20-non-reasoning",     "name": "Grok 4.20",                   "group": "xAI Grok", "desc": "旗艦，不推理", "thinking": False},
-        {"id": "grok-4-1-fast-reasoning",     "name": "Grok 4.1 Fast Reasoning",     "group": "xAI Grok", "desc": "極速推理（推理無法關閉）", "thinking": False},
+        {"id": "grok-4-1-fast-reasoning",     "name": "Grok 4.1 Fast Reasoning",     "group": "xAI Grok", "desc": "極速推理", "thinking": False},
         {"id": "grok-4-1-fast-non-reasoning", "name": "Grok 4.1 Fast",               "group": "xAI Grok", "desc": "極速，不推理", "thinking": False},
         # ── 千問 VL（視覺語言，可在對話中帶入圖片；用標準 OpenAI image_url 格式，
         #    實測 data URI 可用）。vision: True 讓前端顯示圖片上傳欄位 ──
@@ -366,12 +366,12 @@ MODELS = {
         # 另外輸入圖是加法附加費 $0.003/張，不受輸出張數或解析度倍率影響。
         {
             "id": "qwen-image-3.0-pro", "name": "千問圖像 3.0 Pro", "group": "千問文生圖",
-            "desc": "最新旗艦文生圖（2K 輸出計價較高）", "type": "t2i", "max_n": 6,
+            "desc": "最新旗艦文生圖，細節更佳", "type": "t2i", "max_n": 6,
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024","1664*928","928*1664","2048*2048"],
         },
         {
             "id": "qwen-image-3.0", "name": "千問圖像 3.0", "group": "千問文生圖",
-            "desc": "最新文生圖，1K/2K 同價", "type": "t2i", "max_n": 6,
+            "desc": "最新文生圖", "type": "t2i", "max_n": 6,
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024","1664*928","928*1664","2048*2048"],
         },
         {
@@ -493,7 +493,7 @@ MODELS = {
         },
         {
             "id": "qwen-image-2.0", "name": "千問圖像 2.0（編輯）", "group": "千問圖像編輯",
-            "desc": "生成與編輯融合模型加速版", "type": "i2i", "max_n": 6, "max_ref": 3,
+            "desc": "生成與編輯融合模型，加速版", "type": "i2i", "max_n": 6, "max_ref": 3,
             "no_ref_strength": True, "fusion_edit": True,
             "sizes": ["1024*1024","1280*720","720*1280","1024*768","768*1024"],
         },
@@ -650,14 +650,14 @@ MODELS = {
          "desc": "統一支援參考／編輯／複刻／驅動", "type": "vedit",
          "audio": False, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
         # ── 文生影片 ──────────────────────────────────────────────
-        {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭，配音由模型自動決定（上游無開關）", "type": "t2v",   "audio": False,  "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭，自動配音", "type": "t2v",   "audio": False,  "min_dur": 2, "max_dur": 15},
         {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片（配音由模型自動決定）",     "type": "t2v",   "audio": False, "min_dur": 2, "max_dur": 15},
         # ── 圖生影片 ──────────────────────────────────────────────
-        {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀生成（上游僅支援首幀）", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"]},
+        {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀生成", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"]},
         # wan2.6-i2v / wan2.6-i2v-flash 目前 NenAI 平台端 pipeline 故障（無論送任何欄位格式都回
         # "Field required: input.img_url"，已用直連 API 排除是本專案的請求格式問題），保留在清單中等待平台方修復
-        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片（含音頻，無開關）",       "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"]},
-        {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版（唯一可關閉配音的萬相型號，關閉後費用減半）", "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"]},
+        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片，含音頻",       "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"]},
+        {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版，可關閉配音", "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"]},
         # ── 參考生影片 ────────────────────────────────────────────
         {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片", "desc": "角色形象參考（僅接受圖片）",       "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True},
         {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片（僅接受圖片）",     "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True},
@@ -722,26 +722,26 @@ MODELS = {
         #   ⚠️ peer 說 seed 也不支援，但**實測沒有被拒**（任務照樣建立），與其規格不符
         # 計費比 2.0 貴約 53%（720p 每秒 $0.2311 vs $0.1512），tokens = 寬×高×幀數/1024
         {"id": "dreamina-seedance-2.5", "name": "Seedance 2.5（即夢）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance 最新版，最長 30 秒；僅 480P/720P，較 2.0 貴約 53%", "type": "t2v",
+         "desc": "即夢 Seedance 最新版，最長 30 秒，支援 480P/720P", "type": "t2v",
          "audio": False, "min_dur": 4, "max_dur": 30, "resolutions": ["480P", "720P"]},
         {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro", "group": "ByteDance Seedance",
          "desc": "字節跳動 Seedance，旗艦文生影片", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0", "name": "Seedance 2.0（即夢）", "group": "ByteDance Seedance",
          "desc": "即夢 Seedance，標準文生影片", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0-fast", "name": "Seedance 2.0 Fast（即夢）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance，極速文生影片；上游僅支援 480P/720P", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
+         "desc": "即夢 Seedance，極速文生影片，支援 480P/720P", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
         {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro（圖生影片）", "group": "ByteDance Seedance",
          "desc": "字節跳動 Seedance，旗艦圖生影片（首幀）", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0", "name": "Seedance 2.0（即夢，圖生影片）", "group": "ByteDance Seedance",
          "desc": "即夢 Seedance，標準圖生影片（首幀）", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0-fast", "name": "Seedance 2.0 Fast（即夢，圖生影片）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance，極速圖生影片（首幀）；上游僅支援 480P/720P", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
+         "desc": "即夢 Seedance，極速圖生影片（首幀），支援 480P/720P", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
         {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro（參考生影片）", "group": "ByteDance Seedance",
          "desc": "字節跳動 Seedance，旗艦參考生影片", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0", "name": "Seedance 2.0（即夢，參考生影片）", "group": "ByteDance Seedance",
          "desc": "即夢 Seedance，標準參考生影片", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0-fast", "name": "Seedance 2.0 Fast（即夢，參考生影片）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance，極速參考生影片；上游僅支援 480P/720P", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
+         "desc": "即夢 Seedance，極速參考生影片，支援 480P/720P", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
         # ── Gemini Omni（走 /v1beta/interactions，模型自行決定長度/解析度，固定含原生配音）──
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview", "group": "Gemini",
          "desc": "Google 多模態影片生成（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "t2v", "audio": False, "no_duration": True},
@@ -2268,7 +2268,7 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
 
     if model in _FIRST_FRAME_ONLY_I2V_MODELS and i2v_mode != "first_frame":
         return JSONResponse(status_code=400, content={
-            "error": f"{model} 的上游只讀取首幀圖片，尾幀／驅動音訊／影片延伸都會被靜默丟棄，請改用「首幀生成」模式。"})
+            "error": f"{model} 只支援首幀生成，尾幀／驅動音訊／影片延伸不適用於這個模型，請改用「首幀生成」模式。"})
 
     if model in _INTERACTIONS_VIDEO_MODELS:
         first_bytes = await _read_image_bytes(first_frame_file)
@@ -2821,7 +2821,7 @@ async def voice_tts(data: VoiceTtsRequest, api_key: str = Depends(get_api_key)):
                 elif b64_data:
                     audio_bytes = base64.b64decode(b64_data)
                 else:
-                    return JSONResponse(status_code=500, content={"error": f"上游未回傳音訊：{rj}"})
+                    return JSONResponse(status_code=500, content={"error": f"模型未回傳音訊：{rj}"})
                 ext = data.format if data.format in ("mp3", "wav", "opus", "flac") else "mp3"
 
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
