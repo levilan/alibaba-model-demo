@@ -323,6 +323,7 @@ python app.py
 | wan2.2-animate-mix | 萬相 2.2 視頻換人 | 萬相動作動畫 | — |
 | wan2.2-animate-move | 萬相 2.2 圖生動作 | 萬相動作動畫 | — |
 | bytedance-seedance-1.5-pro | Seedance 1.5 Pro | ByteDance Seedance | — |
+| dreamina-seedance-2.5 | Seedance 2.5（即夢） | ByteDance Seedance | — |
 | dreamina-seedance-2.0 | Seedance 2.0（即夢） | ByteDance Seedance | — |
 | dreamina-seedance-2.0-fast | Seedance 2.0 Fast（即夢） | ByteDance Seedance | — |
 | bytedance-seedance-1.5-pro（圖生影片） | Seedance 1.5 Pro | ByteDance Seedance | — |
@@ -355,6 +356,24 @@ python app.py
 > **上傳的音訊必須是 URL。** 上游只接受 `audio_url`，base64 data URI 不會被解析，所以使用者上傳的配樂/驅動音訊會先經 `_cloud_put()` 放到雲端物件儲存再帶簽名網址過去；沒有設定任何雲端儲存後端時會直接回報錯誤，而不是送出一個註定無聲的請求。
 > ByteDance Seedance 系列同時支援 t2v/i2v/r2v，走跟萬相系列共用的 `media`/`image`/`images` 三欄位注入機制；i2v 在 `bytedance-seedance-1.5-pro`、r2v 在 `dreamina-seedance-2.0-fast` 上實測完整跑到 `completed`，其餘模型 × 模式組合基於同一套機制推斷同樣可用，未逐一窮舉。**不支援**視頻編輯（vedit）——實測直接被上游拒絕（`image_url` 參數不合法）。`min_dur`/`max_dur` 沿用其他家族的常見範圍（2–15 秒），未測邊界值。
 >
+> **`dreamina-seedance-2.5` 與 2.0 系列差異很大，UI 需分開處理**（2026-08-11 對**測試網關** `192.168.0.245` 驗證——正式環境的模型清單裡雖然有它，但網關程式碼尚未部署、在那邊叫不動）：
+>
+> | | 2.5 | 2.0 系列 |
+> |---|---|---|
+> | 解析度 | **只有 480p / 720p** | 480p ～ 4K |
+> | 時長 | `[4, 30]` 或 `-1` | 2 ～ 15 |
+> | 參考圖 / 影片 / 音訊 | 30 張 / 10 支 / 10 段 | 9 / 3 / 3 |
+> | 純音訊輸入 | ✅ 支援 | ❌ |
+> | 每秒單價（720p） | **$0.2311** | $0.1512 |
+>
+> **比 2.0 貴約 53%**。送 `1080p`／`4k` 實測回 `InvalidParameter`，`duration` 送 3 或 31 也被拒，所以 MODELS 以 `resolutions` 與 `min_dur`/`max_dur` 限制住。不支援 `camera_fixed`／`frames`／`draft`（實測都回 `InvalidParameter`）。
+>
+> ⚠️ 網關端說 `seed` 也不支援，但**實測沒有被拒**（任務照樣建立），與其規格說明不符——目前以實測為準，沒有特別擋。
+>
+> **目前只上架了文生影片（t2v）。** 圖生／參考生／視頻編輯需要帶入參考影片，而影片輸入必須是雲端網址（見上方），在雲端物件儲存設定好之前做了也不能用；另外 2.5 專屬的 `omni_reference_task_type`（顯式指定任務類型，避免參數不合要等到非同步階段才報錯）在測試網關上也還沒透傳。這兩件完成後再補。
+>
+> 計費公式：`tokens = 寬 × 高 × 幀數 / 1024`，fps 固定 24。回傳的 `duration` 是無條件捨去，**計費按真實幀數**（要求 4 秒實際收 4.04 秒）。
+
 > **Seedance 各型號的解析度支援度不一樣**（2026-08-10 對正式網關逐一實測）。下表記錄的是**送出時上游是否接受這個參數值**（提交回 200 vs 回 `InvalidParameter`）：
 >
 > | 模型 | 480P | 720P | 1080P | 4K |

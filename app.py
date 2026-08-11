@@ -705,6 +705,18 @@ MODELS = {
         #    超出範圍會回 InvalidParameter「the parameter resolution ... is not valid」。
         #    先前送不到解析度時這個限制看不出來（上游一律當 720p 跑），是把解析度真的
         #    送達之後才浮現的，所以用 resolutions 明確限制住 fast 版的選項）──
+        # ── Dreamina Seedance 2.5（2026-08-11 對**測試網關** 192.168.0.245 驗證；
+        #    正式環境的模型清單裡雖然有它，但網關程式碼還沒部署，那邊叫不動）──
+        # 與 2.0 的差異大到 UI 必須分開處理：
+        #   解析度 **只有 480p/720p**（送 1080p/4k 實測回 InvalidParameter），2.0 則到 4K
+        #   duration 範圍 [4,30] 或 -1（送 3 或 31 都被拒），2.0 是 2~15
+        #   參考素材上限高很多：30 張圖 / 10 支影片 / 10 段音訊，且**支援純音訊輸入**
+        #   不支援 camera_fixed / frames / draft（實測都回 InvalidParameter）
+        #   ⚠️ peer 說 seed 也不支援，但**實測沒有被拒**（任務照樣建立），與其規格不符
+        # 計費比 2.0 貴約 53%（720p 每秒 $0.2311 vs $0.1512），tokens = 寬×高×幀數/1024
+        {"id": "dreamina-seedance-2.5", "name": "Seedance 2.5（即夢）", "group": "ByteDance Seedance",
+         "desc": "即夢 Seedance 最新版，最長 30 秒；僅 480P/720P，較 2.0 貴約 53%", "type": "t2v",
+         "audio": False, "min_dur": 4, "max_dur": 30, "resolutions": ["480P", "720P"]},
         {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro", "group": "ByteDance Seedance",
          "desc": "字節跳動 Seedance，旗艦文生影片", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0", "name": "Seedance 2.0（即夢）", "group": "ByteDance Seedance",
