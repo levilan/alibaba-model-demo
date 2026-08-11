@@ -104,6 +104,20 @@ Go struct 描述的是某一條路徑的資料結構，不等於所有路徑的�
 
 跨專案交接時，建議分三層寫：**我實測到的數據** / **我從中推出的結論** / **我轉述自他人的**。
 
+### 4c. 要知道「實際收多少錢」，用用量增幅量，不要推
+
+`GET https://nen.com.tw/v1/dashboard/billing/usage`（帶一般的 `Authorization: Bearer`）回傳這把 key 的累計用量：
+
+```json
+{"object":"list","total_usage":155615.3236}
+```
+
+做法是**前後各查一次、比對增幅**：先取基準，送出要測的請求，等一下再取一次。平台開了 `BATCH_UPDATE_ENABLED`，用量不是即時刷寫的，**要等約 12 秒**才反映得出來。
+
+這是唯一能直接回答「這個請求實際被收多少」的方法。`usage.output_image_count`、`model_price` 這些都只是線索，不是計費依據——上面 4b 那個錯誤就是把線索當結論。
+
+實例：文檔站用這個方法驗證 `qwen-image-3.0` 的 `n=1` 與 `n=2` 增幅都是 `+3.0`（比值 1.0），獨立確認了「計費依 `data[]` 實際張數」。
+
 ### 5. 「參數送了沒作用」幾乎都是閘道沒映射
 
 實例：`glm-5.2` 走 `/v1/messages` 時整個 `thinking` 物件無效——根因是 `service/convert.go` 的 `ClaudeToOpenAIRequest` **只在 OpenRouter 分支讀 `Thinking`**，其餘渠道一律丟棄；`reasoning_effort` 更是連 `dto.ClaudeRequest` 都沒宣告，反序列化階段就消失。
