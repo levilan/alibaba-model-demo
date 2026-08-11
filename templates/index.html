@@ -252,6 +252,15 @@
                     <textarea id="textStop" class="textarea-input" rows="2"
                               placeholder="例：\n結束\n---"></textarea>
                 </div>
+                <!-- 視覺語言模型（qwen3-vl-*）專用：可在對話中帶入圖片。
+                     只有 MODELS 標了 vision 的模型才顯示，由 onTextModelChange() 判斷 -->
+                <div class="form-group" id="textVisionGroup" style="display:none">
+                    <label class="form-label" data-tip="視覺語言模型可以看圖回答。可一次帶多張，圖片只會附在這一輪的提問上，不會進入對話歷史">圖片輸入
+                        <span class="param-hint">（可多張）</span>
+                    </label>
+                    <input type="file" id="textVisionInput" accept="image/*" multiple onchange="onTextVisionUpload(event)">
+                    <div id="textVisionList" class="ref-list"></div>
+                </div>
                 <div class="toggle-row" id="textThinkingGroup">
                     <label data-tip="啟用後模型會先進行內部推理（Chain-of-Thought），再給出回答，大幅提升複雜問題的準確性，但會消耗更多 tokens 且速度較慢。思考過程會顯示在回答上方">思考模式</label>
                     <label class="toggle"><input type="checkbox" id="textThinking"><span class="toggle-slider"></span></label>
@@ -943,6 +952,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=60"></script>
+<script src="/static/js/app.js?v=61"></script>
 </body>
 </html>

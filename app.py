@@ -275,7 +275,8 @@ MODELS = {
         # ── Claude（實測過 enable_thinking 與 Anthropic 原生 thinking 參數在這個
         #    網關上都不會回傳任何思考過程，thinking 一律維持 False；temperature/
         #    top_p 也不能送，Bedrock 後端會直接回 400 "temperature is deprecated"）──
-        {"id": "claude-opus-4-8",             "name": "Claude Opus 4.8",   "group": "Claude", "desc": "旗艦，最強推理",   "thinking": False},
+        {"id": "claude-opus-5",               "name": "Claude Opus 5",     "group": "Claude", "desc": "最新旗艦",         "thinking": False},
+        {"id": "claude-opus-4-8",             "name": "Claude Opus 4.8",   "group": "Claude", "desc": "前代旗艦",         "thinking": False},
         {"id": "claude-opus-4-7",             "name": "Claude Opus 4.7",   "group": "Claude", "desc": "前代旗艦",         "thinking": False},
         {"id": "claude-opus-4-6",             "name": "Claude Opus 4.6",   "group": "Claude", "desc": "前代旗艦",         "thinking": False},
         {"id": "claude-opus-4-5-20251101",    "name": "Claude Opus 4.5",   "group": "Claude", "desc": "前代旗艦",         "thinking": False},
@@ -317,6 +318,30 @@ MODELS = {
         {"id": "gemini-2.5-pro",              "name": "Gemini 2.5 Pro",              "group": "Gemini", "desc": "前代旗艦（思考無法關閉）", "thinking": False},
         {"id": "gemini-2.5-flash",            "name": "Gemini 2.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
         {"id": "gemini-2.5-flash-lite",       "name": "Gemini 2.5 Flash Lite",       "group": "Gemini", "desc": "前代輕量極速（不顯示思考過程）", "thinking": True},
+        # gemini-3.5-flash-lite 跟 2.5-flash-lite 一樣「思考預設是關的、要送 budget=-1
+        # 才會啟動」，但它**接受** includeThoughts（2.5 版送了會 400），所以思考過程
+        # 看得到。實測：無 thinkingConfig → thoughts=None；budget=-1 → 186；
+        # budget=-1 + includeThoughts → 180 且有 thought 區塊
+        {"id": "gemini-3.5-flash-lite",       "name": "Gemini 3.5 Flash Lite",       "group": "Gemini", "desc": "新一代輕量極速", "thinking": True},
+        # ── xAI Grok（reasoning / non-reasoning 是兩個獨立型號，不是同一模型的參數）──
+        # 實測四個型號的行為（2026-08-11，正式環境）：
+        #   -reasoning 版預設就思考，-non-reasoning 版完全不思考（reasoning_tokens 恆為 0）
+        #   四個都**不回傳 reasoning_content**，所以思考過程一律看不到
+        #   enable_thinking 對全部四個無效（grok-4-20-reasoning 送 false 反而更多）
+        #   reasoning_effort：只有 grok-4-20-reasoning 有效（none → reasoning 0）；
+        #     grok-4-1-fast-reasoning 送了無效（各 3 次中位數 176 vs 245，沒有下降）；
+        #     兩個 non-reasoning 版直接回 400
+        #   非法值只回通用的 "openai_error"，問不出合法枚舉，故 reasoning_efforts 只列
+        #   實測有效的 none 與不帶值的預設
+        {"id": "grok-4-20-reasoning",         "name": "Grok 4.20 Reasoning",         "group": "xAI Grok", "desc": "旗艦推理（可關閉推理）", "thinking": False,
+         "reasoning_effort": True, "reasoning_efforts": ["none"]},
+        {"id": "grok-4-20-non-reasoning",     "name": "Grok 4.20",                   "group": "xAI Grok", "desc": "旗艦，不推理", "thinking": False},
+        {"id": "grok-4-1-fast-reasoning",     "name": "Grok 4.1 Fast Reasoning",     "group": "xAI Grok", "desc": "極速推理（推理無法關閉）", "thinking": False},
+        {"id": "grok-4-1-fast-non-reasoning", "name": "Grok 4.1 Fast",               "group": "xAI Grok", "desc": "極速，不推理", "thinking": False},
+        # ── 千問 VL（視覺語言，可在對話中帶入圖片；用標準 OpenAI image_url 格式，
+        #    實測 data URI 可用）。vision: True 讓前端顯示圖片上傳欄位 ──
+        {"id": "qwen3-vl-plus",               "name": "Qwen3 VL Plus",               "group": "視覺語言", "desc": "看圖對話，Plus 品質", "thinking": False, "vision": True},
+        {"id": "qwen3-vl-flash",              "name": "Qwen3 VL Flash",              "group": "視覺語言", "desc": "看圖對話，極速", "thinking": False, "vision": True},
     ],
     "image": [
         # ── 千問文生圖 ────────────────────────────────────────────
@@ -926,6 +951,7 @@ class TextGenerateRequest(BaseModel):
     enable_thinking: bool = False
     reasoning_effort: Optional[str] = None  # 僅 GPT 系列支援：none/low/medium/high/xhigh
     history: List[Dict[str, str]] = []  # 多輪對話歷史，[{"role": "user"/"assistant", "content": "..."}]
+    images: List[str] = []              # 視覺語言模型（qwen3-vl-*）用：data URI 或公開網址
 
 
 class OmniChatRequest(BaseModel):
@@ -1042,6 +1068,10 @@ _GEMINI_NO_THINKING_OFF = {"gemini-2.5-pro"}
 # gemini-2.5-flash-lite 不接受 includeThoughts（回 "Thinking_config.include_thoughts
 # is not supported"）——它的思考可以關掉，但過程拿不到
 _GEMINI_NO_INCLUDE_THOUGHTS = {"gemini-2.5-flash-lite"}
+# 這些型號的思考**預設是關的**（不帶 thinkingConfig 時 thoughtsTokenCount 是 None），
+# 要送 thinkingBudget: -1（動態預算）才會真的啟動——否則「思考開」那一檔會完全沒有
+# 作用。其餘型號預設就會思考，只要 includeThoughts 把過程要出來即可。
+_GEMINI_THINKING_OFF_BY_DEFAULT = {"gemini-2.5-flash-lite", "gemini-3.5-flash-lite"}
 
 
 def _build_gemini_body(data: "TextGenerateRequest", messages: list) -> dict:
@@ -1072,12 +1102,9 @@ def _build_gemini_body(data: "TextGenerateRequest", messages: list) -> dict:
 
     thinking: dict = {}
     if data.enable_thinking:
-        if data.model in _GEMINI_NO_INCLUDE_THOUGHTS:
-            # 這些型號拿不到思考過程，而且思考預設是關的（實測不帶 thinkingConfig 時
-            # thoughtsTokenCount 是 None），要用 -1（動態預算）才會真的開始思考——
-            # 否則這個開關會變成完全沒有作用
+        if data.model in _GEMINI_THINKING_OFF_BY_DEFAULT:
             thinking["thinkingBudget"] = -1
-        else:
+        if data.model not in _GEMINI_NO_INCLUDE_THOUGHTS:
             thinking["includeThoughts"] = True
     else:
         if data.model in _GEMINI_NO_THINKING_OFF:
@@ -1176,7 +1203,15 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
     if data.system_prompt:
         messages.append({"role": "system", "content": data.system_prompt})
     messages.extend(data.history)
-    messages.append({"role": "user", "content": data.prompt})
+    if data.images:
+        # 視覺語言模型（qwen3-vl-*）：content 從字串改成陣列，圖片用標準的 OpenAI
+        # image_url 格式帶入（實測 data URI 可用）。只有這一輪帶圖，history 裡的
+        # 舊訊息維持純文字——上游對「歷史訊息裡的圖片」行為未驗證，不主動送。
+        content: Any = [{"type": "image_url", "image_url": {"url": u}} for u in data.images]
+        content.append({"type": "text", "text": data.prompt})
+        messages.append({"role": "user", "content": content})
+    else:
+        messages.append({"role": "user", "content": data.prompt})
 
     # Gemini 文字模型走 Gemini 原生 API
     if data.model in _GEMINI_NATIVE_TEXT_MODELS:

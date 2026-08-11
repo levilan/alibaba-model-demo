@@ -528,10 +528,47 @@ const _EFFORT_LABELS = {
     medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max（最高）',
 };
 
+// 視覺語言模型帶入的圖片（data URI）。只附在當下這一輪的提問上，不進對話歷史
+let textVisionImages = [];
+
+function onTextVisionUpload(e) {
+    const files = Array.from(e.target.files || []);
+    Promise.all(files.map(f => new Promise(res => {
+        const r = new FileReader();
+        r.onload = () => res({ name: f.name, url: r.result });
+        r.readAsDataURL(f);
+    }))).then(added => {
+        textVisionImages = [...textVisionImages, ...added];
+        renderTextVisionList();
+    });
+    e.target.value = '';   // 讓同一個檔案能重複選取
+}
+
+function removeTextVisionImage(i) { textVisionImages.splice(i, 1); renderTextVisionList(); }
+
+function renderTextVisionList() {
+    document.getElementById('textVisionList').innerHTML = textVisionImages.map((f, i) => `
+        <div class="ref-item">
+            <span>${f.name}</span>
+            <button onclick="removeTextVisionImage(${i})">✕</button>
+        </div>`).join('');
+}
+
 function onTextModelChange() {
     const modelId = document.getElementById('textModel').value;
     const modelInfo = models.text.find(m => m.id === modelId) || {};
     document.getElementById('textThinkingGroup').style.display = modelInfo.thinking ? '' : 'none';
+
+    // 圖片輸入只有視覺語言模型支援；切到不支援的模型時把已選的圖清掉，
+    // 否則會靜默夾帶到不吃圖的模型上（那些模型會直接 400）
+    const visionGroup = document.getElementById('textVisionGroup');
+    if (visionGroup) {
+        visionGroup.style.display = modelInfo.vision ? '' : 'none';
+        if (!modelInfo.vision && textVisionImages.length) {
+            textVisionImages = [];
+            renderTextVisionList();
+        }
+    }
     document.getElementById('textReasoningEffortGroup').style.display = modelInfo.reasoning_effort ? '' : 'none';
 
     // 可用的推理強度各家族不同（GLM 5.2 有 minimal/max、GLM 5.1 沒有 max、GPT 兩者都沒有），
@@ -1305,6 +1342,7 @@ async function sendText() {
         if (seed !== null) body.seed = seed;
         if (stop.length > 0) body.stop = stop;
         if (reasoningEffort && modelInfo?.reasoning_effort) body.reasoning_effort = reasoningEffort;
+        if (modelInfo?.vision && textVisionImages.length) body.images = textVisionImages.map(f => f.url);
 
         const startTime = Date.now();
         const res = await fetch('/api/text/generate', {

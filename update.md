@@ -131,6 +131,14 @@
 
 ## 2026-08-11
 
+- feat：新增 8 個模型——`claude-opus-5`、`gemini-3.5-flash-lite`、4 個 xAI Grok、2 個千問 VL，並為視覺語言模型做了前端的圖片輸入 UI。網關：正式環境（使用者指定）。
+  - **xAI Grok 是新廠商，四個型號行為各不相同**（逐一實測）：`-reasoning` 版預設就推理、`-non-reasoning` 版完全不推理（`reasoning_tokens` 恆為 0）；四個都**不回傳 `reasoning_content`**，思考過程一律看不到，所以 `thinking` 全部 `False`。`reasoning_effort` 只有 `grok-4-20-reasoning` 有效（`none` → 0），`grok-4-1-fast-reasoning` 送了無效（各 3 次中位數 176 vs 245，沒有下降），兩個 `-non-reasoning` 版直接回 400。送非法值只回通用的 `openai_error`、問不出合法枚舉，所以 `reasoning_efforts` 只列實測有效的 `none`。
+  - **`gemini-3.5-flash-lite` 的思考預設是關的**，跟 `gemini-2.5-flash-lite` 一樣要送 `thinkingBudget: -1` 才會啟動（不帶 thinkingConfig 時 `thoughtsTokenCount` 是 `None`）；但它**接受 `includeThoughts`**（2.5 版送了會 400），所以思考過程看得到。原本的判斷式是「在 NO_INCLUDE_THOUGHTS 就送 budget=-1、否則送 includeThoughts」二選一，無法表達這個組合，改成新增 `_GEMINI_THINKING_OFF_BY_DEFAULT` 集合、兩個條件獨立判斷。
+  - **千問 VL 的圖片輸入**：`TextGenerateRequest` 新增 `images` 欄位（data URI 或網址），有圖時把 `content` 從字串改成陣列、用標準 OpenAI `image_url` 格式帶入。前端在文字頁籤新增圖片上傳欄位，只有 MODELS 標了 `vision` 的模型才顯示；**切換到不支援視覺的模型時會清掉已選的圖**，否則會靜默夾帶到不吃圖的模型上（那些模型會直接 400）。圖片只附在當下這一輪，不進對話歷史——上游對「歷史訊息裡的圖片」的行為未驗證，不主動送。
+  - 端到端實測（透過本機服務打正式環境）：8 個模型都正常；`grok-4-20-reasoning` 的 `effort=none` 生效；`gemini-3.5-flash-lite` 思考 ON 212 tokens／OFF 1 token；兩個 VL model 非串流與串流都正確辨識出圖片顏色。
+  - 前端改動：`app.js?v=60` → `?v=61`。
+  - **`qwen3.5-omni-plus-realtime` 未加**——我原本說「已經有 WebSocket 代理，加進清單就能用」是**錯的**：`index.html` 裡完全沒有 omni 的 UI（`omniModel` 等 10 個 DOM 元素都不存在），後端 `/ws/omni` 代理與 `app.js` 的 handler 雖然都在，但沒有任何入口能到達。查了歷史，那段 UI 在 `8c012ac` 時存在、之後被移除，移除原因不明。要加這個模型等於要重建整個 realtime UI，已回報使用者決定。
+
 - fix：修掉 `qwen-image-3.0` 在 `n > 1` 時**只顯示一張產出**的問題（由文檔站 session 交叉查核時發現）。
   - 千問 3.0 走的 multimodal-generation adaptor 在 `n>1` 時，OpenAI 相容的 `data[]` **只回第一張**，但 `usage.output_image_count` 是實際張數、也照那個張數計費——其餘的圖在 `metadata.output.choices[].message.content` 裡。實測 `n=2`：`data[]` 1 筆、metadata 2 張、計費 2 張。
   - 我們的取圖只讀 `data[]`，所以使用者選 n=2 只看得到一張。新增 `_extract_images_from_metadata()`，在 `/api/image/generate` 與 `/api/image/edit` 兩處補齊（以 URL 去重，不會重複計入 `data[]` 已有的）。

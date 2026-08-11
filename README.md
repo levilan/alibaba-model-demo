@@ -85,13 +85,17 @@ python app.py
 | dola-seed-sc | Seed SC | ByteDance | — |
 | dola-seed-2.0-lite | Seed 2.0 Lite | ByteDance | — （無條件思考，關不掉） |
 | dola-seed-2.0-pro | Seed 2.0 Pro | ByteDance | — （無條件思考，關不掉） |
+| claude-opus-5 | Claude Opus 5 | Claude | — |
 | claude-opus-4-8 / 4-7 / 4-6 / 4-5 / 4-1 | Claude Opus 系列 | Claude | — |
 | claude-sonnet-5 / 4-6 / 4-5 | Claude Sonnet 系列 | Claude | — |
 | claude-haiku-4-5 | Claude Haiku 4.5 | Claude | — |
 | claude-fable-5 | Claude Fable 5 | Claude | — |
 | gpt-5.6-terra / sol / luna | GPT 5.6 特化系列 | GPT | reasoning_effort |
 | gpt-5.5 / 5.4 / 5.4-mini / 5.4-nano / 5.2 / 5-mini | GPT 5.x 系列 | GPT | reasoning_effort |
-| gemini-3.1-pro-preview 等 7 個 Gemini 模型 | Gemini 系列 | Gemini | thinkingConfig（走原生 API） |
+| gemini-3.1-pro-preview 等 8 個 Gemini 模型 | Gemini 系列 | Gemini | thinkingConfig（走原生 API） |
+| grok-4-20-reasoning / -non-reasoning | xAI Grok | xAI Grok | reasoning_effort（僅 -20-reasoning 有效） |
+| grok-4-1-fast-reasoning / -non-reasoning | xAI Grok | xAI Grok | — |
+| qwen3-vl-plus / qwen3-vl-flash | 視覺語言 | 視覺語言 | —（支援圖片輸入） |
 
 > **思考模式的三種機制，不能混用**：Qwen/DeepSeek/GLM 用布林值 `enable_thinking`（這幾家幾乎都實測預設就是開啟，必須明確送 `enable_thinking:false` 才會關閉並省 token——完全不帶這個欄位並不會關閉思考，後端一律會明確帶上 `true`/`false`，只有 GPT 系列例外不帶）；GPT 系列改用字串 `reasoning_effort`（實測這個網關接受的枚舉是 `none/low/medium/high/xhigh`，跟 OpenAI 官方文件常見的 `minimal/low/medium/high` 不同，帶錯值或帶 `enable_thinking` 給 GPT 都會被直接拒絕）；**GLM 5.x 是唯一兩種都支援的家族**，詳見下方；Claude 與 ByteDance Seed 2.0 系列目前實測無法透過這個網關控制（Claude 送了無效、Seed 2.0 系列無條件思考關不掉），因此 UI 不提供對應開關；**Gemini 系列改走原生 API 後已經可以控制**，詳見下方；`qwen3-coder-plus`/`qwen3-coder-flash` 則是實測 `enable_thinking` 完全沒有效果（true/false 都不會有思考過程），同樣不顯示開關。開啟後若上游回傳 `reasoning_content`（Qwen/DeepSeek/GLM 大部分模型，以及無法關閉思考的 Seed 2.0 系列），會在回答上方顯示成可收合的「思考過程」區塊。
 
@@ -110,6 +114,19 @@ python app.py
 > `gemini-2.5-flash-lite` 還有一個陷阱：它的思考**預設是關的**，不帶 `thinkingConfig` 時 `thoughtsTokenCount` 是 `None`。因為它又不接受 `includeThoughts`，開關要送 `thinkingBudget: -1`（動態預算）才會真的啟動思考，否則那個開關會完全沒有作用（實測開/關都是 1 個 token）。
 >
 > 計費上要注意 `thoughtsTokenCount` 也是實際收費的輸出 token，後端的 `usage.completion_tokens` 是 `candidatesTokenCount + thoughtsTokenCount`，否則「本次花費」會嚴重低估。
+
+> **xAI Grok 的 reasoning／non-reasoning 是兩個獨立型號，不是同一模型的參數。** 2026-08-11 對正式環境實測四個型號：
+>
+> | 型號 | 預設是否推理 | `reasoning_effort` | `enable_thinking` |
+> |---|---|---|---|
+> | `grok-4-20-reasoning` | 會（`reasoning_tokens` 203） | ✅ `none` → 0 | ✗ 無效（送 false 反而 363） |
+> | `grok-4-1-fast-reasoning` | 會 | ✗ 無效（各 3 次中位數 176 vs 245） | ✗ 無效 |
+> | `grok-4-20-non-reasoning` | 不會（恆為 0） | ✗ 回 400 | ✗ 無效 |
+> | `grok-4-1-fast-non-reasoning` | 不會 | ✗ 回 400 | ✗ 無效 |
+>
+> 四個都**不回傳 `reasoning_content`**，所以思考過程一律看不到，`thinking` 旗標全部為 `False`。只有 `grok-4-20-reasoning` 給 `reasoning_effort` 控制項；送非法值只回通用的 `openai_error`、問不出合法枚舉，所以 `reasoning_efforts` 只列實測有效的 `none`。
+
+> **`qwen3-vl-plus` / `qwen3-vl-flash` 是視覺語言模型**，可在對話中帶入圖片。用標準的 OpenAI `image_url` 格式（實測 data URI 可用），MODELS 以 `vision: True` 標記、前端據此顯示圖片上傳欄位。圖片只附在**當下這一輪**的提問上，不會進入對話歷史——上游對「歷史訊息裡的圖片」的行為未驗證，不主動送。切換到不支援視覺的模型時前端會清掉已選的圖，避免靜默夾帶造成 400。
 
 > **GLM 5.x 有兩層思考控制**：布林的 `enable_thinking` 與字串的 `reasoning_effort`（分段推理強度）。實測各段的 `reasoning_tokens`：`none`／`minimal` → 0、`low` 182、`medium` 198、`high` 202、`xhigh` 239、`max` 208。可用枚舉各型號不同——`glm-5.2` 七段全有，`glm-5.1` **不支援 `max`**（送了回 400 並列出正確清單），故以 MODELS 的 `reasoning_efforts` 標明、前端選項依此動態產生。
 >
