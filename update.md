@@ -129,6 +129,22 @@
   - **計費**：`thoughtsTokenCount` 也是實際收費的輸出 token，`usage.completion_tokens` 算成 `candidatesTokenCount + thoughtsTokenCount`，否則 header 的「本次花費」會嚴重低估（思考往往佔了絕大部分）。
   - 端到端實測：7 個模型 × 非串流思考開/關 × 串流,全部通過,行為與上表一致。
 
+## 2026-08-12
+
+- feat：**進行中的任務會被持久化，重新整理後自動恢復**。先前 `task_id` 只存在記憶體，使用者一重新整理（或分頁被瀏覽器回收）輪詢就永久停止——**任務照樣跑完、照樣計費，但結果再也拿不到**。一支 30 秒的 Seedance 2.5 是 $6.94，這是實打實的損失。
+  - 新增 `savePendingTask` / `clearPendingTask` / `resumePendingTasks`，影片與 MuleAI 兩條任務流都接上，**7 個結束出口**（完成／失敗／逾時 × 2 條）都會清除紀錄，避免殘留。
+  - 恢復時會把 `costInfo` 一併帶回，所以恢復的任務完成後仍能正確計費。超過 1 小時的視為過期不再嘗試，最多保留 30 筆。
+  - 健壯性：`localStorage` 內容損壞回空陣列、寫入失敗（配額滿）吞下例外不影響當次生成——這兩個都驗過。
+
+- feat：**昂貴任務送出前確認**。影片單次最貴到 $6.94，而非同步任務一旦送出就無法取消。超過 $1 時彈出確認並說明換算依據（模型／解析度／秒數），讓使用者能判斷估算是否合理。
+  - **算不出價格時不攔**——寧可放行也不要用猜測的數字嚇阻使用者。驗證過五種情境：Seedance 2.5 30 秒（$6.94，攔）、4 秒（$0.42，放行）、萬相按次（$0.1，放行）、Veo（算不出來，放行）。
+
+- fix：**9 個按 token 計費的圖片模型，花費完全沒被計入**（MAI 三個、GPT Image 兩個、Gemini Image 四個）。跟先前影片那筆是同一個病灶：`addFixedCost()` 只認 `type==='fixed'`。
+  - 解法比影片那次更可靠：**直接用上游回報的 token 數**，不必在前端維護「解析度→token」的換算表，也不會因為上游改了算法而失準。
+  - 兩條路徑的欄位名不同，都實測過：OpenAI 相容端點回 `num_input_text_tokens`／`num_input_image_tokens`／`num_output_tokens`；Gemini 原生端點回 `promptTokenCount`／`candidatesTokenCount`。新增 `_image_usage()` 正規化，Gemini 那條還要**跨多次呼叫累加**（n>1 是並發打 n 次，而且重試那幾次也照樣消耗 token）。
+  - 前端新增 `addImageCost()`：按次的用單價×張數、按 token 的用實際 usage、上游沒回 usage 就不計。
+  - 端到端驗證三條路徑：MAI `{9, 1024}`、Gemini `{8, 1120}`、按次計費的 z-image 維持 `None`。
+
 ## 2026-08-11
 
 - fix：**`/api/proxy/fetch` 的白名單漏了火山引擎（Seedance 的產出網域）**，AI Canvas 把 Seedance 的影片接成下一步輸入會被擋。

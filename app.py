@@ -1625,6 +1625,31 @@ async def _save_image_bytes(data: bytes, ext: str) -> Optional[str]:
 
 # OpenAI 相容的 /v1/images/generations 回應，圖片可能是 "url" 或直接內嵌的 "b64_json"
 # （例如 gpt-image-2/1.5 預設就回 b64_json），兩種都要處理，否則會誤判為生成失敗
+def _image_usage(rj: dict) -> Optional[dict]:
+    """把圖片端點回傳的 usage 正規化成 {prompt_tokens, completion_tokens}。
+
+    按 token 計費的圖片模型（MAI 三個、GPT Image 兩個、Gemini Image 四個）先前
+    完全沒有把 usage 帶回前端，導致「本次花費」**完全不累加**這九個模型的花費。
+    直接用上游回報的 token 數，比在前端維護一份「解析度→token」的換算表可靠——
+    不必猜尺寸，也不會因為上游改了計算方式而失準。
+
+    兩種欄位命名（都實測過）：
+      OpenAI 相容端點：num_input_text_tokens / num_input_image_tokens / num_output_tokens
+      Gemini 原生端點：promptTokenCount / candidatesTokenCount（由 _gemini_usage 處理）
+    """
+    u = rj.get("usage") or (rj.get("metadata") or {}).get("usage") or {}
+    if not isinstance(u, dict) or not u:
+        return None
+    if "num_output_tokens" in u or "num_input_text_tokens" in u:
+        return {"prompt_tokens": (u.get("num_input_text_tokens", 0) or 0)
+                                 + (u.get("num_input_image_tokens", 0) or 0),
+                "completion_tokens": u.get("num_output_tokens", 0) or 0}
+    # 已經是標準命名就直接用
+    if "prompt_tokens" in u or "completion_tokens" in u:
+        return {"prompt_tokens": u.get("prompt_tokens", 0) or 0,
+                "completion_tokens": u.get("completion_tokens", 0) or 0}
+    return None
+
 async def _extract_images_from_data(data_list: list) -> list:
     images = []
     for item in data_list:
@@ -1692,8 +1717,12 @@ _GEMINI_IMAGE_MAX_RETRIES = 2
 _GEMINI_IMAGE_SIZES = {"1K", "2K", "4K"}
 
 async def _gemini_image_once(client: httpx.AsyncClient, model: str, parts: list,
-                             gen_config: dict, api_key: str) -> tuple[Optional[dict], str, Optional[JSONResponse]]:
-    """對原生端點打一次，回傳 (圖片, 這次拿到的純文字, 致命錯誤)。"""
+                             gen_config: dict, api_key: str) -> tuple[Optional[dict], str, Optional[JSONResponse], dict]:
+    """對原生端點打一次，回傳 (圖片, 這次拿到的純文字, 致命錯誤, 這次的 usage)。
+
+    usage 要一併帶出來——Gemini 圖像模型是按 token 計費的，前端沒有這個數字就
+    無法把花費算進「本次花費」。多張時每次呼叫的 usage 要累加。
+    """
     resp = await client.post(
         f"{NENAI_BASE}/v1beta/models/{model}:generateContent",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -1704,9 +1733,11 @@ async def _gemini_image_once(client: httpx.AsyncClient, model: str, parts: list,
             msg = resp.json().get("error", {}).get("message", resp.text)
         except Exception:
             msg = resp.text
-        return None, "", JSONResponse(status_code=resp.status_code, content={"error": msg})
+        return None, "", JSONResponse(status_code=resp.status_code, content={"error": msg}), {}
+    rj = resp.json()
+    usage = _gemini_usage(rj.get("usageMetadata") or {}) if rj.get("usageMetadata") else {}
     text = ""
-    for cand in resp.json().get("candidates", []):
+    for cand in rj.get("candidates", []):
         for part in (cand.get("content") or {}).get("parts", []):
             inline = part.get("inlineData") or part.get("inline_data")
             if inline and inline.get("data"):
@@ -1714,10 +1745,10 @@ async def _gemini_image_once(client: httpx.AsyncClient, model: str, parts: list,
                 ext = mime.split("/")[-1] or "png"
                 raw = base64.b64decode(inline["data"])
                 saved = await _save_image_bytes(raw, ext)
-                return {"url": None, "local_path": saved, "actual_prompt": None}, text, None
+                return {"url": None, "local_path": saved, "actual_prompt": None}, text, None, usage
             if part.get("text"):
                 text += part["text"]
-    return None, text, None
+    return None, text, None, usage
 
 
 async def _generate_gemini_image(model: str, prompt: str, n: int, api_key: str,
@@ -1758,6 +1789,7 @@ async def _generate_gemini_image(model: str, prompt: str, n: int, api_key: str,
 
     images: list = []
     last_text = ""
+    total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
     async with httpx.AsyncClient(timeout=300.0) as client:
         for _attempt in range(_GEMINI_IMAGE_MAX_RETRIES + 1):
             missing = max(0, n - len(images))
@@ -1767,9 +1799,12 @@ async def _generate_gemini_image(model: str, prompt: str, n: int, api_key: str,
                 _gemini_image_once(client, model, parts, gen_config, api_key)
                 for _ in range(missing)
             ])
-            for img, text, err in results:
+            for img, text, err, u in results:
                 if err is not None:
                     return err
+                # 每次呼叫都計費，即使那次沒出圖（重試那幾次照樣消耗 token）
+                total_usage["prompt_tokens"] += u.get("prompt_tokens", 0)
+                total_usage["completion_tokens"] += u.get("completion_tokens", 0)
                 if img:
                     images.append(img)
                 elif text:
@@ -1777,7 +1812,10 @@ async def _generate_gemini_image(model: str, prompt: str, n: int, api_key: str,
             if len(images) >= n:
                 break
     if images:
-        return {"success": True, "images": images[:n], "model": model}
+        out = {"success": True, "images": images[:n], "model": model}
+        if total_usage["prompt_tokens"] or total_usage["completion_tokens"]:
+            out["usage"] = total_usage
+        return out
     preview = last_text[:200] + ("…" if len(last_text) > 200 else "")
     return JSONResponse(status_code=500, content={
         "error": f"模型未回傳圖片，改用純文字回覆（重試 {_GEMINI_IMAGE_MAX_RETRIES} 次仍失敗）：{preview}"
@@ -1872,7 +1910,10 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
             images += await _extract_images_from_metadata(rj, images)
             if not images:
                 return JSONResponse(status_code=500, content={"error": f"No images in response: {rj}"})
-            return {"success": True, "images": images, "model": data.model}
+            out = {"success": True, "images": images, "model": data.model}
+            usage = _image_usage(rj)
+            if usage: out["usage"] = usage
+            return out
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1985,7 +2026,10 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
             images += await _extract_images_from_metadata(rj, images)
             if not images:
                 return JSONResponse(status_code=500, content={"error": f"No images in response: {rj}"})
-            return {"success": True, "images": images, "model": model}
+            out = {"success": True, "images": images, "model": model}
+            usage = _image_usage(rj)
+            if usage: out["usage"] = usage
+            return out
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

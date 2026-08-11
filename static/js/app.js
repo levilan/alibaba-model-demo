@@ -403,7 +403,7 @@ function showApp() {
     app.style.display = 'flex';
     const masked = apiKey.slice(0, 6) + '****' + apiKey.slice(-4);
     document.getElementById('apiKeyLabel').textContent = masked;
-    try { populateSelectors(); TaskHistory.load(); } catch(e) { toast('UI 載入發生錯誤，請聯絡開發者', 'error'); }
+    try { populateSelectors(); TaskHistory.load(); resumePendingTasks(); } catch(e) { toast('UI 載入發生錯誤，請聯絡開發者', 'error'); }
     loadPricing();
 }
 
@@ -624,6 +624,44 @@ function addCost(amount) {
 
 // 影片的計費入口：按次的用固定價，按 token 的（Seedance 系列）用解析度＋時長換算。
 // 先前只呼叫 addFixedCost()，所以 8 個按 token 計費的影片模型完全沒被計入「本次花費」
+// ── 昂貴任務的送出前確認 ────────────────────────────────────────────────────
+// 影片單次最貴可以到 $6.94（Seedance 2.5 / 720P / 30 秒）。誤點一下就是實際扣款，
+// 而且非同步任務一旦送出就無法取消。超過門檻時先讓使用者確認，並把換算依據講清楚
+// ——不是只丟一個數字，使用者要能判斷這個估算合不合理。
+const COST_CONFIRM_THRESHOLD = 1.0;   // USD
+
+function estimateVideoCost(modelId, costInfo) {
+    const p = pricingMap[modelId];
+    if (!p) return null;
+    if (p.type === 'fixed') return p.price;
+    return estimateVideoTokenCost(modelId, costInfo?.resolution, costInfo?.seconds);
+}
+
+// 回傳 true 表示可以送出。算不出價格時**不攔**——寧可放行，也不要用一個猜測的
+// 數字嚇阻使用者（那比沒有提示更糟）
+function confirmIfExpensive(modelId, costInfo) {
+    const est = estimateVideoCost(modelId, costInfo);
+    if (est == null || est < COST_CONFIRM_THRESHOLD) return true;
+    const basis = costInfo?.resolution && costInfo?.seconds
+        ? `${costInfo.resolution}、${costInfo.seconds} 秒`
+        : '目前設定';
+    return window.confirm(
+        `這次生成的預估費用約 $${formatUsd(Number(est.toFixed(4)))}（${modelId}，${basis}）。\n\n` +
+        `任務送出後無法取消，費用照實際用量計算、可能與估算略有出入。\n確定要繼續嗎？`
+    );
+}
+
+// 圖片的計費入口：按次的用「單價 × 張數」，按 token 的用上游回報的實際 token 數。
+// 有 9 個圖片模型是按 token 計費（MAI 三個、GPT Image 兩個、Gemini Image 四個），
+// 先前只呼叫 addFixedCost() 而它只認 type==='fixed'，所以那九個完全沒被計入花費。
+function addImageCost(modelId, count, usage) {
+    const p = pricingMap[modelId];
+    if (!p) return;
+    if (p.type === 'fixed') { addCost(p.price * count); return; }
+    if (usage) { addTokenTextCost(modelId, usage); return; }
+    // 按 token 但上游沒回 usage 就不計——不要用猜的數字
+}
+
 function addVideoCost(modelId, costInfo) {
     const p = pricingMap[modelId];
     if (!p) return;
@@ -1554,7 +1592,7 @@ async function sendImage() {
             const elapsed = fmtElapsed(Date.now() - startTime);
             finishImagePendingCard(card, res, elapsed);
             toast(`圖片生成完成！共 ${res.images.length} 張`, 'success');
-            addFixedCost(res.model, res.images.length);
+            addImageCost(res.model, res.images.length, res.usage);
         } else {
             const errMsg = res.error || '生成失敗';
             failImagePendingCard(card, errMsg);
@@ -1645,6 +1683,10 @@ async function sendVideo() {
     const vidSeed       = vidSeedRaw !== '' ? parseInt(vidSeedRaw) : null;
 
     if (!prompt && taskType !== 'vedit' && taskType !== 'animate') { toast('請輸入 Prompt', 'error'); return; }
+
+    // 昂貴任務先確認（門檻與理由見 confirmIfExpensive）。放在按鈕鎖定之前，
+    // 使用者取消時不需要再把按鈕解鎖
+    if (!confirmIfExpensive(model, { resolution, seconds: duration })) return;
 
     const btn = document.getElementById('videoSendBtn');
     btn.disabled = true;
@@ -1772,10 +1814,58 @@ function _vidBtnHTML() {
     return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> 生成';
 }
 
-function addVideoTask(taskId, model, prompt, status, costInfo) {
+// ── 進行中的任務持久化 ──────────────────────────────────────────────────────
+// 影片是非同步任務：提交後由前端輪詢。先前 task_id 只存在記憶體裡，使用者一重新
+// 整理（或分頁被瀏覽器回收）輪詢就永久停止——**任務照樣跑完、照樣計費，但結果
+// 再也拿不到**。一支 30 秒的影片可能要 $6.94，這是實打實的損失。
+// 這裡把進行中的任務寫進 localStorage，載入時自動重建卡片並接續輪詢。
+const PENDING_TASKS_KEY = 'nenai_pending_tasks';
+const PENDING_TASK_MAX_AGE = 60 * 60 * 1000;   // 超過 1 小時的視為過期，不再嘗試
+
+function _readPendingTasks() {
+    try { return JSON.parse(localStorage.getItem(PENDING_TASKS_KEY) || '[]'); }
+    catch (_) { return []; }
+}
+
+function _writePendingTasks(list) {
+    try { localStorage.setItem(PENDING_TASKS_KEY, JSON.stringify(list.slice(0, 30))); }
+    catch (_) { /* 儲存空間滿了就算了，不影響當下這次生成 */ }
+}
+
+function savePendingTask(entry) {
+    const list = _readPendingTasks().filter(t => t.taskId !== entry.taskId);
+    list.unshift({ ...entry, savedAt: Date.now() });
+    _writePendingTasks(list);
+}
+
+function clearPendingTask(taskId) {
+    _writePendingTasks(_readPendingTasks().filter(t => t.taskId !== taskId));
+}
+
+// 頁面載入時呼叫：把還沒結束的任務重新掛回畫面並接續輪詢
+function resumePendingTasks() {
+    const now = Date.now();
+    const list = _readPendingTasks();
+    const alive = list.filter(t => now - (t.savedAt || 0) < PENDING_TASK_MAX_AGE);
+    if (alive.length !== list.length) _writePendingTasks(alive);
+    if (!alive.length) return;
+    alive.forEach(t => {
+        try {
+            if (t.kind === 'muleai') {
+                addMuleAIVideoTask(t.taskId, t.model, t.prompt || '', '恢復中', true);
+            } else {
+                addVideoTask(t.taskId, t.model, t.prompt || '', '恢復中', t.costInfo, true);
+            }
+        } catch (e) { console.warn('恢復任務失敗', t.taskId, e); }
+    });
+    toast(`已恢復 ${alive.length} 個進行中的任務`, 'info');
+}
+
+function addVideoTask(taskId, model, prompt, status, costInfo, isResume = false) {
     const cont = document.getElementById('videoResults');
     cont.querySelector('.empty-state')?.remove();
     const startTime = Date.now();
+    if (!isResume) savePendingTask({ kind: 'video', taskId, model, prompt, costInfo });
     const card = el('div', { className: 'video-task-card', id: `task-${taskId}` });
     card.innerHTML = `
         <div class="vtc-header">
@@ -1816,7 +1906,7 @@ async function pollVideo(taskId, startTime, model, costInfo) {
         const elapsedText = elapsed >= 60 ? `${Math.floor(elapsed/60)}m${elapsed%60}s` : `${elapsed}s`;
         if (tmEl) tmEl.textContent = `(耗時 ${elapsedText})`;
 
-        if (tries > maxTries) { updateVTC(taskId, 'TIMEOUT', null, '等待超時'); return; }
+        if (tries > maxTries) { updateVTC(taskId, 'TIMEOUT', null, '等待超時'); clearPendingTask(taskId); return; }
         try {
             const res = await fetch(`/api/video/status/${taskId}`, { headers: { 'Authorization': `Bearer ${apiKey}` } });
             const data = await res.json();
@@ -1855,6 +1945,7 @@ async function pollVideo(taskId, startTime, model, costInfo) {
                 }
                 toast('影片生成完成！', 'success');
                 addVideoCost(model, costInfo);
+                clearPendingTask(taskId);
             } else if (isFailed) {
                 const errMsg = data.error_message || 'Unknown';
                 const isSchedulerErr = errMsg.toLowerCase().includes('scheduler');
@@ -1867,6 +1958,7 @@ async function pollVideo(taskId, startTime, model, costInfo) {
                     rvEl.innerHTML = `<p style="font-size:0.82rem;color:var(--red)">錯誤：${errMsg}${hint}</p>`;
                 }
                 toast(isSchedulerErr ? 'DashScope 排程器繁忙，請重新提交' : '影片生成失敗', 'error');
+                clearPendingTask(taskId);
             } else {
                 if (stEl) { stEl.textContent = st || 'PENDING'; stEl.className = `vtc-status ${(st || 'pending').toLowerCase()}`; }
                 // 進度條：前 30s 累積到 20%，之後緩慢增長到最多 90%
@@ -2368,11 +2460,12 @@ async function sendMuleAIVideo() {
     btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> ' + label;
 }
 
-function addMuleAIVideoTask(taskId, model, prompt, status) {
+function addMuleAIVideoTask(taskId, model, prompt, status, isResume = false) {
     const cont = document.getElementById('muleaiVideoResults');
     const empty = cont.querySelector('.empty-state');
     if (empty) empty.remove();
     const startTime = Date.now();
+    if (!isResume) savePendingTask({ kind: 'muleai', taskId, model, prompt });
     const card = el('div', { className: 'video-task-card', id: 'mtask-' + taskId });
     card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-timer" id="mtm-' + taskId + '">(耗時 0s)</span><span class="vtc-status ' + (status ? status.toLowerCase() : 'pending') + '" id="mst-' + taskId + '">' + (status || 'PENDING') + '</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><div class="vtc-progress"><div class="vtc-progress-bar" id="mpb-' + taskId + '" style="width:5%"></div></div><div id="mrv-' + taskId + '"></div>';
     cont.insertBefore(card, cont.firstChild);
@@ -2392,6 +2485,7 @@ async function pollMuleAIVideo(taskId, startTime, model, promptText) {
         if (tries > maxTries) { 
             const stEl = document.getElementById('mst-' + taskId);
             if (stEl) { stEl.textContent = 'TIMEOUT'; stEl.className = 'vtc-status failed'; }
+            clearPendingTask(taskId);
             return; 
         }
         
@@ -2419,11 +2513,13 @@ async function pollMuleAIVideo(taskId, startTime, model, promptText) {
                 }
                 toast('任務完成！', 'success');
                 addFixedCost(model);
+                clearPendingTask(taskId);
             } else if (st === 'FAILED' || st === 'failed') {
                 if (stEl) { stEl.textContent = 'FAILED'; stEl.className = 'vtc-status failed'; }
                 if (pbEl) { pbEl.style.width = '100%'; pbEl.style.background = 'var(--red)'; }
                 if (rvEl) rvEl.innerHTML = '<p style="font-size:0.82rem;color:var(--red)">錯誤：' + (data.error_message || (data.error ? data.error.detail : '未知錯誤')) + '</p>';
                 toast('生成失敗', 'error');
+                clearPendingTask(taskId);
             } else {
                 if (stEl) { stEl.textContent = st || 'PENDING'; stEl.className = 'vtc-status ' + (st ? st.toLowerCase() : 'pending'); }
                 const prog = Math.min(5 + (elapsed / 60) * 80, 90);
