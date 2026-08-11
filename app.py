@@ -2076,7 +2076,30 @@ def _apply_audio_flag(payload: dict, meta: dict, audio: bool) -> None:
     meta["generate_audio"] = audio  # doubao（影響計費 audio_presence）
 
 
-async def _upload_video_for_url(raw: bytes, filename: str = "clip.mp4") -> tuple[Optional[str], Optional[str]]:
+def _public_base_url(request: Optional[Request]) -> Optional[str]:
+    """本站對外可存取的網址，用來把上傳的媒體以公開連結交給模型抓取。
+
+    優先讀環境變數 `PUBLIC_BASE_URL`（部署時明確指定最可靠）；沒設定就從請求標頭推導
+    ——正式環境前面有 Load Balancer，真實的協定與主機名在 X-Forwarded-Proto / Host。
+    本機開發（localhost）推導出來的網址外部抓不到，所以直接回 None、讓呼叫端走錯誤路徑。
+    """
+    env = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
+    if env:
+        return env
+    if request is None:
+        return None
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
+    host = host.split(",")[0].strip()
+    if not host or host.startswith("127.0.0.1") or host.startswith("localhost"):
+        return None
+    # 沒有 X-Forwarded-Proto 時預設 https，不要用 request.url.scheme——那在 LB 後面
+    # 是內部的 http，給出 http:// 的網址有機會被上游拒絕或被轉址擋掉
+    proto = (request.headers.get("x-forwarded-proto") or "https").split(",")[0].strip()
+    return f"{proto}://{host}"
+
+
+async def _upload_video_for_url(raw: bytes, filename: str = "clip.mp4",
+                                request: Optional[Request] = None) -> tuple[Optional[str], Optional[str]]:
     """把影片放到雲端物件儲存，回傳 (簽名網址, 錯誤訊息)。
 
     **上游不接受 base64 data URI 的影片**——送 `data:video/mp4;base64,...` 會在任務
@@ -2085,8 +2108,17 @@ async def _upload_video_for_url(raw: bytes, filename: str = "clip.mp4") -> tuple
     2026-08-11 對正式環境用 wan2.2-animate-move 實測確認。
 
     這跟音訊是同一類限制（見 `_upload_audio_for_url`）：圖片可以用 data URI，
-    但影片與音訊都必須是上游抓得到的 URL。本機 `outputs/` 路徑上游一樣抓不到，
-    所以沒有雲端後端可用時直接回報錯誤，而不是送出一個註定失敗的任務。
+    影片與音訊都必須是一個真的能被下載的 URL。
+
+    取得 URL 有兩條路，依序嘗試：
+      1. 雲端物件儲存（OSS / S3 / GCS）——最可靠，簽名網址有 7 天效期
+      2. **退回本站自己的公開路徑**——`/outputs` 是不需驗證就能存取的靜態掛載
+         （實測正式站不帶 Authorization 也回 200），所以把檔案寫進 outputs/videos
+         再給出 `https://<本站網域>/outputs/videos/<name>` 就能讓模型抓到。
+         ⚠️ 這條路有兩個先天限制：Cloud Run 每個實例的檔案系統獨立（`maxScale` > 1
+         時模型可能被路由到沒有這個檔案的實例而抓不到），且容器重啟後檔案消失。
+         模型通常在幾秒內就抓走，實務上多半可行，但要根治仍是設定雲端儲存。
+    兩條都不通（例如本機開發，推導出來的 localhost 網址外部抓不到）才回報錯誤。
     """
     if not raw:
         return None, None
@@ -2095,14 +2127,22 @@ async def _upload_video_for_url(raw: bytes, filename: str = "clip.mp4") -> tuple
         suffix = ".mp4"
     name = f"vid_in_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{suffix}"
     url = _cloud_put(raw, f"uploads/{name}")
-    if not url:
-        return None, ("影片需要先上傳到雲端物件儲存才能傳給上游模型，但目前沒有可用的"
-                      "儲存後端（OSS / S3 / GCS 都未設定憑證）。上游不接受 base64 內嵌的"
-                      "影片，請先設定雲端儲存。")
-    return url, None
+    if url:
+        return url, None
+    base = _public_base_url(request)
+    if base:
+        try:
+            OUTPUT_VID_DIR.mkdir(parents=True, exist_ok=True)
+            (OUTPUT_VID_DIR / name).write_bytes(raw)
+            return f"{base}/outputs/videos/{name}", None
+        except Exception as e:
+            print(f"[upload] 寫入本機 outputs 失敗：{e}")
+    return None, ("影片需要一個可公開下載的網址才能交給模型處理，但這個環境既沒有設定"
+                  "雲端物件儲存，也無法推導出對外網址。請設定雲端儲存（OSS / S3 / GCS）"
+                  "或 PUBLIC_BASE_URL 後再試。")
 
 
-async def _upload_audio_for_url(file_obj) -> tuple[Optional[str], Optional[str]]:
+async def _upload_audio_for_url(file_obj, request: Optional[Request] = None) -> tuple[Optional[str], Optional[str]]:
     """把使用者上傳的音檔放到雲端物件儲存，回傳 (簽名網址, 錯誤訊息)。
 
     上游只接受 `audio_url`（一個真的能被下載的 URL）——先前這裡是把音檔轉成
@@ -2118,11 +2158,20 @@ async def _upload_audio_for_url(file_obj) -> tuple[Optional[str], Optional[str]]
     suffix = Path(file_obj.filename).suffix.lower() or ".mp3"
     name = f"aud_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{suffix}"
     url = _cloud_put(raw, f"audio/{name}")
-    if not url:
-        return None, ("音訊檔需要先上傳到雲端物件儲存才能傳給上游模型，但目前沒有可用的"
-                      "儲存後端（OSS / S3 / GCS 都未設定憑證）。請設定雲端儲存，或改用"
-                      "模型自動配音。")
-    return url, None
+    if url:
+        return url, None
+    # 與影片同一套 fallback：退回本站的公開靜態路徑（限制見 _upload_video_for_url）
+    base = _public_base_url(request)
+    if base:
+        try:
+            OUTPUT_VID_DIR.mkdir(parents=True, exist_ok=True)
+            (OUTPUT_VID_DIR / name).write_bytes(raw)
+            return f"{base}/outputs/videos/{name}", None
+        except Exception as e:
+            print(f"[upload] 寫入本機 outputs 失敗：{e}")
+    return None, ("音訊需要一個可公開下載的網址才能交給模型處理，但這個環境既沒有設定"
+                  "雲端物件儲存，也無法推導出對外網址。請設定雲端儲存（OSS / S3 / GCS）"
+                  "或 PUBLIC_BASE_URL，或改用模型自動配音。")
 
 async def _save_video_bytes(data: bytes) -> Optional[str]:
     try:
@@ -2210,7 +2259,7 @@ async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
     # 上游未收到欄位時會自行判斷是否配音，不會視為「不要配音」——
     # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
     _apply_audio_flag(payload, meta, audio)
-    audio_url, audio_err = await _upload_audio_for_url(audio_file)
+    audio_url, audio_err = await _upload_audio_for_url(audio_file, request)
     if audio_err:
         return JSONResponse(status_code=400, content={"error": audio_err})
     if audio_url:
@@ -2291,7 +2340,7 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
     # 上游未收到欄位時會自行判斷是否配音，不會視為「不要配音」——
     # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
     _apply_audio_flag(payload, meta, audio_bgm)
-    bgm_url, bgm_err = await _upload_audio_for_url(audio_bgm_file)
+    bgm_url, bgm_err = await _upload_audio_for_url(audio_bgm_file, request)
     if bgm_err:
         return JSONResponse(status_code=400, content={"error": bgm_err})
     if bgm_url:
@@ -2318,7 +2367,7 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
         finally:
             tmp_path.unlink(missing_ok=True)
         # 影片延伸的起始片段同樣不能用 data URI
-        clip_b64, clip_err = await _upload_video_for_url(clip_bytes, clip_file.filename or "clip.mp4")
+        clip_b64, clip_err = await _upload_video_for_url(clip_bytes, clip_file.filename or "clip.mp4", request)
         if clip_err:
             return JSONResponse(status_code=400, content={"error": clip_err})
         media_arr.append({"url": clip_b64, "type": "first_clip"})
@@ -2336,7 +2385,7 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
             lb = await _read_image_bytes(last_frame_file)
             if lb: media_arr.append({"url": f"data:image/png;base64,{base64.b64encode(lb).decode()}", "type": "last_frame"})
         # 驅動音訊同樣只能以 URL 形式傳給上游（base64 data URI 不會被解析）
-        drive_url, drive_err = await _upload_audio_for_url(audio_file)
+        drive_url, drive_err = await _upload_audio_for_url(audio_file, request)
         if drive_err:
             return JSONResponse(status_code=400, content={"error": drive_err})
         if drive_url:
@@ -2386,7 +2435,7 @@ async def video_vedit(request: Request, api_key: str = Depends(get_api_key)):
 
     video_bytes = await video_file.read()
     # 同上：來源影片必須是上游抓得到的網址，data URI 會在輪詢階段被拒
-    video_b64, video_err = await _upload_video_for_url(video_bytes, video_file.filename or "source.mp4")
+    video_b64, video_err = await _upload_video_for_url(video_bytes, video_file.filename or "source.mp4", request)
     if video_err:
         return JSONResponse(status_code=400, content={"error": video_err})
 
@@ -2465,7 +2514,7 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
         media_type = "reference_video" if ext in VIDEO_EXTS else "reference_image"
         if media_type == "reference_video":
             # 影片不能用 data URI（見 _upload_video_for_url）
-            ref_url, ref_err = await _upload_video_for_url(fb, f.filename)
+            ref_url, ref_err = await _upload_video_for_url(fb, f.filename, request)
             if ref_err:
                 return JSONResponse(status_code=400, content={"error": ref_err})
             media_arr.append({"url": ref_url, "type": media_type})
@@ -2498,7 +2547,7 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
     # 上游未收到欄位時會自行判斷是否配音，不會視為「不要配音」——
     # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
     _apply_audio_flag(payload, meta, audio_bgm)
-    bgm_url, bgm_err = await _upload_audio_for_url(audio_bgm_file)
+    bgm_url, bgm_err = await _upload_audio_for_url(audio_bgm_file, request)
     if bgm_err:
         return JSONResponse(status_code=400, content={"error": bgm_err})
     if bgm_url:
@@ -2538,7 +2587,7 @@ async def video_animate(request: Request, api_key: str = Depends(get_api_key)):
 
     img_url = f"data:{img_mime};base64,{base64.b64encode(img_bytes).decode()}"
     # 影片不能用 data URI（上游只收 mp4/mov/avi 的實體檔案網址），必須先上雲端
-    vid_url, vid_err = await _upload_video_for_url(vid_bytes, video_file.filename or "clip.mp4")
+    vid_url, vid_err = await _upload_video_for_url(vid_bytes, video_file.filename or "clip.mp4", request)
     if vid_err:
         return JSONResponse(status_code=400, content={"error": vid_err})
 
