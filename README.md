@@ -112,7 +112,24 @@ python app.py
 > | `gemini-2.5-pro` | ✓ | ✗ `The model does not support setting thinking_budget to 0` | 無（關不掉，一律顯示過程） |
 > | `gemini-2.5-flash-lite` | ✗ `Thinking_config.include_thoughts is not supported` | ✓ | 有（但不顯示思考區塊） |
 >
-> `gemini-2.5-flash-lite` 還有一個陷阱：它的思考**預設是關的**，不帶 `thinkingConfig` 時 `thoughtsTokenCount` 是 `None`。因為它又不接受 `includeThoughts`，開關要送 `thinkingBudget: -1`（動態預算）才會真的啟動思考，否則那個開關會完全沒有作用（實測開/關都是 1 個 token）。
+> 兩個 `flash-lite` 還有一個共同陷阱：它們的思考**預設是關的**，不帶 `thinkingConfig` 時 `thoughtsTokenCount` 欄位根本不出現。開關要送 `thinkingBudget: -1`（動態預算）才會真的啟動思考，否則那個開關會完全沒有作用（實測開/關都是 1 個 token）。這也是 `_GEMINI_THINKING_OFF_BY_DEFAULT` 這個集合存在的原因。
+>
+> **但兩者對「不合法的思考設定」反應不同**（同一題、`maxOutputTokens=2000`，數字是 `thoughtsTokenCount`）：
+>
+> | 設定 | `gemini-3.5-flash-lite` | `gemini-2.5-flash-lite` |
+> |---|---|---|
+> | 不帶 `thinkingConfig` | 無 | 無 |
+> | `thinkingBudget: 0` | 無 | 無 |
+> | `thinkingBudget: 128` | 無 ⚠️ 靜默忽略 | 400 `thinking_budget is out of range` |
+> | `thinkingBudget: 512` | 157 | 122 |
+> | `thinkingBudget: 2048` | 170 | 145 |
+> | `thinkingBudget: -1` | 209 | 190 |
+> | `-1` + `includeThoughts` | 196（有思考區塊） | 209（有思考區塊） |
+> | 只有 `includeThoughts` | 無 ⚠️ 靜默忽略 | 400 |
+>
+> `gemini-3.5-flash-lite` 對過小的預算與單獨的 `includeThoughts` 都是**收下但不作用、且不報錯**——會讓人以為思考開了其實沒開。實務門檻看起來在 512 左右，但這是觀察到的行為、不是規格，可能隨上游改變；我們一律送 `-1`，不受影響。
+>
+> `thinkingBudget` 同樣**不是上限而是傾向**（512→157、2048→170），跟 Grok 的 `reasoning_effort` 是同一回事。
 >
 > 計費上要注意 `thoughtsTokenCount` 也是實際收費的輸出 token，後端的 `usage.completion_tokens` 是 `candidatesTokenCount + thoughtsTokenCount`，否則「本次花費」會嚴重低估。
 
@@ -125,7 +142,21 @@ python app.py
 > | `grok-4-20-non-reasoning` | 不會（恆為 0） | ✗ 回 400 | ✗ 無效 |
 > | `grok-4-1-fast-non-reasoning` | 不會 | ✗ 回 400 | ✗ 無效 |
 >
-> **`grok-4.3`（2026-08-11 新增）是唯一有完整強度分段、而且支援看圖的 Grok**：`reasoning_effort` 枚舉是 `none`／`minimal`／`low`／`medium`／`high`（`xhigh` 與 `max` 回 422），`none` 三次都得到 `reasoning_tokens=0`、穩定有效；圖片輸入實測可用（標了 `vision`）。它一樣不回傳 `reasoning_content`。
+> **`grok-4.3`（2026-08-11 新增）是唯一有完整強度分段、而且支援看圖的 Grok**：`reasoning_effort` 枚舉是 `none`／`minimal`／`low`／`medium`／`high`（`xhigh` 與 `max` 回 422）；圖片輸入實測可用（標了 `vision`）。它一樣不回傳 `reasoning_content`。
+>
+> **`reasoning_effort` 是「傾向」不是預算上限，而且分段之間分不太出來。** 同一題每檔重跑 5 次的 `reasoning_tokens`：
+>
+> | effort | 5 次實測值 | 中位數 | 答案 |
+> |---|---|---|---|
+> | `none` | 0, 0, 0, 0, 0 | 0 | 5 次全錯 |
+> | `minimal` | 282, 292, 339, 379, 334 | 334 | 5 次全對 |
+> | `low` | 205, 353, 272, 232, 277 | 272 | 5 次全對 |
+> | `medium` | 359, 528, 527, 615, 608 | 528 | 5 次全對 |
+> | `high` | 265, 418, 489, 366, 336 | 366 | 5 次全對 |
+>
+> 三件事：①`medium` 的整個範圍都高於 `high`，**不是單調遞增**，所以不能把 effort 當 token 預算用；②`minimal`／`low`／`high` 三檔區間大幅重疊，實務上分不出差別；③**同檔內單次差距可達 1.7 倍**（`low` 205～353），任何單次觀測都不足以下結論——這點的教訓寫在 `memory.md` 4d。
+>
+> `none` 除了把推理 token 歸零，也**穩定改變答案品質**：測試題（17 隻羊、除了 9 隻以外都跑走）正解是 9，`none` 五次全答 8、其餘四檔五次全答 9。省 token 是有代價的。
 >
 > ⚠️ **Grok 的推理 token 不計入 `completion_tokens`**（實測 `grok-4.3`：prompt 31 + completion 1 + reasoning 844 = total 876），但那些 token 照樣收費。後端的 `_openai_usage()` 改成以 `total - prompt` 反推 completion，對兩種帳法都正確——其餘家族（DeepSeek V4／GLM／Seed 2.0）的推理 token 本來就含在 `completion_tokens` 裡，直接相加會變兩倍。沒有這層處理，一次花 844 個推理 token 的呼叫會被算成 1 個，「本次花費」嚴重低估。
 >
