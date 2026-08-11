@@ -838,6 +838,11 @@ input[type="range"]::-webkit-slider-thumb {
     gap: 12px; align-content: flex-start;
 }
 
+/* 圖片結果區是 wrap 網格＋align-content:flex-start，單行的高度只等於內容高，
+   所以空狀態會貼在左上角；影片區是 column flex，空狀態的 flex:1 能吃滿高度才會置中。
+   只有空狀態時讓那一行撐滿高度，比照影片區置中——有結果時仍維持靠上的網格排列。 */
+#imageResults:has(> .empty-state) { align-content: stretch; }
+
 /* Image results grid */
 #imageResults {
     /* grid-auto-rows 預設的 auto 在容器有固定高度（來自上面 .results-area 的
