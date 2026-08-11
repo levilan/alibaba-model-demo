@@ -93,6 +93,7 @@ python app.py
 | gpt-5.6-terra / sol / luna | GPT 5.6 特化系列 | GPT | reasoning_effort |
 | gpt-5.5 / 5.4 / 5.4-mini / 5.4-nano / 5.2 / 5-mini | GPT 5.x 系列 | GPT | reasoning_effort |
 | gemini-3.1-pro-preview 等 8 個 Gemini 模型 | Gemini 系列 | Gemini | thinkingConfig（走原生 API） |
+| grok-4.3 | Grok 4.3 | xAI Grok | reasoning_effort（5 段，支援看圖） |
 | grok-4-20-reasoning / -non-reasoning | xAI Grok | xAI Grok | reasoning_effort（僅 -20-reasoning 有效） |
 | grok-4-1-fast-reasoning / -non-reasoning | xAI Grok | xAI Grok | — |
 | qwen3-vl-plus / qwen3-vl-flash | 視覺語言 | 視覺語言 | —（支援圖片輸入） |
@@ -124,7 +125,11 @@ python app.py
 > | `grok-4-20-non-reasoning` | 不會（恆為 0） | ✗ 回 400 | ✗ 無效 |
 > | `grok-4-1-fast-non-reasoning` | 不會 | ✗ 回 400 | ✗ 無效 |
 >
-> 四個都**不回傳 `reasoning_content`**，所以思考過程一律看不到，`thinking` 旗標全部為 `False`。只有 `grok-4-20-reasoning` 給 `reasoning_effort` 控制項；送非法值只回通用的 `openai_error`、問不出合法枚舉，所以 `reasoning_efforts` 只列實測有效的 `none`。
+> **`grok-4.3`（2026-08-11 新增）是唯一有完整強度分段、而且支援看圖的 Grok**：`reasoning_effort` 枚舉是 `none`／`minimal`／`low`／`medium`／`high`（`xhigh` 與 `max` 回 422），`none` 三次都得到 `reasoning_tokens=0`、穩定有效；圖片輸入實測可用（標了 `vision`）。它一樣不回傳 `reasoning_content`。
+>
+> ⚠️ **Grok 的推理 token 不計入 `completion_tokens`**（實測 `grok-4.3`：prompt 31 + completion 1 + reasoning 844 = total 876），但那些 token 照樣收費。後端的 `_openai_usage()` 改成以 `total - prompt` 反推 completion，對兩種帳法都正確——其餘家族（DeepSeek V4／GLM／Seed 2.0）的推理 token 本來就含在 `completion_tokens` 裡，直接相加會變兩倍。沒有這層處理，一次花 844 個推理 token 的呼叫會被算成 1 個，「本次花費」嚴重低估。
+>
+> 其餘四個都**不回傳 `reasoning_content`**，所以思考過程一律看不到，`thinking` 旗標全部為 `False`。只有 `grok-4-20-reasoning` 給 `reasoning_effort` 控制項；送非法值只回通用的 `openai_error`、問不出合法枚舉，所以 `reasoning_efforts` 只列實測有效的 `none`。
 >
 > **以上都是上游 xAI 的行為，不是網關的映射問題**（已由網關端查證）：網關對 `grok-4-*` 一律原樣轉發、不碰 `reasoning_effort`；`reasoning_content` 網關兩種欄位名（`reasoning_content` / `reasoning`）都會解析，是 xAI 對 grok-4 系列不回傳推理過程。錯誤訊息的枚舉也是上游回的（GLM 那句列出合法值的訊息來自智譜），網關只是轉發。所以同家族內行為不一致這件事，是 xAI 的產品決策，我們與網關都無法抹平。
 

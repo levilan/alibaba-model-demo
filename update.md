@@ -131,6 +131,16 @@
 
 ## 2026-08-11
 
+- feat：新增 `grok-4.3`（正式環境，使用者指定）。它是**唯一有完整推理強度分段、而且支援看圖的 Grok**。
+  - `reasoning_effort` 枚舉實測為 `none`／`minimal`／`low`／`medium`／`high`（`xhigh` 與 `max` 回 422）。送非法值只回通用的 `openai_error` 問不出枚舉，是逐一試出來的。`none` 連跑三次都得到 `reasoning_tokens=0`，是穩定有效的（對比 `grok-4-1-fast-reasoning` 的 `none` 完全沒作用）。
+  - 圖片輸入實測可用，標了 `vision`，沿用先前為千問 VL 做的圖片上傳 UI。
+  - 一樣不回傳 `reasoning_content`，思考過程看不到，`thinking` 維持 `False`。
+
+- fix：**Grok 的推理 token 沒有被計入花費**（peer 先前提醒、這次實測確認）。
+  - 實測 `grok-4.3`：`prompt 31 + completion 1 + reasoning 844 = total 876`——**推理 token 不在 `completion_tokens` 裡**，但那些 token 照樣收費。我們的 `addTokenTextCost()` 用的正是 `completion_tokens`，所以一次花 844 個推理 token 的呼叫會被算成 1 個，「本次花費」嚴重低估。
+  - 新增 `_openai_usage()`，以 **`total - prompt` 反推 completion**，非串流與串流兩處都改用。這個算法對兩種帳法都正確：Grok 這種「推理不含在 completion」的會補回來，而 DeepSeek V4／GLM／Seed 2.0 這種「推理已含在 completion」的維持原值（若直接把 reasoning 相加會變成兩倍）。沒有 `total` 時退回原值。
+  - 單元驗證三種情況：Grok `(31,1,876)` → 845 ✅、GLM `(26,139,165)` → 139 ✅、無 total `(10,20,0)` → 20 ✅。端到端也確認 `usage.completion_tokens` 從 1 變成 540。
+
 - fix：**8 個按 token 計費的影片模型,先前完全沒被計入「本次花費」,而且價格顯示對使用者無意義。**
   - 盤點 27 個影片模型後發現：19 個是 `quota_type=1`（按次固定價），但 **8 個是 `quota_type=0`（按 token）**——Seedance 全系列、`wan3.0-video`、兩個 Veo、`gemini-omni-flash-preview`。
   - 兩個問題：（1）前端把它們顯示成「$10.7→$10.7/1M」，**沒人能心算一支影片是幾個 token**；（2）`addFixedCost()` 只計 `type==='fixed'`，所以這些模型的花費**完全不會累加**到 header 的「本次花費」。

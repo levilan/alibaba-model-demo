@@ -333,6 +333,13 @@ MODELS = {
         #     兩個 non-reasoning 版直接回 400
         #   非法值只回通用的 "openai_error"，問不出合法枚舉，故 reasoning_efforts 只列
         #   實測有效的 none 與不帶值的預設
+        # grok-4.3 是唯一有完整強度分段、而且支援看圖的 Grok（實測 2026-08-11）：
+        #   reasoning_effort 枚舉 none/minimal/low/medium/high（xhigh 與 max 回 422）
+        #   none 三次都得到 reasoning_tokens=0，是穩定有效的
+        #   一樣不回 reasoning_content，所以思考過程看不到、thinking 維持 False
+        {"id": "grok-4.3",                    "name": "Grok 4.3",                    "group": "xAI Grok", "desc": "最新旗艦，可調推理強度、支援看圖", "thinking": False,
+         "reasoning_effort": True, "reasoning_efforts": ["none", "minimal", "low", "medium", "high"],
+         "vision": True},
         {"id": "grok-4-20-reasoning",         "name": "Grok 4.20 Reasoning",         "group": "xAI Grok", "desc": "旗艦推理（可關閉推理）", "thinking": False,
          "reasoning_effort": True, "reasoning_efforts": ["none"]},
         {"id": "grok-4-20-non-reasoning",     "name": "Grok 4.20",                   "group": "xAI Grok", "desc": "旗艦，不推理", "thinking": False},
@@ -1223,6 +1230,25 @@ async def _gemini_text_stream(data: "TextGenerateRequest", messages: list,
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
 
+def _openai_usage(usage) -> dict:
+    """把 OpenAI 相容回應的 usage 轉成前端用的格式，並補上被漏掉的推理 token。
+
+    **Grok 的推理 token 不計入 `completion_tokens`**（實測 grok-4.3：prompt 31 +
+    completion 1 + reasoning 844 = total 876），但那些 token 是照樣要收費的。
+    只讀 completion_tokens 的話，一次花了 844 個推理 token 的呼叫會被算成 1 個
+    ——「本次花費」會嚴重低估。
+    其餘家族（DeepSeek V4、GLM、Seed 2.0）的推理 token 本來就含在 completion_tokens
+    裡，重複相加會變成兩倍，所以這裡用 total 反推：completion 取
+    `total - prompt`，這對兩種帳法都正確。
+    """
+    prompt = getattr(usage, "prompt_tokens", 0) or 0
+    completion = getattr(usage, "completion_tokens", 0) or 0
+    total = getattr(usage, "total_tokens", 0) or 0
+    if total and total - prompt > completion:
+        completion = total - prompt
+    return {"prompt_tokens": prompt, "completion_tokens": completion}
+
+
 @app.post("/api/text/generate")
 async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_api_key)):
     if not data.prompt:
@@ -1312,10 +1338,7 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
             if reasoning:
                 result["reasoning_content"] = reasoning
             if resp.usage:
-                result["usage"] = {
-                    "prompt_tokens": resp.usage.prompt_tokens,
-                    "completion_tokens": resp.usage.completion_tokens,
-                }
+                result["usage"] = _openai_usage(resp.usage)
             return result
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
@@ -1327,10 +1350,7 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
             usage = None
             async for chunk in stream:
                 if chunk.usage:
-                    usage = {
-                        "prompt_tokens": chunk.usage.prompt_tokens,
-                        "completion_tokens": chunk.usage.completion_tokens,
-                    }
+                    usage = _openai_usage(chunk.usage)
                 if not chunk.choices:
                     continue
                 delta = chunk.choices[0].delta
