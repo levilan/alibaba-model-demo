@@ -114,22 +114,25 @@ python app.py
 >
 > 兩個 `flash-lite` 還有一個共同陷阱：它們的思考**預設是關的**，不帶 `thinkingConfig` 時 `thoughtsTokenCount` 欄位根本不出現。開關要送 `thinkingBudget: -1`（動態預算）才會真的啟動思考，否則那個開關會完全沒有作用（實測開/關都是 1 個 token）。這也是 `_GEMINI_THINKING_OFF_BY_DEFAULT` 這個集合存在的原因。
 >
-> **但兩者對「不合法的思考設定」反應不同**（同一題、`maxOutputTokens=2000`，數字是 `thoughtsTokenCount`）：
+> **但兩者對固定的 `thinkingBudget` 反應完全不同**——這格一定要重複取樣才看得出來（每格 8 次，統計「有思考的次數」）：
 >
-> | 設定 | `gemini-3.5-flash-lite` | `gemini-2.5-flash-lite` |
+> | `thinkingBudget` | `gemini-3.5-flash-lite` | `gemini-2.5-flash-lite` |
 > |---|---|---|
-> | 不帶 `thinkingConfig` | 無 | 無 |
-> | `thinkingBudget: 0` | 無 | 無 |
-> | `thinkingBudget: 128` | 無 ⚠️ 靜默忽略 | 400 `thinking_budget is out of range` |
-> | `thinkingBudget: 512` | 157 | 122 |
-> | `thinkingBudget: 2048` | 170 | 145 |
-> | `thinkingBudget: -1` | 209 | 190 |
-> | `-1` + `includeThoughts` | 196（有思考區塊） | 209（有思考區塊） |
-> | 只有 `includeThoughts` | 無 ⚠️ 靜默忽略 | 400 |
+> | `0` / `1` / `64` / `96` | 0/8 完全不思考（**不報錯**） | 400 `thinking_budget is out of range` |
+> | `128` | **4/8** ⚠️ | 400 |
+> | `512` | **3/8** ⚠️ | 8/8 |
+> | `600` | **3/8** ⚠️ | 8/8 |
+> | `-1`（動態） | **8/8** ✅ | 8/8 ✅ |
 >
-> `gemini-3.5-flash-lite` 對過小的預算與單獨的 `includeThoughts` 都是**收下但不作用、且不報錯**——會讓人以為思考開了其實沒開。實務門檻看起來在 512 左右，但這是觀察到的行為、不是規格，可能隨上游改變；我們一律送 `-1`，不受影響。
+> `gemini-2.5-flash-lite` 是乾淨的：低於 512 直接 400、達到就穩定思考。
 >
-> `thinkingBudget` 同樣**不是上限而是傾向**（512→157、2048→170），跟 Grok 的 `reasoning_effort` 是同一回事。
+> ⚠️ **`gemini-3.5-flash-lite` 給固定預算是不可靠的**：門檻在 96 與 128 之間（≤96 一律不思考且**不報任何錯**），但**超過門檻之後思考與否是逐次隨機的**，機率約四成，而且**跟預算給多大無關**（128 和 600 的命中率一樣）。所以在這個型號上給固定預算，等於擲骰子決定這次會不會思考。
+>
+> **只有 `thinkingBudget: -1` 是可靠的**——兩個型號、簡單題與需推理的題目各 8 次全部都思考。我們平台的「思考開」送的就是 `-1`，不受這個問題影響。
+>
+> `thinkingBudget` 同樣**不是上限而是傾向**：有思考時的 `thoughtsTokenCount` 落在 100～200，跟給 128 還是 2048 沒有關係，跟 Grok 的 `reasoning_effort` 是同一回事。
+>
+> 📌 這張表原本寫成「`128` 靜默忽略、實務門檻約 512」——那是**每格只取樣一次**的產物，兩格都剛好抽到不思考的那一次。真相是隨機而非門檻。這是 `memory.md` 4d 的第二個實例，而且是在寫下那條教訓**之後**又犯一次。
 >
 > 計費上要注意 `thoughtsTokenCount` 也是實際收費的輸出 token，後端的 `usage.completion_tokens` 是 `candidatesTokenCount + thoughtsTokenCount`，否則「本次花費」會嚴重低估。
 
