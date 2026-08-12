@@ -785,6 +785,59 @@ function onImgTaskChange() {
     onImgModelChange();
 }
 
+// ── 自訂尺寸（目前只有 MAI 支援任意尺寸）─────────────────────────────────────
+// 送出的仍然是 size 字串（"1200x800"），不是 width/height 兩個欄位——實測正式環境的
+// 頂層 width/height 會被靜默丟棄、退回 1024x1024，而 size 這條現在就能用。
+const CUSTOM_SIZE_VALUE = '__custom__';
+let _imgCustomSizeSpec = null;   // { min_side, max_pixels, align }
+
+function onImgSizeChange() {
+    const on = document.getElementById('imageSize').value === CUSTOM_SIZE_VALUE && !!_imgCustomSizeSpec;
+    document.getElementById('imgCustomSizeGroup').style.display = on ? '' : 'none';
+    if (!on) return;
+    const spec = _imgCustomSizeSpec;
+    document.getElementById('imgCustomSizeHint').textContent =
+        `自訂寬高（每邊至少 ${spec.min_side}，總像素不超過 ${spec.max_pixels.toLocaleString()}）`;
+    const w = document.getElementById('imgCustomW'), h = document.getElementById('imgCustomH');
+    if (!w.value) w.value = 1024;
+    if (!h.value) h.value = 1024;
+    onImgCustomSizeInput();
+}
+
+// 回傳 { size, error }。size 為 null 代表目前的輸入不能用。
+function currentCustomSize() {
+    const spec = _imgCustomSizeSpec;
+    if (!spec) return { size: null, error: '這個模型不支援自訂尺寸' };
+    const w = parseInt(document.getElementById('imgCustomW').value, 10);
+    const h = parseInt(document.getElementById('imgCustomH').value, 10);
+    if (!Number.isFinite(w) || !Number.isFinite(h)) return { size: null, error: '請輸入寬與高' };
+    // 先往下對齊到 align 的倍數再檢查——上游本來就會這樣對齊，先算好使用者才不會
+    // 拿到跟自己輸入不同的尺寸（例如輸入 1366 實際拿到 1360）
+    const aw = Math.floor(w / spec.align) * spec.align;
+    const ah = Math.floor(h / spec.align) * spec.align;
+    if (aw < spec.min_side || ah < spec.min_side)
+        return { size: null, error: `每邊至少 ${spec.min_side} 像素（目前 ${aw}×${ah}）` };
+    if (aw * ah > spec.max_pixels)
+        return { size: null, error: `總像素 ${(aw * ah).toLocaleString()} 超過上限 ${spec.max_pixels.toLocaleString()}` };
+    return { size: `${aw}x${ah}`, aligned: (aw !== w || ah !== h), w: aw, h: ah, error: null };
+}
+
+function onImgCustomSizeInput() {
+    const msg = document.getElementById('imgCustomSizeMsg');
+    const r = currentCustomSize();
+    if (r.error) {
+        msg.style.color = 'var(--red)';
+        msg.textContent = r.error;
+    } else if (r.aligned) {
+        // 明確告知已對齊，而不是默默改掉使用者輸入的值
+        msg.style.color = 'var(--text-muted)';
+        msg.textContent = `實際輸出 ${r.w}×${r.h}（尺寸會對齊到 ${_imgCustomSizeSpec.align} 的倍數）`;
+    } else {
+        msg.style.color = 'var(--text-muted)';
+        msg.textContent = `實際輸出 ${r.w}×${r.h}`;
+    }
+}
+
 function onImgModelChange() {
     const t = document.getElementById('imageTaskType').value;
     const modelId = document.getElementById('imageModel').value;
@@ -818,7 +871,15 @@ function onImgModelChange() {
     sizeEl.innerHTML = usable.map(s =>
         `<option value="${s}"${s === currentSize ? ' selected' : ''}>${sizeLabels[s] || s}</option>`
     ).join('');
-    if (!usable.includes(currentSize) && usable.length) sizeEl.value = usable[0];
+    // 支援任意尺寸的模型（目前只有 MAI）多給一個「自訂」選項
+    if (modelInfo.custom_size) {
+        sizeEl.insertAdjacentHTML('beforeend',
+            `<option value="${CUSTOM_SIZE_VALUE}"${currentSize === CUSTOM_SIZE_VALUE ? ' selected' : ''}>自訂尺寸…</option>`);
+    }
+    const selectable = modelInfo.custom_size ? usable.concat(CUSTOM_SIZE_VALUE) : usable;
+    if (!selectable.includes(currentSize) && selectable.length) sizeEl.value = selectable[0];
+    _imgCustomSizeSpec = modelInfo.custom_size || null;
+    onImgSizeChange();
 
     // 圖片比例（僅 Gemini T2I 支援，用自然語言注入 prompt 的方式模擬比例控制）
     const aspectRatioGroup = document.getElementById('imgAspectRatioGroup');
@@ -1556,7 +1617,13 @@ async function sendImage() {
     const model    = document.getElementById('imageModel').value;
     const prompt   = document.getElementById('imagePrompt').value.trim();
     const negPrompt= document.getElementById('imageNegPrompt').value.trim();
-    const size     = document.getElementById('imageSize').value;
+    let   size     = document.getElementById('imageSize').value;
+    // 自訂尺寸：把兩個輸入框組成 size 字串。不合法就擋在這裡，省下一次必定失敗的呼叫
+    if (size === CUSTOM_SIZE_VALUE) {
+        const r = currentCustomSize();
+        if (r.error) { toast(r.error, "error"); return; }
+        size = r.size;
+    }
     const extend      = document.getElementById('imgPromptExtend').checked;
     const watermark   = document.getElementById('imgWatermark').checked;
     const n           = parseInt(document.getElementById('imgN').value) || 1;

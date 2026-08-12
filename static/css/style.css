@@ -838,11 +838,15 @@ input[type="range"]::-webkit-slider-thumb {
     gap: 12px; align-content: flex-start;
 }
 
-/* 圖片結果區是 wrap 網格＋align-content:flex-start，單行的高度只等於內容高，
-   所以空狀態會貼在左上角；影片區是 column flex，空狀態的 flex:1 能吃滿高度才會置中。
-   只有空狀態時讓那一行撐滿高度，比照影片區置中——有結果時仍維持靠上的網格排列。 */
+/* 只有空狀態時，把提示置中（比照影片區）——有結果時完全不受影響。
+   ⚠️ 這裡一定要連 display 一起覆寫。#imageResults 在下面被改成 display:grid
+   （auto-fill 的 260px 網格），空狀態會被塞進其中一個網格欄、只有 260px 寬並靠左上，
+   光改 align-content 沒有用（grid-auto-rows:min-content 也不吃 stretch）。
+   改回 flex 之後，.empty-state 的 flex:1 才會吃滿整個容器，它自己的
+   justify-content/align-items:center 就會把圖示與文字置中。
+   注意選擇器帶 :has() 的權重（1,1,0）高於下面純 #imageResults 的（1,0,0），才蓋得過去。 */
 #imageResults:has(> .empty-state),
-#muleaiVideoResults:has(> .empty-state) { align-content: stretch; }
+#muleaiVideoResults:has(> .empty-state) { display: flex; align-content: stretch; }
 
 /* Image results grid */
 #imageResults {

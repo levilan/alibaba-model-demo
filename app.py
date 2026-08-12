@@ -236,6 +236,20 @@ _GEMINI_TTS_VOICES = [
 # 什麼。其餘三個尺寸本來就是 16 的倍數，不受影響。
 _MAI_IMAGE_SIZES = ["1024x1024", "1360x768", "768x1360", "1152x896", "896x1152"]
 
+# MAI 的尺寸不是固定枚舉，而是「滿足約束的任意值」——實測 size="1200x800"（不在上面的
+# 清單裡）輸出就是 1200x800，完全相符。所以 UI 除了預設選項，另外開放自訂寬高。
+#
+# ⚠️ 注意自訂是走 **size 字串**，不是送 width/height 兩個欄位。實測正式環境送
+# {"width":2000,"height":2000}（400 萬像素、若被讀取必定超限報錯）卻正常產出 1024x1024，
+# 證明頂層 width/height 在這條路徑上會被靜默丟棄。閘道端已修（從 Extra map 取值），
+# 但那個修復還在 feature branch、只部署到測試網關，正式環境尚未生效。等它上線後
+# width/height 也會通，但**沒有必要改**——size 這條現在就能達成同樣的事。
+_MAI_CUSTOM_SIZE = {
+    "min_side": 768,        # 每邊至少 768（獨立於總像素限制：767x1024 只有 78 萬像素照樣被拒）
+    "max_pixels": 1056768,  # 總像素上限
+    "align": 16,            # 上游會往下對齊到 16 的倍數，前端先對齊好，免得使用者拿到非預期尺寸
+}
+
 # ─── Model Registry ───────────────────────────────────────────
 # sizes: 支援的尺寸清單；max_n: 最大生成張數；audio: 支援配音；min/max_dur: 影片時長範圍
 MODELS = {
@@ -445,17 +459,17 @@ MODELS = {
         {
             "id": "MAI-Image-2.5-Pro", "name": "MAI-Image-2.5-Pro", "group": "MAI Image",
             "desc": "旗艦圖像生成 Pro", "type": "t2i", "max_n": 4,
-            "sizes": _MAI_IMAGE_SIZES,
+            "sizes": _MAI_IMAGE_SIZES, "custom_size": _MAI_CUSTOM_SIZE,
         },
         {
             "id": "MAI-Image-2.5", "name": "MAI-Image-2.5", "group": "MAI Image",
             "desc": "旗艦圖像生成", "type": "t2i", "max_n": 4,
-            "sizes": _MAI_IMAGE_SIZES,
+            "sizes": _MAI_IMAGE_SIZES, "custom_size": _MAI_CUSTOM_SIZE,
         },
         {
             "id": "MAI-Image-2.5-Flash", "name": "MAI-Image-2.5-Flash", "group": "MAI Image",
             "desc": "極速圖像生成", "type": "t2i", "max_n": 4,
-            "sizes": _MAI_IMAGE_SIZES,
+            "sizes": _MAI_IMAGE_SIZES, "custom_size": _MAI_CUSTOM_SIZE,
         },
         # ── 萬相圖像編輯 ──────────────────────────────────────────
         # 參考圖張數上限逐一實測（2026-08-10，正式網關）：萬相 2.7 兩個型號 9 張都生效；

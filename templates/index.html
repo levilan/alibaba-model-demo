@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=29">
+    <link rel="stylesheet" href="/static/css/style.css?v=30">
     <link rel="icon" type="image/png" href="/static/img/logo.png">
     <script>
         // 在 CSS 套用前就先決定 light/dark，避免登入畫面先閃一下錯的主題再跳回來
@@ -329,7 +329,20 @@
                 </div>
                 <div class="form-group" id="imgSizeGroup">
                     <label class="form-label" data-tip="生成圖片的寬高像素（寬*高）。1024*1024 正方形適合頭像，1280*720 適合橫幅，720*1280 適合手機壁紙">尺寸</label>
-                    <select id="imageSize" class="select-input"></select>
+                    <select id="imageSize" class="select-input" onchange="onImgSizeChange()"></select>
+                </div>
+                <!-- 自訂尺寸：只有支援任意尺寸的模型才會出現（MODELS 的 custom_size）。
+                     實際送出的仍是 size 字串，不是 width/height 兩個欄位 -->
+                <div class="form-group" id="imgCustomSizeGroup" style="display:none">
+                    <label class="form-label" id="imgCustomSizeHint">自訂寬高（像素）</label>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <input type="number" id="imgCustomW" class="number-input" placeholder="寬"
+                               style="flex:1;min-width:0" oninput="onImgCustomSizeInput()">
+                        <span style="color:var(--text-muted)">×</span>
+                        <input type="number" id="imgCustomH" class="number-input" placeholder="高"
+                               style="flex:1;min-width:0" oninput="onImgCustomSizeInput()">
+                    </div>
+                    <div id="imgCustomSizeMsg" style="margin-top:6px;font-size:0.78rem;line-height:1.5"></div>
                 </div>
                 <!-- Gemini 圖片模型不支援 size 參數，改用「自然語言注入 prompt」的方式控制比例（僅 T2I） -->
                 <div class="form-group" id="imgAspectRatioGroup" style="display:none">
@@ -960,6 +973,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=65"></script>
+<script src="/static/js/app.js?v=66"></script>
 </body>
 </html>
