@@ -66,6 +66,67 @@
         return type ? list.filter(m => m.type === type) : list;
     }
 
+    // ── 影片節點的時長／解析度限制：一律從 MODELS 讀，不要寫死 ──────────────────
+    // 先前這裡寫死 2–15 秒 + 三檔解析度，於是下面每一個模型都有一部分選項送出去
+    // 就被上游拒絕，而錯誤要等到任務建立階段才會出現（主測試台會擋、Canvas 不會，
+    // 同一個模型在兩個介面行為不一致）：
+    //   veo-3.1-*                 4–8 秒且 step 2 → 只有 4/6/8 三個合法值，其餘全拒
+    //   dreamina-seedance-2.5     4–30 秒、只有 480P/720P → 2/3 秒與 1080P 都拒
+    //   dreamina-seedance-2.0-fast 只有 480P/720P → 1080P 拒
+    //   happyhorse-*              最短 3 秒 → 2 秒拒
+    //   wan3.0-video              最長 30 秒 → slider 上限 15，一半的範圍拉不到
+    //   gemini-omni-flash-preview 模型自行決定長度與解析度，兩個參數都不該送
+    function videoLimits(modelId, type) {
+        const list = MODELS.video || [];
+        // 同一個 model id 可能在 t2v/i2v/r2v 各有一筆，限制以當前模式那筆為準；
+        // 找不到就退回同 id 的任一筆（各 type 的時長限制通常一致）
+        const m = list.find(x => x.id === modelId && x.type === type)
+               || list.find(x => x.id === modelId) || {};
+        return {
+            resolutions: m.resolutions || ['480P', '720P', '1080P'],
+            minDur: m.min_dur != null ? m.min_dur : 2,
+            maxDur: m.max_dur != null ? m.max_dur : 15,
+            step: m.dur_step || 1,
+            noDuration: !!m.no_duration,
+        };
+    }
+
+    // 把節點的解析度下拉與時長 slider 套用到目前模型的限制，並把已經超出範圍的值
+    // **夾回合法區間**——切換模型後若留著舊值，那個值送出去一定被拒。
+    // node 需要有 properties.model / properties.resolution / properties.duration，
+    // 以及 resSelect（下拉）與可選的 durSlider / durValEl / durRow / resRow。
+    function applyVideoLimits(node, type) {
+        const lim = videoLimits(node.properties.model, type);
+
+        if (node.resSelect) {
+            if (!lim.resolutions.includes(node.properties.resolution)) {
+                node.properties.resolution = lim.resolutions[0];
+            }
+            node.resSelect.innerHTML = lim.resolutions
+                .map(r => `<option value="${r}">${r}</option>`).join('');
+            node.resSelect.value = node.properties.resolution;
+        }
+        if (node.resRow) node.resRow.style.display = lim.noDuration ? 'none' : '';
+
+        if (node.durSlider) {
+            node.durSlider.min = lim.minDur;
+            node.durSlider.max = lim.maxDur;
+            node.durSlider.step = lim.step;
+            let v = parseInt(node.properties.duration);
+            if (!Number.isFinite(v)) v = lim.minDur;
+            v = Math.min(Math.max(v, lim.minDur), lim.maxDur);
+            // 對齊到 step 的格子上，否則 veo 這種 step=2 的模型會留下 5 秒這種非法值
+            v = lim.minDur + Math.round((v - lim.minDur) / lim.step) * lim.step;
+            v = Math.min(v, lim.maxDur);
+            node.properties.duration = v;
+            node.durSlider.value = v;
+            if (node.durValEl) node.durValEl.textContent = v;
+        }
+        if (node.durRow) node.durRow.style.display = lim.noDuration ? 'none' : '';
+        if (node.durRangeEl) node.durRangeEl.textContent = `（${lim.minDur} ~ ${lim.maxDur} 秒）`;
+        return lim;
+    }
+
     function sizesForModel(category, modelId) {
         const m = (MODELS[category] || []).find(x => x.id === modelId);
         return (m && m.sizes) || ['1024*1024', '1280*720', '720*1280'];
@@ -1216,10 +1277,14 @@
                 <div class="cv-select-slot"></div>
                 <label>Prompt<span class="cv-hint">（若連接文字節點會優先使用其輸出）</span></label>
                 <textarea placeholder="輸入文字…"></textarea>
-                <label>解析度</label>
-                <div class="cv-res-slot"></div>
-                <label>時長（秒）<span class="cv-dur-val">5</span></label>
-                <input type="range" class="cv-dur-slider" min="2" max="15" step="1" value="5">
+                <div class="cv-res-row">
+                    <label>解析度</label>
+                    <div class="cv-res-slot"></div>
+                </div>
+                <div class="cv-dur-row">
+                    <label>時長（秒）<span class="cv-dur-val">5</span><span class="cv-hint cv-dur-range"></span></label>
+                    <input type="range" class="cv-dur-slider">
+                </div>
                 ${VIDEO_EXTEND_ENABLED ? `
                 <label>影片延伸<span class="cv-hint">（接影片節點輸出或上傳片段，取代首幀圖片；上游片段需 ≤9.9 秒）</span></label>
                 <input type="file" class="cv-clip-file" accept="video/*" style="display:none">
@@ -1244,18 +1309,26 @@
         panel.querySelector('.cv-add-ref-btn:not(.cv-clip-upload-btn)').addEventListener('click', () => this._addRefSlot());
         panel.querySelector('.cv-submit-btn').addEventListener('click', () => this.generate());
 
-        this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => { this.properties.model = v; });
+        // 換模型時要重新套用限制——各家的時長範圍與解析度差異很大，留著舊值會被上游拒絕
+        this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => {
+            this.properties.model = v;
+            applyVideoLimits(this, this._detectMode());
+        });
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
 
-        this.resSelect = buildSelect(['480P', '720P', '1080P'], this.properties.resolution, (v) => { this.properties.resolution = v; });
+        this.resSelect = buildSelect([], this.properties.resolution, (v) => { this.properties.resolution = v; });
         panel.querySelector('.cv-res-slot').appendChild(this.resSelect);
+        this.resRow = panel.querySelector('.cv-res-row');
 
+        this.durRow = panel.querySelector('.cv-dur-row');
         this.durSlider = panel.querySelector('.cv-dur-slider');
         this.durValEl = panel.querySelector('.cv-dur-val');
+        this.durRangeEl = panel.querySelector('.cv-dur-range');
         this.durSlider.addEventListener('input', () => {
             this.properties.duration = parseInt(this.durSlider.value);
             this.durValEl.textContent = this.durSlider.value;
         });
+        applyVideoLimits(this, 't2v');
 
         panel.appendChild(buildPreview(this));
         wireConfigOverlay(this, panel);
@@ -1306,6 +1379,8 @@
         const values = list.map(m => m.id);
         if (!values.includes(this.properties.model)) this.properties.model = values[0] || '';
         this.modelSelect.innerHTML = values.map(v => `<option value="${v}"${v === this.properties.model ? ' selected' : ''}>${v}</option>`).join('');
+        // 切換模式可能連帶換掉模型（上面那行），限制要跟著重算
+        applyVideoLimits(this, mode);
         const firstFrameAlsoConnected = mode === 'r2v' && !!this.getInputNode(1);
         if (mode === 'i2v' && this._hasClip()) {
             this.modeHintEl.textContent = '（影片延伸，首幀圖片將被忽略）';
@@ -1331,8 +1406,12 @@
             const fd = new FormData();
             fd.append('model', this.properties.model);
             fd.append('prompt', prompt);
-            fd.append('resolution', this.properties.resolution);
-            fd.append('duration', String(this.properties.duration));
+            // 模型自行決定長度與解析度的（gemini-omni）不要送這兩個參數
+            const lim = videoLimits(this.properties.model, mode);
+            if (!lim.noDuration) {
+                fd.append('resolution', this.properties.resolution);
+                fd.append('duration', String(this.properties.duration));
+            }
             let endpoint = '/api/video/t2v';
             if (mode === 'r2v') {
                 endpoint = '/api/video/r2v';
@@ -1379,9 +1458,10 @@
     VideoGenNode.prototype.onConfigure = function (o) {
         this.textarea.value = this.properties.prompt || '';
         if (this.modelSelect) this.modelSelect.value = this.properties.model;
-        if (this.resSelect) this.resSelect.value = this.properties.resolution;
-        if (this.durSlider) { this.durSlider.value = this.properties.duration; this.durValEl.textContent = this.properties.duration; }
         this.refSlots = _collectRefSlots(this);
+        // 還原存檔後也要重算限制：解析度下拉的選項是動態產生的，不先重建就只剩空清單；
+        // 而且舊存檔可能存著現在已經不合法的值（例如更早版本存下來的 1080P + seedance 2.5）
+        applyVideoLimits(this, this._detectMode());
         _restoreGenResult(this, o.cv);
     };
     VideoGenNode.prototype.onRemoved = sharedOnRemoved;
@@ -1416,6 +1496,14 @@
                 <label>來源影片<span class="cv-hint">（未連接 video 輸入時使用）</span></label>
                 <input type="file" class="cv-vedit-file" accept="video/*" style="display:none">
                 <button class="cv-add-ref-btn cv-vedit-upload-btn">選擇影片檔案</button>
+                <div class="cv-res-row">
+                    <label>解析度</label>
+                    <div class="cv-res-slot"></div>
+                </div>
+                <div class="cv-dur-row">
+                    <label>時長（秒）<span class="cv-dur-val">0</span><span class="cv-hint">（0 = 保留來源影片長度）</span></label>
+                    <input type="range" class="cv-dur-slider">
+                </div>
                 <label>畫面比例</label>
                 <div class="cv-ratio-slot"></div>
                 <label>音訊設定</label>
@@ -1437,8 +1525,27 @@
         panel.querySelector('.cv-add-ref-vedit-btn').addEventListener('click', () => this._addRefSlot());
         panel.querySelector('.cv-submit-btn').addEventListener('click', () => this.generate());
 
-        this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => { this.properties.model = v; });
+        this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => {
+            this.properties.model = v;
+            this._applyLimits();
+        });
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+
+        // 解析度先前寫死成 1080P、連選單都沒有；時長雖然在 properties 裡卻從來沒送出。
+        // 兩者都依模型的限制動態產生（萬相 3.0 的視頻編輯支援 480P，那是它的基準價位）
+        this.resSelect = buildSelect([], this.properties.resolution, (v) => { this.properties.resolution = v; });
+        panel.querySelector('.cv-res-slot').appendChild(this.resSelect);
+        this.resRow = panel.querySelector('.cv-res-row');
+        this.durRow = panel.querySelector('.cv-dur-row');
+        this.durSlider = panel.querySelector('.cv-dur-slider');
+        this.durValEl = panel.querySelector('.cv-dur-val');
+        this.durSlider.addEventListener('input', () => {
+            let v = parseInt(this.durSlider.value);
+            // 1 ~ minDur-1 是非法區間，拉進去就跳到最小合法值
+            if (v > 0 && this._durMin && v < this._durMin) { v = this._durMin; this.durSlider.value = v; }
+            this.properties.duration = v;
+            this.durValEl.textContent = v;
+        });
 
         this.ratioSelect = buildSelect(['', '16:9', '9:16', '1:1', '4:3', '3:4'], this.properties.ratio, (v) => { this.properties.ratio = v; });
         panel.querySelector('.cv-ratio-slot').appendChild(this.ratioSelect);
@@ -1446,11 +1553,36 @@
         this.audioSelect = buildSelect(['auto', 'origin'], this.properties.audioSetting, (v) => { this.properties.audioSetting = v; });
         panel.querySelector('.cv-audio-slot').appendChild(this.audioSelect);
 
+        this._applyLimits();
         panel.appendChild(buildPreview(this));
         wireConfigOverlay(this, panel);
         attachNodeChrome(this);
     }
     VideoEditNode.title = '影片編輯 Video Edit';
+    // 視頻編輯的時長跟其他影片節點不同：**0 是合法值**，代表保留來源影片長度
+    // （後端看到 0 就不送 duration）。所以 slider 下限給 0，但 1 到 minDur-1 這段
+    // 是非法的，拉到那裡就跳到 minDur——數字標籤會同步更新，使用者看得到被修正。
+    VideoEditNode.prototype._applyLimits = function () {
+        const lim = videoLimits(this.properties.model, 'vedit');
+        if (!lim.resolutions.includes(this.properties.resolution)) {
+            // 維持原本的預設偏好：有 1080P 就用 1080P，否則用清單最後一項（最高的那檔）
+            this.properties.resolution = lim.resolutions.includes('1080P')
+                ? '1080P' : lim.resolutions[lim.resolutions.length - 1];
+        }
+        this.resSelect.innerHTML = lim.resolutions.map(r => `<option value="${r}">${r}</option>`).join('');
+        this.resSelect.value = this.properties.resolution;
+
+        this.durSlider.min = 0;
+        this.durSlider.max = lim.maxDur;
+        this.durSlider.step = lim.step;
+        let v = parseInt(this.properties.duration) || 0;
+        if (v > 0 && v < lim.minDur) v = lim.minDur;
+        if (v > lim.maxDur) v = lim.maxDur;
+        this.properties.duration = v;
+        this.durSlider.value = v;
+        this.durValEl.textContent = v;
+        this._durMin = lim.minDur;
+    };
     VideoEditNode.prototype._addRefSlot = function () {
         if (this.refSlots.length >= VEDIT_MAX_REF_SLOTS) { showToast(`最多 ${VEDIT_MAX_REF_SLOTS} 張參考圖`); return; }
         const w = this.size[0];
@@ -1484,6 +1616,8 @@
             fd.append('model', this.properties.model);
             fd.append('prompt', prompt || '');
             fd.append('resolution', this.properties.resolution);
+            // 0 = 保留來源影片長度（後端看到 0 就不送 duration 給上游）
+            fd.append('duration', String(this.properties.duration || 0));
             fd.append('audio_setting', this.properties.audioSetting);
             if (this.properties.ratio) fd.append('ratio', this.properties.ratio);
             fd.append('video', await fetchAsBlob(videoUrl), 'source.mp4');
@@ -1516,6 +1650,8 @@
         if (this.ratioSelect) this.ratioSelect.value = this.properties.ratio;
         if (this.audioSelect) this.audioSelect.value = this.properties.audioSetting;
         this.refSlots = _collectRefSlots(this);
+        // 解析度選項是動態產生的，還原存檔時要先重建，否則只剩空清單
+        this._applyLimits();
         _restoreGenResult(this, o.cv);
         // 本機上傳的來源影片是 blob:，重新整理後不會保留，需要使用者重新選擇
         if (!this.getInputNode(1) && !this.localVideoUrl) {
