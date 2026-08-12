@@ -941,6 +941,18 @@ function onVidModelChange() {
     audioRow.style.display = modelInfo.audio ? '' : 'none';
     if (!modelInfo.audio) document.getElementById('vidAudio').checked = false;
 
+    // 上游不接受這兩個參數的型號（Seedance 家族）要把控制項整組藏起來——留著會讓人
+    // 以為填了有作用。清空內容/取消勾選，避免隱藏後仍把值送出去。
+    // 注意 onVidTaskChange() 結尾會呼叫本函式，所以這裡的判斷會蓋過它依任務類型設的
+    // display；animate 那個條件必須一併帶上，不然切到 animate 會把它重新顯示出來。
+    const negGroup = document.getElementById('videoNegPromptGroup');
+    negGroup.style.display = modelInfo.no_negative_prompt ? 'none' : '';
+    if (modelInfo.no_negative_prompt) document.getElementById('videoNegPrompt').value = '';
+
+    const extGroup = document.getElementById('vidPromptExtendGroup');
+    extGroup.style.display = (taskType === 'animate' || modelInfo.no_prompt_extend) ? 'none' : '';
+    if (modelInfo.no_prompt_extend) document.getElementById('vidPromptExtend').checked = false;
+
     // 調整時長範圍（gemini-omni-flash-preview 等模型自行決定長度與解析度，不支援 duration/resolution 參數）
     document.getElementById('vidDurationGroup').style.display = modelInfo.no_duration ? 'none' : '';
     document.getElementById('vidResolutionGroup').style.display =

@@ -8,6 +8,10 @@
 
 ## 2026-08-12
 
+- fix：**Seedance 的配音開關先前被鎖死在關閉**。所有 Seedance 型號原本標 `audio: False`，前端不但隱藏開關、還會**強制把勾選狀態設成 `false`**（`onVidModelChange`），於是每一次請求都明確送出 `metadata.generate_audio=false`；而上游這個欄位預設是 `true`，等於平台主動把本來會有的聲音關掉，使用者還無從開啟。送出的管線其實早就接好了——`_apply_audio_flag()` 從一開始就把 Seedance 專用的 `generate_audio` 帶上，缺的只是 MODELS 的旗標。改成 `audio: True` 把控制權交還使用者，**預設維持不勾選**（依使用者指定「有需要再開」；無聲對 `bytedance-seedance-1.5-pro` 另有 0.5× 折扣）。
+- fix（UI）：**選到 Seedance 時隱藏 Negative Prompt 與 Prompt Extend**。閘道 doubao adaptor 的請求結構裡沒有這兩個欄位，文字內容只用到 `prompt`，`metadata` 對不上的鍵直接丟棄——這兩個控制項對 Seedance 是純裝飾。新增 `no_negative_prompt`／`no_prompt_extend` 兩個 MODELS 旗標，前端據此整組隱藏並清空值，避免隱藏後仍把值送出去（`memory.md` 第 6 條）。
+- ⚠️ **上面兩項都是讀閘道 Go 原始碼推斷的，未經實測**——屬於 `memory.md` 4d 第④類「拿間接證據當行為證據」，本專案在 `wan2.7` 的 `max_ref` 上正是這樣栽過。影片單價高，依使用者指示這次不做取樣驗證。**配音實際會不會出聲、關掉是否真的折價，仍待驗證。**
+- docs：一併盤點出**上游支援但平台從未送出**的 Seedance 參數（未實測）：`camera_fixed`、`frames`、`output_format`、`priority`、`return_last_frame`、`draft`、`omni_reference_task_type`、`callback_url`／`service_tier`／`execution_expires_after`／`safety_identifier`／`tools`，以及 `metadata.content`／`metadata.image_role` 兩個逃生門。記在 README，未實作。
 - feat：**文字生成新增「記住上下文」開關**（預設開啟，維持原本的行為）。關閉後每次送出都不帶歷史訊息、視為全新對話。實作上 `textChatHistory` 一律照常累積，開關只決定「這一輪送什麼給模型」——所以關掉再打開能接著先前的內容繼續，不必重問一次。切換模型時歷史仍然沿用（依使用者指定，不做提示清空）。
   - 動機是成本而非功能偏好：每一輪都必須重送完整歷史，`prompt_tokens` 是**累加**的，聊到第 N 輪要付前 N-1 輪的錢，總花費大致隨輪數平方成長。使用者原本看得到「本次花費」在漲，卻沒有辦法停。
   - 端到端實測（`gemini-3.5-flash-lite`，經由容器）：第 1 輪告知「我的貓叫小黑」；第 2 輪帶歷史 → 答「小黑」、`prompt_tokens=37`，不帶歷史 → 答「我不知道你的貓叫什麼名字」、`prompt_tokens=16`。關閉省下 57% 的輸入 token，且記憶行為確實被切斷。

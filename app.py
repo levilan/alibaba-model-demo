@@ -721,27 +721,55 @@ MODELS = {
         #   不支援 camera_fixed / frames / draft（實測都回 InvalidParameter）
         #   ⚠️ peer 說 seed 也不支援，但**實測沒有被拒**（任務照樣建立），與其規格不符
         # 計費比 2.0 貴約 53%（720p 每秒 $0.2311 vs $0.1512），tokens = 寬×高×幀數/1024
+        #
+        # ── 配音與兩個無效參數（2026-08-12，依閘道 doubao adaptor 原始碼盤點，⚠️ 未實測）──
+        # 1. 先前所有 seedance 都標 audio: False，前端不但隱藏開關、還會強制把勾選狀態設成
+        #    false（app.js 的 onVidModelChange），於是每一次請求都明確送出
+        #    metadata.generate_audio=false。而上游這個欄位的預設值是 **true**，等於平台把
+        #    本來會有的聲音主動關掉了，而且使用者沒有辦法開啟。管線其實早就接好（
+        #    _apply_audio_flag 當初就把 generate_audio 帶上了），缺的只是這個旗標。
+        #    改成 audio: True 把控制權交還使用者；**預設仍維持不勾選**（與上游預設相反，
+        #    但與平台其餘型號一致，且無聲對 1.5-pro 有 0.5x 折扣）。
+        # 2. doubao 的請求結構裡**沒有** negative_prompt 與 prompt_extend 這兩個欄位，
+        #    文字內容只用到 prompt（adaptor.go 的 ContentItem.Text）。metadata 是整包
+        #    unmarshal 進結構、對不上的鍵直接丟棄，所以這兩個控制項對 seedance 是純裝飾。
+        #    以 no_negative_prompt / no_prompt_extend 標記，前端據此隱藏。
+        # ⚠️ 以上兩點都是讀閘道 Go 原始碼推斷的（memory.md 4d 的第④類「間接證據」），
+        #    影片生成單價高，這次未實測。配音實際會不會出聲、關掉是否真的折價，仍待驗證。
         {"id": "dreamina-seedance-2.5", "name": "Seedance 2.5（即夢）", "group": "ByteDance Seedance",
          "desc": "即夢 Seedance 最新版，最長 30 秒，支援 480P/720P", "type": "t2v",
-         "audio": False, "min_dur": 4, "max_dur": 30, "resolutions": ["480P", "720P"]},
+         "audio": True, "no_negative_prompt": True, "no_prompt_extend": True,
+         "min_dur": 4, "max_dur": 30, "resolutions": ["480P", "720P"]},
         {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro", "group": "ByteDance Seedance",
-         "desc": "字節跳動 Seedance，旗艦文生影片", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15},
+         "desc": "字節跳動 Seedance，旗艦文生影片", "type": "t2v",
+         "audio": True, "no_negative_prompt": True, "no_prompt_extend": True, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0", "name": "Seedance 2.0（即夢）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance，標準文生影片", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15},
+         "desc": "即夢 Seedance，標準文生影片", "type": "t2v",
+         "audio": True, "no_negative_prompt": True, "no_prompt_extend": True, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0-fast", "name": "Seedance 2.0 Fast（即夢）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance，極速文生影片，支援 480P/720P", "type": "t2v", "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
+         "desc": "即夢 Seedance，極速文生影片，支援 480P/720P", "type": "t2v",
+         "audio": True, "no_negative_prompt": True, "no_prompt_extend": True,
+         "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
         {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro（圖生影片）", "group": "ByteDance Seedance",
-         "desc": "字節跳動 Seedance，旗艦圖生影片（首幀）", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
+         "desc": "字節跳動 Seedance，旗艦圖生影片（首幀）", "type": "i2v",
+         "audio": True, "no_negative_prompt": True, "no_prompt_extend": True, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0", "name": "Seedance 2.0（即夢，圖生影片）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance，標準圖生影片（首幀）", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15},
+         "desc": "即夢 Seedance，標準圖生影片（首幀）", "type": "i2v",
+         "audio": True, "no_negative_prompt": True, "no_prompt_extend": True, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0-fast", "name": "Seedance 2.0 Fast（即夢，圖生影片）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance，極速圖生影片（首幀），支援 480P/720P", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
+         "desc": "即夢 Seedance，極速圖生影片（首幀），支援 480P/720P", "type": "i2v",
+         "audio": True, "no_negative_prompt": True, "no_prompt_extend": True,
+         "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
         {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro（參考生影片）", "group": "ByteDance Seedance",
-         "desc": "字節跳動 Seedance，旗艦參考生影片", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
+         "desc": "字節跳動 Seedance，旗艦參考生影片", "type": "r2v",
+         "audio": True, "no_negative_prompt": True, "no_prompt_extend": True, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0", "name": "Seedance 2.0（即夢，參考生影片）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance，標準參考生影片", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15},
+         "desc": "即夢 Seedance，標準參考生影片", "type": "r2v",
+         "audio": True, "no_negative_prompt": True, "no_prompt_extend": True, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0-fast", "name": "Seedance 2.0 Fast（即夢，參考生影片）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance，極速參考生影片，支援 480P/720P", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
+         "desc": "即夢 Seedance，極速參考生影片，支援 480P/720P", "type": "r2v",
+         "audio": True, "no_negative_prompt": True, "no_prompt_extend": True,
+         "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
         # ── Gemini Omni（走 /v1beta/interactions，模型自行決定長度/解析度，固定含原生配音）──
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview", "group": "Gemini",
          "desc": "Google 多模態影片生成（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "t2v", "audio": False, "no_duration": True},

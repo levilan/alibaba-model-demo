@@ -361,16 +361,16 @@ python app.py
 | wan2.7-videoedit | 萬相 2.7 視頻編輯 | 萬相視頻編輯 | — |
 | wan2.2-animate-mix | 萬相 2.2 視頻換人 | 萬相動作動畫 | — |
 | wan2.2-animate-move | 萬相 2.2 圖生動作 | 萬相動作動畫 | — |
-| bytedance-seedance-1.5-pro | Seedance 1.5 Pro | ByteDance Seedance | — |
-| dreamina-seedance-2.5 | Seedance 2.5（即夢） | ByteDance Seedance | — |
-| dreamina-seedance-2.0 | Seedance 2.0（即夢） | ByteDance Seedance | — |
-| dreamina-seedance-2.0-fast | Seedance 2.0 Fast（即夢） | ByteDance Seedance | — |
-| bytedance-seedance-1.5-pro（圖生影片） | Seedance 1.5 Pro | ByteDance Seedance | — |
-| dreamina-seedance-2.0（圖生影片） | Seedance 2.0（即夢） | ByteDance Seedance | — |
-| dreamina-seedance-2.0-fast（圖生影片） | Seedance 2.0 Fast（即夢） | ByteDance Seedance | — |
-| bytedance-seedance-1.5-pro（參考生影片） | Seedance 1.5 Pro | ByteDance Seedance | — |
-| dreamina-seedance-2.0（參考生影片） | Seedance 2.0（即夢） | ByteDance Seedance | — |
-| dreamina-seedance-2.0-fast（參考生影片） | Seedance 2.0 Fast（即夢） | ByteDance Seedance | — |
+| bytedance-seedance-1.5-pro | Seedance 1.5 Pro | ByteDance Seedance | 可開關 ⚠️ |
+| dreamina-seedance-2.5 | Seedance 2.5（即夢） | ByteDance Seedance | 可開關 ⚠️ |
+| dreamina-seedance-2.0 | Seedance 2.0（即夢） | ByteDance Seedance | 可開關 ⚠️ |
+| dreamina-seedance-2.0-fast | Seedance 2.0 Fast（即夢） | ByteDance Seedance | 可開關 ⚠️ |
+| bytedance-seedance-1.5-pro（圖生影片） | Seedance 1.5 Pro | ByteDance Seedance | 可開關 ⚠️ |
+| dreamina-seedance-2.0（圖生影片） | Seedance 2.0（即夢） | ByteDance Seedance | 可開關 ⚠️ |
+| dreamina-seedance-2.0-fast（圖生影片） | Seedance 2.0 Fast（即夢） | ByteDance Seedance | 可開關 ⚠️ |
+| bytedance-seedance-1.5-pro（參考生影片） | Seedance 1.5 Pro | ByteDance Seedance | 可開關 ⚠️ |
+| dreamina-seedance-2.0（參考生影片） | Seedance 2.0（即夢） | ByteDance Seedance | 可開關 ⚠️ |
+| dreamina-seedance-2.0-fast（參考生影片） | Seedance 2.0 Fast（即夢） | ByteDance Seedance | 可開關 ⚠️ |
 
 > 萬相 2.6/2.7 系列 T2V/I2V/R2V 皆支援自動配音（BGM 自動生成或自訂音訊上傳）。
 > **萬相 3.0（`wan3.0-video`）是 all-in-one 模型**——同一個模型 id 同時涵蓋文生／圖生／參考生／視頻編輯，UI 上以四個 type 分別呈現。最長 30 秒（其餘萬相家族是 15 秒），解析度 480P／720P／1080P，費率為每秒 $0.05／$0.10／$0.20。`ratio`（畫面比例）與 `resolution` 是兩個互相獨立的參數，預設 `adaptive`（其餘家族預設 16:9）。
@@ -394,6 +394,14 @@ python app.py
 >
 > **上傳的音訊必須是 URL。** 上游只接受 `audio_url`，base64 data URI 不會被解析，所以使用者上傳的配樂/驅動音訊會先經 `_cloud_put()` 放到雲端物件儲存再帶簽名網址過去；沒有設定任何雲端儲存後端時會直接回報錯誤，而不是送出一個註定無聲的請求。
 > ByteDance Seedance 系列同時支援 t2v/i2v/r2v，走跟萬相系列共用的 `media`/`image`/`images` 三欄位注入機制；i2v 在 `bytedance-seedance-1.5-pro`、r2v 在 `dreamina-seedance-2.0-fast` 上實測完整跑到 `completed`，其餘模型 × 模式組合基於同一套機制推斷同樣可用，未逐一窮舉。**不支援**視頻編輯（vedit）——實測直接被上游拒絕（`image_url` 參數不合法）。`min_dur`/`max_dur` 沿用其他家族的常見範圍（2–15 秒），未測邊界值。
+>
+> **Seedance 的配音開關先前被鎖死在關閉**（2026-08-12 修正）。所有 Seedance 型號原本標 `audio: False`，前端不但隱藏開關，還會**強制把勾選狀態設成 `false`**（`onVidModelChange`），於是每一次請求都明確送出 `metadata.generate_audio=false`。而上游這個欄位的預設值是 `true`，等於平台主動把本來會有的聲音關掉，且使用者無從開啟。送出的管線其實早就接好了——`_apply_audio_flag()` 從一開始就把 Seedance 專用的 `generate_audio` 帶上，缺的只是 MODELS 的旗標。現已改成 `audio: True`，**預設仍維持不勾選**（與上游預設相反，但與平台其餘型號一致；無聲對 `bytedance-seedance-1.5-pro` 另有 0.5× 折扣，官方定價有聲 $0.0024／無聲 $0.0012 每 1K tokens，2.0 與 2.5 未註冊折扣）。
+>
+> **Seedance 不接受 `negative_prompt` 與 `prompt_extend`。** 閘道 doubao adaptor 的請求結構裡沒有這兩個欄位，文字內容只用到 `prompt`；`metadata` 是整包 unmarshal 進結構、對不上的鍵直接丟棄，所以這兩個控制項對 Seedance 是純裝飾。已用 `no_negative_prompt`／`no_prompt_extend` 標記，前端選到時整組隱藏並清空值（`memory.md` 第 6 條：UI 不要顯示沒有作用的控制項）。
+>
+> ⚠️ **以上兩點都是讀閘道 Go 原始碼推斷的，未經實測**——屬於 `memory.md` 4d 的第④類「拿間接證據當行為證據」，而本專案在 `wan2.7` 的 `max_ref` 上正是這樣栽過（依 Go struct 寫成 2、實測是 9）。影片生成單價高，這次刻意不做多次取樣驗證。**配音實際會不會出聲、關掉是否真的折價，仍待驗證。**
+>
+> **上游支援但平台未送出的 Seedance 參數**（同樣來自 adaptor 結構，未實測）：`camera_fixed`（2.5 實測回 `InvalidParameter`）、`frames`、`output_format`（mp4/mov，僅 2.5）、`priority`（0–9）、`return_last_frame`、`draft`（僅 1.5-pro）、`omni_reference_task_type`（2.5 的 auto/reference/edit/extend）、`callback_url`／`service_tier`／`execution_expires_after`／`safety_identifier`／`tools`。另有兩個逃生門：`metadata.content` 可直接覆寫整個 content 陣列、`metadata.image_role` 可指定參考圖角色。
 >
 > **`dreamina-seedance-2.5` 與 2.0 系列差異很大，UI 需分開處理**（2026-08-11 對**測試網關** `192.168.0.245` 驗證——正式環境的模型清單裡雖然有它，但網關程式碼尚未部署、在那邊叫不動）：
 >
