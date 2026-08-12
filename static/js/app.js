@@ -801,6 +801,10 @@ function onImgSizeChange() {
     const w = document.getElementById('imgCustomW'), h = document.getElementById('imgCustomH');
     if (!w.value) w.value = 1024;
     if (!h.value) h.value = 1024;
+    // 兩條路都可用的模型才顯示「送出方式」；只有一條時不給選（免得出現無效的選項）
+    const modes = spec.modes || ['size'];
+    document.getElementById('imgCustomSizeModeRow').style.display = modes.length > 1 ? '' : 'none';
+    if (modes.length === 1) document.getElementById('imgCustomSizeMode').value = modes[0];
     onImgCustomSizeInput();
 }
 
@@ -828,14 +832,22 @@ function onImgCustomSizeInput() {
     if (r.error) {
         msg.style.color = 'var(--red)';
         msg.textContent = r.error;
-    } else if (r.aligned) {
-        // 明確告知已對齊，而不是默默改掉使用者輸入的值
-        msg.style.color = 'var(--text-muted)';
-        msg.textContent = `實際輸出 ${r.w}×${r.h}（尺寸會對齊到 ${_imgCustomSizeSpec.align} 的倍數）`;
-    } else {
-        msg.style.color = 'var(--text-muted)';
-        msg.textContent = `實際輸出 ${r.w}×${r.h}`;
+        return;
     }
+    msg.style.color = 'var(--text-muted)';
+    // 順便把實際會送出的欄位寫出來，讓使用者看得到兩種寫法的差別
+    const sent = customSizeMode() === 'wh'
+        ? `width: ${r.w}, height: ${r.h}`
+        : `size: "${r.size}"`;
+    // 對齊時明確告知，而不是默默改掉使用者輸入的值
+    const alignNote = r.aligned ? `（尺寸會對齊到 ${_imgCustomSizeSpec.align} 的倍數）` : '';
+    msg.textContent = `實際輸出 ${r.w}×${r.h}${alignNote}　送出 ${sent}`;
+}
+
+function customSizeMode() {
+    const el = document.getElementById('imgCustomSizeMode');
+    const modes = (_imgCustomSizeSpec && _imgCustomSizeSpec.modes) || ['size'];
+    return modes.includes(el.value) ? el.value : modes[0];
 }
 
 function onImgModelChange() {
@@ -1618,11 +1630,14 @@ async function sendImage() {
     const prompt   = document.getElementById('imagePrompt').value.trim();
     const negPrompt= document.getElementById('imageNegPrompt').value.trim();
     let   size     = document.getElementById('imageSize').value;
-    // 自訂尺寸：把兩個輸入框組成 size 字串。不合法就擋在這裡，省下一次必定失敗的呼叫
+    // 自訂尺寸：不合法就擋在這裡，省下一次必定失敗的呼叫。
+    // 依「送出方式」二選一——size 字串，或頂層 width/height 兩個欄位。
+    let customWH = null;
     if (size === CUSTOM_SIZE_VALUE) {
         const r = currentCustomSize();
         if (r.error) { toast(r.error, "error"); return; }
         size = r.size;
+        if (customSizeMode() === 'wh') customWH = { width: r.w, height: r.h };
     }
     const extend      = document.getElementById('imgPromptExtend').checked;
     const watermark   = document.getElementById('imgWatermark').checked;
@@ -1654,6 +1669,8 @@ async function sendImage() {
         let res;
         if (taskType === 't2i') {
             const body = { model, prompt, negative_prompt: negPrompt, size, n, prompt_extend: extend, watermark };
+            // 選了 width/height 那條路時帶這兩個欄位，後端會據此把 size 拿掉
+            if (customWH) Object.assign(body, customWH);
             if (imgSeed !== null) body.seed = imgSeed;
             if (aspectRatio) body.aspect_ratio = aspectRatio;
             if (enableSequential) body.enable_sequential = true;

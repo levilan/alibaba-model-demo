@@ -343,6 +343,14 @@
                                style="flex:1;min-width:0" oninput="onImgCustomSizeInput()">
                     </div>
                     <div id="imgCustomSizeMsg" style="margin-top:6px;font-size:0.78rem;line-height:1.5"></div>
+                    <!-- 兩條路都實測可用，效果相同；讓使用者自行選擇要用哪一種送出 -->
+                    <div id="imgCustomSizeModeRow" style="margin-top:10px;display:none">
+                        <label class="form-label" data-tip="兩種寫法產出的圖片相同，差別只在請求的欄位形式。若兩者同時帶入，會以 width / height 為準">送出方式</label>
+                        <select id="imgCustomSizeMode" class="select-input" onchange="onImgCustomSizeInput()">
+                            <option value="size">size 字串（如 1088x960）</option>
+                            <option value="wh">width / height 欄位</option>
+                        </select>
+                    </div>
                 </div>
                 <!-- Gemini 圖片模型不支援 size 參數，改用「自然語言注入 prompt」的方式控制比例（僅 T2I） -->
                 <div class="form-group" id="imgAspectRatioGroup" style="display:none">
@@ -973,6 +981,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=66"></script>
+<script src="/static/js/app.js?v=67"></script>
 </body>
 </html>

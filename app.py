@@ -239,15 +239,24 @@ _MAI_IMAGE_SIZES = ["1024x1024", "1360x768", "768x1360", "1152x896", "896x1152"]
 # MAI 的尺寸不是固定枚舉，而是「滿足約束的任意值」——實測 size="1200x800"（不在上面的
 # 清單裡）輸出就是 1200x800，完全相符。所以 UI 除了預設選項，另外開放自訂寬高。
 #
-# ⚠️ 注意自訂是走 **size 字串**，不是送 width/height 兩個欄位。實測正式環境送
-# {"width":2000,"height":2000}（400 萬像素、若被讀取必定超限報錯）卻正常產出 1024x1024，
-# 證明頂層 width/height 在這條路徑上會被靜默丟棄。閘道端已修（從 Extra map 取值），
-# 但那個修復還在 feature branch、只部署到測試網關，正式環境尚未生效。等它上線後
-# width/height 也會通，但**沒有必要改**——size 這條現在就能達成同樣的事。
+# 自訂尺寸有**兩條路**，都實測可用（2026-08-12 對正式環境）：
+#   size 字串        送 size="1088x960"                → 輸出 1088x960
+#   width/height     送 {"width":1088,"height":960}    → 輸出 1088x960
+# 兩者都給時**上游以 width/height 為準**：送 size=1024x1024（合法）配
+# width/height=2000x2000（超限）會回 400，而不是照 size 產圖。
+#
+# 這兩個欄位一度是無效的：更早實測送 {"width":2000,"height":2000} 竟正常產出
+# 1024x1024，因為閘道的 dto.ImageRequest 沒有宣告 width/height，未宣告的欄位會落進
+# Extra map 而 MarshalJSON 刻意不把 Extra 合併回去，於是靜默消失。閘道端已改成從
+# Extra 取值（且刻意仍不宣告在 DTO——那個結構是所有 image 渠道共用的，一宣告就會把
+# width/height 透傳給 dall-e 這類只認 size 的上游，讓原本能跑的請求變 400），現已上線。
+#
+# 兩條路的對齊行為一致：width/height 同樣會往下對齊到 16 的倍數（送 1366 得 1360）。
 _MAI_CUSTOM_SIZE = {
     "min_side": 768,        # 每邊至少 768（獨立於總像素限制：767x1024 只有 78 萬像素照樣被拒）
     "max_pixels": 1056768,  # 總像素上限
     "align": 16,            # 上游會往下對齊到 16 的倍數，前端先對齊好，免得使用者拿到非預期尺寸
+    "modes": ["size", "wh"],  # 兩條路都通，UI 讓使用者選要用哪一種送出
 }
 
 # ─── Model Registry ───────────────────────────────────────────
@@ -1911,6 +1920,12 @@ class ImageGenerateRequest(BaseModel):
     background: Optional[str] = None         # 僅 GPT Image 使用：auto/opaque/transparent
     output_format: Optional[str] = None      # 僅 GPT Image 使用：png/jpeg/webp
     enable_sequential: bool = False          # 僅萬相 2.7 使用：組圖模式
+    # 自訂尺寸的第二條路：直接送頂層 width/height（目前只有 MAI 這條路通）。
+    # 兩者都給時**上游以 width/height 為準**——實測 size=1024x1024 配上不合法的
+    # width/height=2000x2000 會回 400 而不是照 size 產圖。所以這裡二選一送出，
+    # 不同時帶，避免使用者選了 size 卻被殘留的 width/height 蓋掉。
+    width: Optional[int] = None
+    height: Optional[int] = None
 
 @app.post("/api/image/generate")
 async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_api_key)):
@@ -1926,6 +1941,13 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
             raise HTTPException(status_code=500, detail=str(e))
 
     payload: dict = {"model": data.model, "prompt": data.prompt, "n": data.n, "size": data.size}
+    # 自訂尺寸選了「width / height」那條路時，改送這兩個欄位、並把 size 拿掉。
+    # 上游本來就以 width/height 為準（實測會蓋過 size），拿掉 size 只是讓送出的
+    # 請求跟使用者選的機制一致，看日誌時不會誤以為兩個都在生效。
+    if data.width and data.height:
+        payload.pop("size", None)
+        payload["width"] = data.width
+        payload["height"] = data.height
     if data.negative_prompt:
         payload["negative_prompt"] = data.negative_prompt
     if data.prompt_extend:
