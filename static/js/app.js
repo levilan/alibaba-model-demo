@@ -536,15 +536,55 @@ const _EFFORT_LABELS = {
 // 視覺語言模型帶入的圖片（data URI）。只附在當下這一輪的提問上，不進對話歷史
 let textVisionImages = [];
 
+// 上傳前把長邊縮到 2048。實測 qwen3-vl-flash 的圖片 token 在 2048×2048 之後就**封頂
+// 不再增加**（512²=285、1024²=1053、1536²=2333、2048²=2529，之後 3072² 與 4096² 都是
+// 2529），也就是說更大的圖不會被更精細地看，只是讓使用者多等上傳時間——同一組測試圖
+// 4096² 的 PNG 是 279K、2048² 只有 111K，真實照片的差距會更大。
+// 縮圖在瀏覽器端做，後端與上游都不必改。
+const VISION_MAX_EDGE = 2048;
+
+function _downscaleImage(file) {
+    return new Promise((resolve) => {
+        const fr = new FileReader();
+        fr.onload = () => {
+            const dataUrl = fr.result;
+            const img = new Image();
+            img.onload = () => {
+                const long = Math.max(img.width, img.height);
+                // 本來就在上限內就原樣送出，不要重新編碼——重壓一次只會讓畫質變差
+                if (long <= VISION_MAX_EDGE) { resolve({ url: dataUrl, w: img.width, h: img.height, scaled: false }); return; }
+                const ratio = VISION_MAX_EDGE / long;
+                const w = Math.round(img.width * ratio), h = Math.round(img.height * ratio);
+                const cv = document.createElement('canvas');
+                cv.width = w; cv.height = h;
+                cv.getContext('2d').drawImage(img, 0, 0, w, h);
+                // 統一輸出 JPEG：縮圖後的照片用 PNG 反而更大，而 0.92 品質對辨識沒有影響
+                resolve({ url: cv.toDataURL('image/jpeg', 0.92), w, h, scaled: true });
+            };
+            // 讀不出來（壞檔、或瀏覽器不支援的格式）就原樣送出，讓上游去回報錯誤，
+            // 不要在這裡把它擋掉——縮圖只是最佳化，不該變成新的失敗點
+            img.onerror = () => resolve({ url: dataUrl, scaled: false });
+            img.src = dataUrl;
+        };
+        fr.onerror = () => resolve(null);
+        fr.readAsDataURL(file);
+    });
+}
+
 function onTextVisionUpload(e) {
     const files = Array.from(e.target.files || []);
-    Promise.all(files.map(f => new Promise(res => {
-        const r = new FileReader();
-        r.onload = () => res({ name: f.name, url: r.result });
-        r.readAsDataURL(f);
-    }))).then(added => {
-        textVisionImages = [...textVisionImages, ...added];
+    Promise.all(files.map(async (f) => {
+        const r = await _downscaleImage(f);
+        if (!r) return null;
+        return { name: f.name, url: r.url, scaled: r.scaled, w: r.w, h: r.h };
+    })).then(added => {
+        const ok = added.filter(Boolean);
+        textVisionImages = [...textVisionImages, ...ok];
         renderTextVisionList();
+        const scaled = ok.filter(x => x.scaled);
+        if (scaled.length) {
+            toast(`已將 ${scaled.length} 張圖縮到長邊 ${VISION_MAX_EDGE}（超過這個尺寸不會提高辨識精細度，只會拉長上傳時間）`);
+        }
     });
     e.target.value = '';   // 讓同一個檔案能重複選取
 }
