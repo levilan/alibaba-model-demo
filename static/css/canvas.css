@@ -360,3 +360,12 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
     box-shadow: 0 0 0 3px rgba(79,140,255,0.12);
 }
 .cv-add-link-btn:hover { background: var(--cv-accent-2); color: #fff; }
+
+/* 進階參數（Negative Prompt / 生成張數 / Seed）與上面的主要設定之間的分隔線——
+   這些是「可留空」的選項，跟模型/尺寸這類必要設定在視覺上分開，面板才不會看起來
+   全是必填欄位 */
+.cv-adv-sep {
+    height: 1px; margin: 10px 0 8px;
+    background: var(--cv-border);
+    opacity: 0.6;
+}

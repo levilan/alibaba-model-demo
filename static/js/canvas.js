@@ -388,6 +388,99 @@
         return sel;
     }
 
+    // ── 進階參數：Negative Prompt / 生成張數 / Seed ─────────────────────────────
+    // 主測試台有、Canvas 先前完全沒有的三個最常用參數。Seed 最要緊——節點式工作流的
+    // 價值就在**可重現**，沒有 seed 就重跑不出同一張結果。
+    // 圖片／影片／MuleAI 三種節點共用同一段標記與接線，避免各寫一份之後漂移。
+    //
+    // 注意「生成張數」只在文生圖有意義：`/api/image/edit` 沒有 n 這個欄位（實測後端
+    // 只讀 model/prompt/size/negative_prompt/seed/watermark/prompt_extend/ref_strength），
+    // 所以 i2i 模式下這個控制項會被收起來。
+    function advancedParamsHtml(opts) {
+        const o = opts || {};
+        return `
+            <div class="cv-adv-sep"></div>
+            ${o.negative ? `
+            <div class="cv-neg-group">
+                <label>Negative Prompt<span class="cv-hint">（不想出現的元素，可留空）</span></label>
+                <textarea class="cv-neg" rows="2" placeholder="可留空"></textarea>
+            </div>` : ''}
+            ${o.n ? `
+            <div class="cv-n-group" style="display:none">
+                <label>生成張數 <span class="cv-dur-val cv-n-val">1</span></label>
+                <input type="range" class="cv-n-slider" min="1" max="4" step="1" value="1">
+            </div>` : ''}
+            <label>Seed<span class="cv-hint">（留空 = 隨機；填固定值可重現同一結果）</span></label>
+            <input type="number" class="cv-seed" min="0" max="2147483647" placeholder="留空隨機">`;
+    }
+
+    function wireAdvancedParams(node, panel) {
+        const neg = panel.querySelector('.cv-neg');
+        if (neg) {
+            node.negEl = neg;
+            node.negGroup = panel.querySelector('.cv-neg-group');
+            neg.addEventListener('input', () => { node.properties.negative_prompt = neg.value; });
+        }
+        const seed = panel.querySelector('.cv-seed');
+        if (seed) {
+            node.seedEl = seed;
+            seed.addEventListener('input', () => {
+                const v = seed.value.trim();
+                // 留空要存成 null 而不是 0——0 是合法的 seed 值，兩者不能混
+                node.properties.seed = v === '' ? null : parseInt(v);
+            });
+        }
+        const nSlider = panel.querySelector('.cv-n-slider');
+        if (nSlider) {
+            node.nSlider = nSlider;
+            node.nValEl = panel.querySelector('.cv-n-val');
+            node.nGroup = panel.querySelector('.cv-n-group');
+            nSlider.addEventListener('input', () => {
+                node.properties.n = parseInt(nSlider.value);
+                node.nValEl.textContent = nSlider.value;
+            });
+        }
+    }
+
+    // 還原存檔時把值寫回控制項（properties 已由 LiteGraph 還原，DOM 要自己同步）
+    function restoreAdvancedParams(node) {
+        if (node.negEl) node.negEl.value = node.properties.negative_prompt || '';
+        if (node.seedEl) node.seedEl.value = node.properties.seed != null ? node.properties.seed : '';
+        if (node.nSlider) {
+            const n = node.properties.n || 1;
+            node.nSlider.value = n;
+            node.nValEl.textContent = n;
+        }
+    }
+
+    // 依模型的 max_n 調整「生成張數」的上限並決定要不要顯示。
+    // show 為 false（例如 i2i 模式、或組圖模式開著）時直接收起來並把 n 歸回 1，
+    // 否則會留下一個送出去沒有作用、甚至會被上游拒絕的值。
+    function applyMaxN(node, maxN, show) {
+        if (!node.nSlider) return;
+        const cap = Math.max(1, maxN || 1);
+        const visible = !!show && cap > 1;
+        node.nGroup.style.display = visible ? '' : 'none';
+        node.nSlider.max = cap;
+        let n = parseInt(node.properties.n) || 1;
+        if (!visible) n = 1;
+        if (n > cap) n = cap;
+        node.properties.n = n;
+        node.nSlider.value = n;
+        node.nValEl.textContent = n;
+    }
+
+    // 把進階參數塞進要送出的請求。fd 是 FormData 或普通物件，兩種都支援——
+    // 影片/編輯走 multipart、文生圖走 JSON，共用同一段邏輯才不會兩邊漂移。
+    function appendAdvancedParams(target, props, opts) {
+        const o = opts || {};
+        const isFd = typeof target.append === 'function';
+        const put = (k, v) => { if (isFd) target.append(k, String(v)); else target[k] = v; };
+        if (o.negative && props.negative_prompt) put('negative_prompt', props.negative_prompt);
+        if (props.seed != null && props.seed !== '') put('seed', props.seed);
+        if (o.n && props.n && props.n > 1) put('n', props.n);
+    }
+
     // 跟 buildSelect 一樣，但選項需要「值跟顯示文字不同」時使用（例如空字串值要顯示成「auto（自動）」）
     function buildLabeledSelect(options, current, onChange) {
         const sel = el('select');
@@ -1142,11 +1235,13 @@
             model: (models[0] && models[0].id) || '', prompt: '', size: '1024*1024', status: '',
             aspect_ratio: '', enable_sequential: false, seq_n: 4,
             quality: '', background: '', output_format: '',
+            negative_prompt: '', seed: null, n: 1,
         };
         this.imageUrl = null;
         this.imageUrls = null;
-        this._contentHeight = 470;
-        this.size = [320, 470];
+        // 多了進階參數區塊（Negative Prompt / 張數 / Seed），面板長度要跟著加
+        this._contentHeight = 760;
+        this.size = [320, 760];
         this.color = '#1f3a2e'; this.bgcolor = '#2a2a2a';
 
         const panel = el('div');
@@ -1178,11 +1273,14 @@
                     <label>輸出格式 (output_format)</label>
                     <div class="cv-fmt-slot"></div>
                 </div>
+                ${advancedParamsHtml({ negative: true, n: true })}
                 <button class="cv-add-ref-btn">+ 新增參考圖輸入</button>
                 <button class="cv-generate">▶ 生成圖片</button>
                 <div class="cv-status"></div>
             </div>`;
         attachDomPanel(this, panel);
+        // 注意順序：prompt 的 textarea 在標記裡排在 Negative Prompt 之前，
+        // 所以 querySelector('textarea') 取到的是 prompt 那一個
         this.textarea = panel.querySelector('textarea');
         this.textarea.addEventListener('input', () => { this.properties.prompt = this.textarea.value; });
         this.statusEl = panel.querySelector('.cv-status');
@@ -1197,6 +1295,8 @@
             this.properties.enable_sequential = this.seqCheck.checked;
             const container = this._configOverlay || this._domPanel;
             container.querySelector('.cv-seq-n-group').style.display = this.seqCheck.checked ? '' : 'none';
+            // 組圖模式自己帶張數（seq_n），跟一般的 n 是兩回事，不要同時出現
+            this._syncMaxN();
         });
         this.seqNSlider = panel.querySelector('.cv-seq-n-slider');
         this.seqNValEl = panel.querySelector('.cv-seq-n-val');
@@ -1207,14 +1307,18 @@
         panel.querySelector('.cv-add-ref-btn').addEventListener('click', () => this._addRefSlot());
         panel.querySelector('.cv-generate').addEventListener('click', () => this.generate());
 
+        wireAdvancedParams(this, panel);
+
         this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => {
             this.properties.model = v;
             const sizes = sizesForModel('image', v);
             this._rebuildSizeSelect(sizes);
             this._syncModelExtras();
+            this._syncMaxN();
         });
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
         this._rebuildSizeSelect(sizesForModel('image', this.properties.model));
+        this._syncMaxN();
 
         panel.appendChild(buildPreview(this));
         wireConfigOverlay(this, panel);
@@ -1299,6 +1403,14 @@
     ImageGenNode.prototype._detectMode = function () {
         return this.refSlots.some(i => !!this.getInputNode(i)) ? 'i2i' : 't2i';
     };
+    // 「生成張數」只在文生圖、且模型的 max_n > 1、且沒開組圖模式時才有意義：
+    // /api/image/edit 沒有 n 這個欄位，組圖模式則自己帶 seq_n
+    ImageGenNode.prototype._syncMaxN = function () {
+        const mode = this._detectMode();
+        const meta = (MODELS.image || []).find(m => m.id === this.properties.model && m.type === mode)
+                  || (MODELS.image || []).find(m => m.id === this.properties.model) || {};
+        applyMaxN(this, meta.max_n, mode === 't2i' && !this.properties.enable_sequential);
+    };
     ImageGenNode.prototype.onExecute = function () {
         _syncPromptTextarea(this, this.textarea, 0);
         const camPrefix = _autoCameraAnglePrefix(this, 0);
@@ -1315,6 +1427,7 @@
         this.modelSelect.innerHTML = values.map(v => `<option value="${v}"${v === this.properties.model ? ' selected' : ''}>${v}</option>`).join('');
         this._rebuildSizeSelect(sizesForModel('image', this.properties.model));
         this._syncModelExtras();
+        this._syncMaxN();
         this.modeHintEl.textContent = mode === 'i2i' ? '（參考圖生成圖像）' : '（文生圖）';
     };
     ImageGenNode.prototype.generate = async function () {
@@ -1336,6 +1449,8 @@
                 fd.append('prompt', prompt);
                 fd.append('size', this.properties.size);
                 fd.append('n', '1');
+                // i2i 沒有 n（後端不讀），所以只帶 negative_prompt 與 seed
+                appendAdvancedParams(fd, this.properties, { negative: true, n: false });
                 if (this.properties.quality) fd.append('quality', this.properties.quality);
                 if (this.properties.background) fd.append('background', this.properties.background);
                 if (this.properties.output_format) fd.append('output_format', this.properties.output_format);
@@ -1346,6 +1461,8 @@
             } else {
                 const body = { model: this.properties.model, prompt, size: this.properties.size, n: 1 };
                 if (this.properties.aspect_ratio) body.aspect_ratio = this.properties.aspect_ratio;
+                // 組圖模式自己帶張數，會蓋掉一般的 n（兩者互斥，UI 上也不會同時出現）
+                appendAdvancedParams(body, this.properties, { negative: true, n: true });
                 if (this.properties.enable_sequential) {
                     body.enable_sequential = true;
                     body.n = this.properties.seq_n;
@@ -1381,6 +1498,8 @@
         this._rebuildSizeSelect(sizesForModel('image', this.properties.model));
         this._syncModelExtras();
         if (this.seqNSlider) { this.seqNSlider.value = this.properties.seq_n; this.seqNValEl.textContent = this.properties.seq_n; }
+        restoreAdvancedParams(this);
+        this._syncMaxN();
         _restoreGenResult(this, o.cv);
     };
     ImageGenNode.prototype.onRemoved = sharedOnRemoved;
@@ -1411,10 +1530,13 @@
         this._addRefSlot();
         this._addRefSlot();
         const models = getModelsFor('video', 't2v');
-        this.properties = { model: (models[0] && models[0].id) || '', prompt: '', resolution: '720P', duration: 5, status: '' };
+        this.properties = {
+            model: (models[0] && models[0].id) || '', prompt: '', resolution: '720P', duration: 5, status: '',
+            negative_prompt: '', seed: null,
+        };
         this.videoUrl = null;
         this.localClipUrl = null;
-        this._contentHeight = VIDEO_EXTEND_ENABLED ? 620 : 560;
+        this._contentHeight = VIDEO_EXTEND_ENABLED ? 760 : 700;
         this.size = [320, this._contentHeight];
         this.color = '#1f2f3a'; this.bgcolor = '#2a2a2a';
 
@@ -1437,6 +1559,7 @@
                 <label>影片延伸<span class="cv-hint">（接影片節點輸出或上傳片段，取代首幀圖片；上游片段需 ≤9.9 秒）</span></label>
                 <input type="file" class="cv-clip-file" accept="video/*" style="display:none">
                 <button class="cv-add-ref-btn cv-clip-upload-btn">選擇影片片段</button>` : ''}
+                ${advancedParamsHtml({ negative: true })}
                 <button class="cv-add-ref-btn">+ 新增參考圖輸入</button>
                 <button class="cv-generate cv-submit-btn">▶ 生成影片</button>
                 <div class="cv-status"></div>
@@ -1456,6 +1579,7 @@
         }
         panel.querySelector('.cv-add-ref-btn:not(.cv-clip-upload-btn)').addEventListener('click', () => this._addRefSlot());
         panel.querySelector('.cv-submit-btn').addEventListener('click', () => this.generate());
+        wireAdvancedParams(this, panel);
 
         // 換模型時要重新套用限制——各家的時長範圍與解析度差異很大，留著舊值會被上游拒絕
         this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => {
@@ -1529,6 +1653,10 @@
         this.modelSelect.innerHTML = values.map(v => `<option value="${v}"${v === this.properties.model ? ' selected' : ''}>${v}</option>`).join('');
         // 切換模式可能連帶換掉模型（上面那行），限制要跟著重算
         applyVideoLimits(this, mode);
+        // 參考生影片的端點不讀 negative_prompt（/api/video/r2v 只收 model/prompt/
+        // resolution/ratio/duration/prompt_extend/watermark/seed），送過去會被靜默
+        // 丟棄，所以這個模式下把欄位收起來，不要顯示沒有作用的控制項
+        if (this.negGroup) this.negGroup.style.display = mode === 'r2v' ? 'none' : '';
         const firstFrameAlsoConnected = mode === 'r2v' && !!this.getInputNode(1);
         if (mode === 'i2v' && this._hasClip()) {
             this.modeHintEl.textContent = '（影片延伸，首幀圖片將被忽略）';
@@ -1560,6 +1688,8 @@
                 fd.append('resolution', this.properties.resolution);
                 fd.append('duration', String(this.properties.duration));
             }
+            // r2v 不吃 negative_prompt（見 onConnectionsChange 的註解），不要白送
+            appendAdvancedParams(fd, this.properties, { negative: mode !== 'r2v' });
             let endpoint = '/api/video/t2v';
             if (mode === 'r2v') {
                 endpoint = '/api/video/r2v';
@@ -1607,6 +1737,7 @@
         this.textarea.value = this.properties.prompt || '';
         if (this.modelSelect) this.modelSelect.value = this.properties.model;
         this.refSlots = _collectRefSlots(this);
+        restoreAdvancedParams(this);
         // 還原存檔後也要重算限制：解析度下拉的選項是動態產生的，不先重建就只剩空清單；
         // 而且舊存檔可能存著現在已經不合法的值（例如更早版本存下來的 1080P + seedance 2.5）
         applyVideoLimits(this, this._detectMode());
@@ -1628,6 +1759,7 @@
         this.properties = {
             model: (models[0] && models[0].id) || '', prompt: '', resolution: '1080P',
             ratio: '', audioSetting: 'auto', duration: 0, status: '',
+            negative_prompt: '', seed: null,
         };
         this.videoUrl = null;
         this._contentHeight = 620;
@@ -1656,6 +1788,7 @@
                 <div class="cv-ratio-slot"></div>
                 <label>音訊設定</label>
                 <div class="cv-audio-slot"></div>
+                ${advancedParamsHtml({ negative: true })}
                 <button class="cv-add-ref-btn cv-add-ref-vedit-btn">+ 新增參考圖輸入</button>
                 <button class="cv-generate cv-submit-btn">▶ 編輯影片</button>
                 <div class="cv-status"></div>
@@ -1672,6 +1805,7 @@
         this.fileInput.addEventListener('change', () => this._onFile());
         panel.querySelector('.cv-add-ref-vedit-btn').addEventListener('click', () => this._addRefSlot());
         panel.querySelector('.cv-submit-btn').addEventListener('click', () => this.generate());
+        wireAdvancedParams(this, panel);
 
         this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => {
             this.properties.model = v;
@@ -1767,6 +1901,7 @@
             // 0 = 保留來源影片長度（後端看到 0 就不送 duration 給上游）
             fd.append('duration', String(this.properties.duration || 0));
             fd.append('audio_setting', this.properties.audioSetting);
+            appendAdvancedParams(fd, this.properties, { negative: true });
             if (this.properties.ratio) fd.append('ratio', this.properties.ratio);
             fd.append('video', await fetchAsBlob(videoUrl), 'source.mp4');
             const refUrls = this.refSlots.map(i => this.getInputData(i, true)).filter(Boolean);
@@ -1798,6 +1933,7 @@
         if (this.ratioSelect) this.ratioSelect.value = this.properties.ratio;
         if (this.audioSelect) this.audioSelect.value = this.properties.audioSetting;
         this.refSlots = _collectRefSlots(this);
+        restoreAdvancedParams(this);
         // 解析度選項是動態產生的，還原存檔時要先重建，否則只剩空清單
         this._applyLimits();
         _restoreGenResult(this, o.cv);
@@ -1908,10 +2044,11 @@
         this.properties = {
             model: (models[0] && models[0].id) || '', prompt: '', size: '1024*1024', status: '',
             quality: '', background: '', output_format: '',
+            negative_prompt: '', seed: null,
         };
         this.imageUrl = null;
-        this._contentHeight = 470;
-        this.size = [320, 470];
+        this._contentHeight = 600;
+        this.size = [320, 600];
         this.color = '#3a2340'; this.bgcolor = '#2a2a2a';
 
         const panel = el('div');
@@ -1929,6 +2066,7 @@
                     <label>輸出格式 (output_format)</label>
                     <div class="cv-fmt-slot"></div>
                 </div>
+                ${advancedParamsHtml({ negative: true })}
                 <button class="cv-generate">▶ 編輯圖片</button>
                 <div class="cv-status"></div>
             </div>`;
@@ -1937,6 +2075,7 @@
         this.textarea.addEventListener('input', () => { this.properties.prompt = this.textarea.value; });
         this.statusEl = panel.querySelector('.cv-status');
         panel.querySelector('.cv-generate').addEventListener('click', () => this.generate());
+        wireAdvancedParams(this, panel);
 
         this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => {
             this.properties.model = v;
@@ -1998,6 +2137,8 @@
             fd.append('prompt', prompt);
             fd.append('size', this.properties.size);
             fd.append('n', '1');
+            // /api/image/edit 吃 negative_prompt 與 seed，但沒有 n 這個欄位
+            appendAdvancedParams(fd, this.properties, { negative: true });
             if (this.properties.quality) fd.append('quality', this.properties.quality);
             if (this.properties.background) fd.append('background', this.properties.background);
             if (this.properties.output_format) fd.append('output_format', this.properties.output_format);
@@ -2022,6 +2163,7 @@
         this.textarea.value = this.properties.prompt || '';
         if (this.modelSelect) this.modelSelect.value = this.properties.model;
         this._syncModelExtras();
+        restoreAdvancedParams(this);
         _restoreGenResult(this, o.cv);
     };
     ImageEditNode.prototype.onRemoved = sharedOnRemoved;
@@ -2070,10 +2212,11 @@
         this.properties = {
             model: (models[0] && models[0].id) || MULEAI_VIDEO_MODEL,
             prompt: '', resolution: '1080P', imgResolution: '1024*1536', duration: 5, status: '',
+            negative_prompt: '', seed: null,
         };
         this.resultUrl = null;
-        this._contentHeight = 560;
-        this.size = [320, 560];
+        this._contentHeight = 700;
+        this.size = [320, 700];
         this.color = '#4a1f2e'; this.bgcolor = '#2a2a2a';
 
         const panel = el('div');
@@ -2097,6 +2240,7 @@
                     <label>時長（秒）<span class="cv-dur-val">5</span></label>
                     <input type="range" class="cv-dur-slider" min="2" max="15" step="1" value="5">
                 </div>
+                ${advancedParamsHtml({ negative: true })}
                 <button class="cv-generate">▶ 生成</button>
                 <div class="cv-status"></div>
             </div>`;
@@ -2110,6 +2254,7 @@
         this.statusEl = panel.querySelector('.cv-status');
         this.modeHintEl = panel.querySelector('.cv-mode-hint');
         panel.querySelector('.cv-generate').addEventListener('click', () => this.generate());
+        wireAdvancedParams(this, panel);
 
         this.modelSelect = buildMuleaiModelSelect(this.properties.model, (v) => {
             this.properties.model = v;
@@ -2194,6 +2339,8 @@
                 fd.append('duration', String(this.properties.duration));
             }
             if (this._isT2i()) fd.append('img_resolution', this.properties.imgResolution);
+            // 換臉沒有 prompt，也就沒有 negative prompt 可言（後端 face-swap 分支不讀）
+            appendAdvancedParams(fd, this.properties, { negative: !isFaceSwap });
             if (imageBlob) fd.append('image', imageBlob, 'image.png');
             if (faceBlob) fd.append('face_image', faceBlob, 'face.png');
             const res = await apiFetch('/api/muleai/generate', { method: 'POST', body: fd });
@@ -2218,6 +2365,7 @@
         o.cv = { resultUrl: this.resultUrl || null };
     };
     MuleAiGenNode.prototype.onConfigure = function (o) {
+        restoreAdvancedParams(this);
         this.textarea.value = this.properties.prompt || '';
         if (this.modelSelect) this.modelSelect.value = this.properties.model;
         if (this.resSelect) this.resSelect.value = this.properties.resolution;
