@@ -190,6 +190,15 @@ Go struct 描述的是某一條路徑的資料結構，不等於所有路徑的�
 
 判斷方法：**找一個同模型、不同路徑的對照組**。同一個 `glm-5.2` 在 `/v1/chat/completions` 上 `enable_thinking:false` 能把 token 從 159 降到 19——證明模型做得到，問題在路徑。
 
+**要查的第一個地方是「這個欄位有沒有宣告在對應的 request DTO 裡」。** 沒宣告的欄位會落進 `Extra` map，而那些 DTO 的 `MarshalJSON` **刻意不把 `Extra` 合併回去**，於是欄位在反序列化階段就消失，全程不會有任何錯誤訊息。上面 `reasoning_effort` 沒宣告在 `dto.ClaudeRequest` 就是這個機制。
+
+閘道端 2026-08-12 修掉的一個同型案例（由該 session 同步過來，📄 轉述）：客戶照 Azure 官方文件對 `MAI-Image-2.5` 送 `{"width":1536,"height":864}`，拿到的是 1024×1024 且不報錯——因為 `dto.ImageRequest` 沒有宣告 `width`/`height`，而 `convertToMAIImageRequest` 只讀 `request.Size`。修法是從 `Extra` 取值，並**刻意不宣告在 DTO**（那個結構是所有 image 渠道共用的，一宣告就會把 `width`/`height` 透傳給 dall-e 這類只認 `size` 的上游，把原本能跑的請求變成 400）。
+
+兩個附帶提醒：
+
+- **尺寸字串的分隔符大小寫敏感**。`"1536X864"`（大寫 X）原本解析失敗並靜默退回 1024×1024。本專案已自查：`_MAI_IMAGE_SIZES` 與所有尺寸字串都是小寫 `x` 或 `*`，不受影響。
+- **optional 純量欄位要用指標型 + `omitempty`**，否則客戶端顯式送 `0`／`false` 會在 marshal 階段被丟掉（閘道 CLAUDE.md Rule 6；萬相系列的 `prompt_extend` 踩過）。這也是為什麼閘道的 `Priority` 用 `*dto.IntValue`——`0` 是合法值又剛好是預設值。
+
 ### 6. UI 不要顯示沒有作用的控制項
 
 這是本專案的一貫原則，`MODELS` 裡不少旗標就是為此存在：
