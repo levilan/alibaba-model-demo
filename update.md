@@ -8,6 +8,12 @@
 
 ## 2026-08-12
 
+- feat（canvas）：**新增語音辨識（ASR）節點**（`audio` → `text`）。這是唯一整個分類缺失的節點——先前 `audio` 型別在整張畫布上**只有產出端、沒有消費端**（語音 TTS 會吐 audio，但沒有任何節點吃得下）。補上之後才組得出「文字 → 配音 → 轉回文字」這類閉環，也能把上傳的錄音接進後面的文字節點。可接 TTS 節點輸出，或直接上傳音檔。
+  - 只提供非串流型號（`qwen-audio-3.0-asr-flash`）：串流版走另一條端點 `/api/voice/asr/stream`，而在節點圖裡要的是最終完整逐字稿再往下游送，中間結果沒有用處。
+  - 實作上踩到兩個坑：①**`wireConfigOverlay()` 會把 `.cv-controls` 整個搬到獨立圖層**，那是給「上半部放預覽、設定收進浮層」的節點用的；ASR 沒有媒體預覽，照搬會讓節點本體變空，改成跟文字節點一樣把控制項留在節點本體。②**新增節點類型要同時加 `NODE_TYPE_LABELS` 與 `NODE_MENU_TYPES` 兩張表**（前者給輸出插槽旁的快速新增選單，後者給工具列的「+ 新增節點」），只加一邊的話按鈕會出現但點下去毫無反應——`type` 查不到就直接 return。已在 `NODE_MENU_TYPES` 上方加註解說明。
+  - 瀏覽器驗證：節點建立、沒有音訊時擋下並提示、選檔後狀態更新、攔 fetch 確認送出 `model` 與檔名／MIME 正確、回應的逐字稿寫進輸出框並往下游送。`canvas.js` v=36。
+- feat（canvas）：**補上 Negative Prompt / Seed / 生成張數**，見上方 `b26471d` 條目。
+
 - fix（canvas）：**影片節點的解析度與時長改由 `MODELS` 決定，不再寫死**。先前時長 slider 寫死 2–15 秒、解析度寫死 480P/720P/1080P，完全沒讀 `min_dur`／`max_dur`／`dur_step`／`no_duration`／`resolutions`，於是每個有特殊限制的模型都有一部分選項送出去就被上游拒絕——而主測試台會擋，**同一個模型在兩個介面行為不一致，且 Canvas 那邊是靜默失敗**：`veo-3.1-*` 只有 4/6/8 三個合法值（step 2）其餘全拒、`dreamina-seedance-2.5` 的 2/3 秒與 1080P 都拒、`dreamina-seedance-2.0-fast` 的 1080P 拒、`happyhorse-*` 的 2 秒拒、`wan3.0-video` 最長 30 秒卻拉不到、`gemini-omni-flash-preview` 兩個參數都不該送。新增 `videoLimits()`／`applyVideoLimits()`，換模型、換模式（連線變動）、還原存檔時都重算，並把超出範圍的舊值**夾回合法區間並對齊到 step 的格子上**。
   - 影片編輯節點先前解析度寫死 `1080P`、連選單都沒有，`duration` 存在 properties 卻**從未送出**：兩者都補上。時長 `0` = 保留來源影片長度（後端看到 0 就不送給上游），`1` ~ `minDur-1` 是非法區間，拉進去會跳到最小合法值。
   - 以瀏覽器逐項驗證：五個模型的限制正確切換；在 1080P + 2 秒的狀態切到 `dreamina-seedance-2.5` 會夾成 480P + 4 秒；veo 落在 4/6/8 上；`gemini-omni` 兩列隱藏；vedit 拉到 1 秒跳成 2。`canvas.js` 版本號跳到 `v=31`。

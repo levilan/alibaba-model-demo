@@ -138,6 +138,10 @@
         return (MODELS.voice && MODELS.voice.tts) || [];
     }
 
+    function getVoiceAsrModels() {
+        return (MODELS.voice && MODELS.voice.asr) || [];
+    }
+
     // qwen 的兩個 TTS 模型各自只支援自己專屬的音色清單，不能混用；3 個 gemini
     // 模型則共用同一組官方音色（見 app.py 的 _GEMINI_TTS_VOICES）。
     function voicesForTtsModel(modelId) {
@@ -524,6 +528,7 @@
         video_animate: { type: 'nenai/video_animate', label: '動作動畫 Animate' },
         edit: { type: 'nenai/edit', label: '圖像編輯 Editing' },
         audio: { type: 'nenai/audio', label: '語音 TTS' },
+        asr: { type: 'nenai/asr', label: '語音辨識 ASR' },
         muleai: { type: 'nenai/muleai', label: 'MuleAI Spicy' },
     };
 
@@ -2534,6 +2539,105 @@
     };
     TtsGenNode.prototype.onRemoved = sharedOnRemoved;
 
+    // ── Node: ASR（語音辨識，audio → text）────────────────────────────────────
+    // 補上這個節點之前，audio 型別在整張畫布上**只有產出端、沒有消費端**：語音 TTS
+    // 節點會吐 audio，但沒有任何節點吃得下它。有了 ASR 才能組出
+    // 「文字 → 配音 → 轉回文字」這類閉環，也才能把上傳的錄音接進後面的文字節點。
+    //
+    // 只提供非串流型號：串流版走的是另一條端點（/api/voice/asr/stream），而在節點
+    // 圖裡我們要的是「最終的完整逐字稿」再往下游送，中間結果沒有用處。
+    function AsrNode() {
+        this.addInput('audio', 'audio');
+        this.addOutput('text', 'string');
+        const models = getVoiceAsrModels().filter(m => !m.id.endsWith('-streaming'));
+        this.properties = { model: (models[0] && models[0].id) || '', status: '' };
+        this.transcript = null;
+        this.localAudioUrl = null;
+        this._contentHeight = 330;
+        this.size = [300, 330];
+        this.color = '#20343d'; this.bgcolor = '#2a2a2a';
+
+        // 沒有媒體預覽，所以跟文字節點一樣把控制項留在節點本體、不走 config overlay
+        // （wireConfigOverlay 會把 .cv-controls 整個搬到獨立圖層，那是給「上半部放預覽、
+        //   設定收進 overlay」的節點用的，這裡搬走之後節點本體就空了）
+        const panel = el('div');
+        panel.innerHTML = `
+            <label>模型</label>
+            <div class="cv-select-slot"></div>
+            <label>音檔<span class="cv-hint">（未連接 audio 輸入時使用）</span></label>
+            <input type="file" class="cv-asr-file" accept="audio/*" style="display:none">
+            <button class="cv-add-ref-btn cv-asr-upload-btn">選擇音檔</button>
+            <button class="cv-generate cv-submit-btn">▶ 辨識文字</button>
+            <div class="cv-status"></div>
+            <div class="cv-output-box" style="display:none"></div>`;
+        attachDomPanel(this, panel);
+        this.statusEl = panel.querySelector('.cv-status');
+        this.outputBox = panel.querySelector('.cv-output-box');
+        this.fileInput = panel.querySelector('.cv-asr-file');
+        this.uploadBtn = panel.querySelector('.cv-asr-upload-btn');
+        this.uploadBtn.addEventListener('click', () => this.fileInput.click());
+        this.fileInput.addEventListener('change', () => this._onFile());
+        panel.querySelector('.cv-submit-btn').addEventListener('click', () => this.generate());
+
+        this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => { this.properties.model = v; });
+        panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+
+        attachNodeChrome(this);
+    }
+    AsrNode.title = '語音辨識 ASR';
+    AsrNode.prototype._onFile = function () {
+        const file = this.fileInput.files[0];
+        if (!file) return;
+        if (this.localAudioUrl && this.localAudioUrl.startsWith('blob:')) URL.revokeObjectURL(this.localAudioUrl);
+        this.localAudioUrl = URL.createObjectURL(file);
+        this.localAudioName = file.name;
+        this.statusEl.textContent = '已選擇：' + file.name;
+    };
+    AsrNode.prototype.onExecute = function () {
+        this.setOutputData(0, this.transcript);
+    };
+    AsrNode.prototype.generate = async function () {
+        // 跟其他節點一樣用 force_update 主動向上游拉，不依賴 onExecute 的快取
+        const audioUrl = this.getInputData(0, true) || this.localAudioUrl;
+        if (!audioUrl) { showToast('請上傳或連接一段音訊'); return; }
+        if (!this.properties.model) { showToast('請選擇模型'); return; }
+        this.statusEl.textContent = '辨識中…';
+        try {
+            const fd = new FormData();
+            fd.append('model', this.properties.model);
+            // 後端會用檔名推 content-type，副檔名要保留（上游對格式有要求）
+            fd.append('audio', await fetchAsBlob(audioUrl), this.localAudioName || 'audio.mp3');
+            const res = await apiFetch('/api/voice/asr', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || data.detail || '辨識失敗');
+            this.transcript = data.text || '';
+            this.statusEl.textContent = this.transcript ? '完成' : '完成（沒有辨識到內容）';
+            this.outputBox.textContent = this.transcript;
+            this.outputBox.style.display = this.transcript ? '' : 'none';
+            this.setOutputData(0, this.transcript);
+        } catch (e) {
+            this.statusEl.textContent = '錯誤：' + e.message;
+            showToast('語音辨識失敗：' + e.message);
+        }
+    };
+    AsrNode.prototype.onSerialize = function (o) {
+        o.cv = { transcript: this.transcript || null };
+    };
+    AsrNode.prototype.onConfigure = function (o) {
+        if (this.modelSelect) this.modelSelect.value = this.properties.model;
+        if (o.cv && o.cv.transcript) {
+            this.transcript = o.cv.transcript;
+            this.outputBox.textContent = this.transcript;
+            this.outputBox.style.display = '';
+            this.statusEl.textContent = '完成';
+        }
+        // 本機上傳的音檔是 blob:，重新整理後就失效，需要使用者重新選擇
+        if (!this.getInputNode(0) && !this.localAudioUrl && !this.transcript) {
+            this.statusEl.textContent = '請重新選擇音檔';
+        }
+    };
+    AsrNode.prototype.onRemoved = sharedOnRemoved;
+
     function registerNodeTypes() {
         LiteGraph.registerNodeType('nenai/text', TextPromptNode);
         LiteGraph.registerNodeType('nenai/camera_angle', CameraAngleNode);
@@ -2544,6 +2648,7 @@
         LiteGraph.registerNodeType('nenai/video_animate', VideoAnimateNode);
         LiteGraph.registerNodeType('nenai/edit', ImageEditNode);
         LiteGraph.registerNodeType('nenai/audio', TtsGenNode);
+        LiteGraph.registerNodeType('nenai/asr', AsrNode);
         LiteGraph.registerNodeType('nenai/muleai', MuleAiGenNode);
     }
 
@@ -2622,7 +2727,10 @@
         updateZoomLabel();
     }
 
-    const NODE_MENU_TYPES = { text: 'nenai/text', camera_angle: 'nenai/camera_angle', load_image: 'nenai/load_image', image: 'nenai/image', video: 'nenai/video', video_edit: 'nenai/video_edit', video_animate: 'nenai/video_animate', edit: 'nenai/edit', audio: 'nenai/audio', muleai: 'nenai/muleai' };
+    // ⚠️ 新增節點類型時這裡跟 NODE_TYPE_LABELS **兩張表都要加**：這張給工具列的
+    // 「+ 新增節點」選單（HTML 裡的 data-type 是短鍵），NODE_TYPE_LABELS 給輸出插槽
+    // 旁的快速新增選單。只加一邊的話按鈕會出現但點下去沒有反應（type 查不到就 return）。
+    const NODE_MENU_TYPES = { text: 'nenai/text', camera_angle: 'nenai/camera_angle', load_image: 'nenai/load_image', image: 'nenai/image', video: 'nenai/video', video_edit: 'nenai/video_edit', video_animate: 'nenai/video_animate', edit: 'nenai/edit', audio: 'nenai/audio', asr: 'nenai/asr', muleai: 'nenai/muleai' };
 
     // ── 範本庫：一鍵套用常見組合，省去手動拉線 ─────────────────────
     // 每個範本只描述「節點類型 + 相對座標 + 要接的線」，實際節點是套用當下用
