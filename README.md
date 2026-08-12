@@ -276,7 +276,11 @@ python app.py
 
 > **MAI Image 家族（2.5 / 2.5-Flash / 2.5-Pro）的尺寸不是固定枚舉，而是兩條同時成立的約束**（2026-08-10 對正式網關實測，三個型號行為一致）：**每邊至少 768 像素**，且**總像素不得超過 1,056,768**。違反時分別回 `'width'/'height' must be at least 768 pixels` 與 `Invalid dimensions WxH: total pixel count (N) exceeds the maximum of 1056768`。
 >
-> 先前這裡列的 `1536x1024` 與 `1024x1536` 都是 1,572,864 像素，**超過上限、一定會被拒**——三個尺寸裡有兩個從來就不能用。現在列的五個（`1024x1024`／`1366x768`／`768x1366`／`1152x896`／`896x1152`）都逐一實測確認可用，定義在 `_MAI_IMAGE_SIZES`。三個型號共用同一組尺寸，也都不支援 `ref_strength`。
+> 兩條限制**互相獨立**，只檢查總像素會誤判：`767x1024` 的總像素只有 785,408、遠低於上限，照樣因為短邊不足被拒。先前這裡列的 `1536x1024` 與 `1024x1536` 都是 1,572,864 像素，**超過上限、一定會被拒**——三個尺寸裡有兩個從來就不能用。
+>
+> **上游還會把尺寸往下對齊到 16 的倍數。** 實測請求 `1366x768`（Azure 官方文件自己舉的例子）拿回來的是 **1360x768**——這是讀 PNG header 確認的，不是看回應欄位；回應本身不會提示尺寸被改過。所以 `_MAI_IMAGE_SIZES` 直接登記對齊後的 `1360x768`／`768x1360`（實測上游照收，且輸出與請求完全相符），使用者選什麼就拿到什麼。其餘三個尺寸本來就是 16 的倍數，不受影響。
+>
+> 現在列的五個（`1024x1024`／`1360x768`／`768x1360`／`1152x896`／`896x1152`）都逐一實測確認可用，定義在 `_MAI_IMAGE_SIZES`。三個型號共用同一組尺寸，也都不支援 `ref_strength`。
 
 **GPT Image（文生圖 + 圖像編輯，尺寸格式為 `WIDTHxHEIGHT`）**
 
@@ -399,7 +403,13 @@ python app.py
 >
 > **Seedance 不接受 `negative_prompt` 與 `prompt_extend`。** 閘道 doubao adaptor 的請求結構裡沒有這兩個欄位，文字內容只用到 `prompt`；`metadata` 是整包 unmarshal 進結構、對不上的鍵直接丟棄，所以這兩個控制項對 Seedance 是純裝飾。已用 `no_negative_prompt`／`no_prompt_extend` 標記，前端選到時整組隱藏並清空值（`memory.md` 第 6 條：UI 不要顯示沒有作用的控制項）。
 >
-> ⚠️ **以上兩點都是讀閘道 Go 原始碼推斷的，未經實測**——屬於 `memory.md` 4d 的第④類「拿間接證據當行為證據」，而本專案在 `wan2.7` 的 `max_ref` 上正是這樣栽過（依 Go struct 寫成 2、實測是 9）。影片生成單價高，這次刻意不做多次取樣驗證。**配音實際會不會出聲、關掉是否真的折價，仍待驗證。**
+> **驗證狀態（一半已驗、一半未驗，不要混為一談）**：
+>
+> - ✅ **「關閉」那半已由閘道端實測**（📄 轉述自 `nen-ai-platform` session，2026-08-12，正式站）：送 `generate_audio: false` 參數確實送達（上游任務物件原樣回吐 `false`），產出的 mp4 用 `ffprobe` 檢查只有一條 h264 stream、**沒有 audio track**。
+> - ⚠️ **「開啟後真的會出聲」那半仍未驗證。** 影片生成單價高，依使用者指示暫不測試。
+> - ⚠️ 「上游預設為 `true`」這點仍是讀閘道 Go 原始碼推斷的，屬於 `memory.md` 4d 的第④類「拿間接證據當行為證據」——本專案在 `wan2.7` 的 `max_ref` 上正是這樣栽過（依 Go struct 寫成 2、實測是 9）。
+>
+> **計費：只有 `bytedance-seedance-1.5-pro` 有無聲折扣（×0.5）。** Dreamina Seedance 2.0 與 2.5 在閘道的 `silentVideoRatioMap` 裡是**刻意沒列**的（官方定價沒有音訊維度），所以這兩代不論開不開配音，價錢都一樣。
 >
 > **上游支援但平台未送出的 Seedance 參數**（同樣來自 adaptor 結構，未實測）：`camera_fixed`（2.5 實測回 `InvalidParameter`）、`frames`、`output_format`（mp4/mov，僅 2.5）、`priority`（0–9）、`return_last_frame`、`draft`（僅 1.5-pro）、`omni_reference_task_type`（2.5 的 auto/reference/edit/extend）、`callback_url`／`service_tier`／`execution_expires_after`／`safety_identifier`／`tools`。另有兩個逃生門：`metadata.content` 可直接覆寫整個 content 陣列、`metadata.image_role` 可指定參考圖角色。
 >

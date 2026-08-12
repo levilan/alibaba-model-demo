@@ -8,6 +8,9 @@
 
 ## 2026-08-12
 
+- fix：**MAI Image 的 `1366x768` 從來沒有真的產出 1366x768**。閘道端 session 同步發現「上游會把尺寸往下對齊到 16 的倍數」，我獨立複驗確認：請求 `1366x768`（Azure 官方文件自己舉的例子）實際拿到 **1360x768**，讀 PNG header 確認、回應本身完全不提示尺寸被改過。`_MAI_IMAGE_SIZES` 改成直接登記對齊後的 `1360x768`／`768x1360`（實測上游照收、輸出與請求完全相符），使用者選什麼就拿到什麼。其餘三個尺寸（`1024x1024`／`1152x896`／`896x1152`）本來就是 16 的倍數，不受影響。
+- docs：MAI 的兩條尺寸限制補上「**互相獨立**」這點——`767x1024` 總像素只有 785,408、遠低於 1,056,768 上限，照樣因為短邊不足被拒。只檢查總像素會誤判。
+- docs：**Seedance 配音的驗證狀態更新成一半已驗**。📄 閘道端 session 在正式站實測過「關閉」那半：`generate_audio: false` 確實送達（上游任務物件原樣回吐 `false`），產出 mp4 用 `ffprobe` 檢查只有一條 h264 stream、沒有 audio track。⚠️「開啟後真的會出聲」那半仍未驗證。另確認 **2.0 / 2.5 不論開不開配音價錢都一樣**（閘道的 `silentVideoRatioMap` 只列了 `bytedance-seedance-1.5-pro`，官方定價沒有音訊維度）。
 - fix：**Seedance 的配音開關先前被鎖死在關閉**。所有 Seedance 型號原本標 `audio: False`，前端不但隱藏開關、還會**強制把勾選狀態設成 `false`**（`onVidModelChange`），於是每一次請求都明確送出 `metadata.generate_audio=false`；而上游這個欄位預設是 `true`，等於平台主動把本來會有的聲音關掉，使用者還無從開啟。送出的管線其實早就接好了——`_apply_audio_flag()` 從一開始就把 Seedance 專用的 `generate_audio` 帶上，缺的只是 MODELS 的旗標。改成 `audio: True` 把控制權交還使用者，**預設維持不勾選**（依使用者指定「有需要再開」；無聲對 `bytedance-seedance-1.5-pro` 另有 0.5× 折扣）。
 - fix（UI）：**選到 Seedance 時隱藏 Negative Prompt 與 Prompt Extend**。閘道 doubao adaptor 的請求結構裡沒有這兩個欄位，文字內容只用到 `prompt`，`metadata` 對不上的鍵直接丟棄——這兩個控制項對 Seedance 是純裝飾。新增 `no_negative_prompt`／`no_prompt_extend` 兩個 MODELS 旗標，前端據此整組隱藏並清空值，避免隱藏後仍把值送出去（`memory.md` 第 6 條）。
 - ⚠️ **上面兩項都是讀閘道 Go 原始碼推斷的，未經實測**——屬於 `memory.md` 4d 第④類「拿間接證據當行為證據」，本專案在 `wan2.7` 的 `max_ref` 上正是這樣栽過。影片單價高，依使用者指示這次不做取樣驗證。**配音實際會不會出聲、關掉是否真的折價，仍待驗證。**
