@@ -765,6 +765,68 @@ function estimateVideoTokenCost(modelId, resolution, seconds) {
     return tokens / 1e6 * p.output * ratio;       // input/output 同價，用 output 即可
 }
 
+// ── 影片模型的官方每秒單價（USD / 秒）──────────────────────────────────────────
+// 影片本來就是按秒計費的，所以 UI 一律顯示「每秒」而不是「每次」。
+//
+// ⚠️ 這裡放的是**各廠商的官方定價**，不是從平台的計費倍率反推的。理由：倍率是
+// 「基準價 × 解析度倍率 × 秒數 × …」層層相乘的結果，要從中還原出每秒單價得先知道
+// 基準價對應哪一檔解析度、以及秒數有沒有被乘進去——那是一連串看不見的假設，錯了
+// 也不會有任何徵兆。官方定價是可以直接對照查證的單一數字。
+//
+// 音訊會影響價格的兩家已標在下面。沒有列在這裡的模型（gemini-omni）走 token 計費、
+// 且長度由模型自己決定，沒有「每秒」這個概念，維持原本的顯示。
+const _VIDEO_SEC_PRICE = {
+    // 萬相 3.0（all-in-one）：480P $0.05 / 720P $0.10 / 1080P $0.20
+    'wan3.0-video':     { '480P': 0.05, '720P': 0.10, '1080P': 0.20 },
+    // 萬相 2.7 全系列：720P $0.10 / 1080P $0.15
+    'wan2.7-t2v':       { '720P': 0.10, '1080P': 0.15 },
+    'wan2.7-i2v':       { '720P': 0.10, '1080P': 0.15 },
+    'wan2.7-r2v':       { '720P': 0.10, '1080P': 0.15 },
+    'wan2.7-videoedit': { '720P': 0.10, '1080P': 0.15 },
+    // 萬相 2.6 t2v/r2v：同 2.7
+    'wan2.6-t2v':       { '720P': 0.10, '1080P': 0.15 },
+    'wan2.6-r2v':       { '720P': 0.10, '1080P': 0.15 },
+    // 萬相 2.6 i2v 系列：標示價含音訊，無聲減半
+    'wan2.6-i2v':       { '720P': 0.05, '1080P': 0.075, _noAudioHalf: true },
+    'wan2.6-i2v-flash': { '720P': 0.05, '1080P': 0.075, _noAudioHalf: true },
+    'wan2.6-r2v-flash': { '720P': 0.05, '1080P': 0.075 },
+    // 萬相 2.2 動作動畫：固定 720P 輸出，依服務模式（wan-std / wan-pro）不同價
+    'wan2.2-animate-move': { _byMode: { 'wan-std': 0.12, 'wan-pro': 0.18 } },
+    'wan2.2-animate-mix':  { _byMode: { 'wan-std': 0.18, 'wan-pro': 0.26 } },
+    // HappyHorse
+    'happyhorse-1.0-t2v':        { '720P': 0.14, '1080P': 0.24 },
+    'happyhorse-1.0-i2v':        { '720P': 0.14, '1080P': 0.24 },
+    'happyhorse-1.0-r2v':        { '720P': 0.14, '1080P': 0.24 },
+    'happyhorse-1.0-video-edit': { '720P': 0.14, '1080P': 0.24 },
+    'happyhorse-1.1-t2v':        { '720P': 0.14, '1080P': 0.18 },
+    'happyhorse-1.1-i2v':        { '720P': 0.14, '1080P': 0.18 },
+    'happyhorse-1.1-r2v':        { '720P': 0.14, '1080P': 0.18 },
+    // Veo（Google 官方定價）：標示的是「純影片」價，含配音另計，見 _withAudio
+    'veo-3.1-generate-001':      { '720P': 0.20, '1080P': 0.20, '4K': 0.40,
+                                   _withAudio: { '720P': 0.40, '1080P': 0.40, '4K': 0.60 } },
+    'veo-3.1-fast-generate-001': { '720P': 0.08, '1080P': 0.10, '4K': 0.25,
+                                   _withAudio: { '720P': 0.10, '1080P': 0.12, '4K': 0.30 } },
+    // Lite 不支援配音、也沒有 4K
+    'veo-3.1-lite-generate-001': { '720P': 0.03, '1080P': 0.05 },
+};
+
+// 回傳每秒單價，查不到就回 null（呼叫端會退回原本的顯示方式）
+function videoPerSecondPrice(modelId, resolution, opts) {
+    const o = opts || {};
+    const t = _VIDEO_SEC_PRICE[modelId];
+    if (t) {
+        if (t._byMode) return t._byMode[o.mode] ?? Object.values(t._byMode)[0];
+        if (o.audio && t._withAudio && t._withAudio[resolution] != null) return t._withAudio[resolution];
+        let v = t[resolution];
+        if (v == null) return null;
+        if (t._noAudioHalf && o.audio === false) v = v / 2;
+        return v;
+    }
+    // Seedance 沒有公開的每秒價表，但它的 token 公式我們自己驗證過，換算結果跟
+    // 官方每秒單價完全相符（見下方 estimateVideoPerSecond 的註解），所以用算的
+    return estimateVideoPerSecond(modelId, resolution);
+}
+
 // 每秒單價（USD）。用**整整 24 幀**算，而不是把 seconds=1 丟進 estimateVideoTokenCost()
 // ——那條公式的幀數是 `秒數 × 24 + 1`，多出來的那 1 幀是整支影片只算一次的固定開銷，
 // 拿去當每秒費率會高估。
@@ -791,13 +853,20 @@ const PRICE_BASELINE_RESOLUTION = '720P';
 function formatPriceSuffix(modelId, resolution) {
     const p = pricingMap[modelId];
     if (!p) return '';
-    if (p.type === 'fixed') return ` ・ $${formatUsd(p.price)}/次`;
-    // 影片模型按 token 計費時，改成換算成**每秒**單價。先前是換算成「這一次大約多少錢」
-    // （例如「約 $0.2614/次（720P 5秒）」），但那個數字會跟著時長 slider 一直跳，而且
-    // 「/次」讓人以為是固定價；影片本來就是按秒計費，每秒單價才是穩定、可跨模型比較的資訊。
+    // 影片模型優先用官方每秒單價（含按次計費登記的那些——它們的 model_price 其實是
+    // 每秒基準價，顯示成「/次」會嚴重低估：例如 HappyHorse 標 $0.02 但 720P 官方是
+    // $0.14/秒，一支 5 秒的片子差 35 倍）
     const res = resolution || document.getElementById('videoResolution')?.value;
-    const perSec = estimateVideoPerSecond(modelId, res);
-    if (perSec) return ` ・ 約 $${formatUsd(Number(perSec.toFixed(4)))}/秒（${res}）`;
+    const perSec = videoPerSecondPrice(modelId, res, {
+        audio: document.getElementById('vidAudio')?.checked,
+        mode: document.getElementById('videoAnimateMode')?.value,
+    });
+    if (perSec != null) {
+        // 動作動畫固定 720P 輸出、UI 上根本沒有解析度選單，標上解析度只會誤導
+        const byMode = !!_VIDEO_SEC_PRICE[modelId]?._byMode;
+        return ` ・ 約 $${formatUsd(Number(perSec.toFixed(4)))}/秒${byMode ? '' : `（${res}）`}`;
+    }
+    if (p.type === 'fixed') return ` ・ $${formatUsd(p.price)}/次`;
     return ` ・ $${formatUsd(p.input)}→$${formatUsd(p.output)}/1M`;
 }
 
@@ -1157,21 +1226,6 @@ function onI2VModeChange() {
 }
 
 // T2V 自動配音開關 → 展開/收合上傳區
-function onVidAudioToggle(cb) {
-    const zone = document.getElementById('vidT2VAudioZone');
-    if (zone) zone.style.display = cb.checked ? '' : 'none';
-    if (!cb.checked) {
-        const inp = document.getElementById('vidT2VAudioInput');
-        if (inp) inp.value = '';
-        const hint = document.getElementById('vidT2VAudioHint');
-        if (hint) hint.innerHTML = '上傳音訊（可選）<br><span style="font-size:11px;color:var(--text-muted)">留空由模型自動配音</span>';
-    }
-}
-function onT2VAudioUpload(e) {
-    const f = e.target.files[0];
-    const hint = document.getElementById('vidT2VAudioHint');
-    if (f && hint) hint.innerHTML = `<strong>${f.name}</strong><br><span style="font-size:11px;color:var(--text-muted)">${(f.size/1024).toFixed(0)} KB</span>`;
-}
 
 // 音訊 / 片段上傳名稱顯示
 function onAudioUpload(e) {
@@ -1187,6 +1241,9 @@ function onVidAudioToggle(cb) {
         const hint = document.getElementById('vidT2VAudioHint');
         if (hint) hint.innerHTML = '上傳音訊（可選）<br><span style="font-size:11px;color:var(--text-muted)">留空由模型自動配音</span>';
     }
+    // 配音會改變單價（Veo 含配音是純影片的兩倍；萬相 2.6 i2v 關掉配音減半），
+    // 所以切換後要重算價格提示
+    updateModelPriceHint('videoModelPrice', document.getElementById('videoModel').value);
 }
 function onT2VAudioUpload(e) {
     const f = e.target.files[0];
