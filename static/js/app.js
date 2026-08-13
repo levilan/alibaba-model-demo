@@ -675,11 +675,28 @@ function addCost(amount) {
 // ——不是只丟一個數字，使用者要能判斷這個估算合不合理。
 const COST_CONFIRM_THRESHOLD = 1.0;   // USD
 
+// 一次影片生成的預估花費（USD）。送出前的確認與「本次花費」累加共用這一個入口，
+// 兩邊才不會各算各的。
+//
+// ⚠️ 先前是「按次計費的就加 model_price」——那是錯的。閘道的 ali task adaptor 會把
+// `seconds` 當成計費倍率乘進額度（見 EstimateBilling()），所以 model_price 其實是
+// **每秒基準價**。HappyHorse 一支 10 秒 1080P 實際約 $1.80，先前只累加 $0.02（90 倍）；
+// Veo 則因為是 token 型又查不到尺寸表，直接完全沒被計入。
+function videoCostFor(modelId, costInfo) {
+    const res = costInfo?.resolution, sec = costInfo?.seconds;
+    // Seedance 優先用自己驗證過的 token 公式：它的幀數是「秒數 × 24 + 1」，多出來的
+    // 那 1 幀是整支影片一次性的開銷，比「每秒單價 × 秒數」精確
+    const byTokens = estimateVideoTokenCost(modelId, res, sec);
+    if (byTokens) return byTokens;
+    const perSec = videoPerSecondPrice(modelId, res, { audio: costInfo?.audio, mode: costInfo?.mode });
+    if (perSec != null && sec) return perSec * sec;
+    // 都算不出來就不計——寧可少算，也不要顯示一個編出來的數字
+    return null;
+}
+
 function estimateVideoCost(modelId, costInfo) {
-    const p = pricingMap[modelId];
-    if (!p) return null;
-    if (p.type === 'fixed') return p.price;
-    return estimateVideoTokenCost(modelId, costInfo?.resolution, costInfo?.seconds);
+    if (!pricingMap[modelId]) return null;
+    return videoCostFor(modelId, costInfo);
 }
 
 // 回傳 true 表示可以送出。算不出價格時**不攔**——寧可放行，也不要用一個猜測的
@@ -708,12 +725,9 @@ function addImageCost(modelId, count, usage) {
 }
 
 function addVideoCost(modelId, costInfo) {
-    const p = pricingMap[modelId];
-    if (!p) return;
-    if (p.type === 'fixed') { addCost(p.price); return; }
-    const est = estimateVideoTokenCost(modelId, costInfo?.resolution, costInfo?.seconds);
+    if (!pricingMap[modelId]) return;
+    const est = videoCostFor(modelId, costInfo);
     if (est) addCost(est);
-    // 算不出來就不計——寧可少算也不要顯示一個編出來的數字
 }
 
 function addFixedCost(modelId, count = 1) {
@@ -1909,7 +1923,8 @@ async function sendVideo() {
 
     // 昂貴任務先確認（門檻與理由見 confirmIfExpensive）。放在按鈕鎖定之前，
     // 使用者取消時不需要再把按鈕解鎖
-    if (!confirmIfExpensive(model, { resolution, seconds: duration })) return;
+    if (!confirmIfExpensive(model, { resolution, seconds: duration, audio,
+                                     mode: document.getElementById('videoAnimateMode')?.value })) return;
 
     const btn = document.getElementById('videoSendBtn');
     btn.disabled = true;
@@ -2015,13 +2030,16 @@ async function sendVideo() {
         }
 
         if (res.success && res.task_id) {
-            addVideoTask(res.task_id, model, prompt, res.status, { resolution, seconds: duration });
+            addVideoTask(res.task_id, model, prompt, res.status,
+                         { resolution, seconds: duration, audio,
+                           mode: document.getElementById('videoAnimateMode')?.value });
             toast('任務已提交，輪詢中...', 'info');
         } else if (res.success && res.video_url) {
             addVideoResult(model, prompt, res.local_path || res.video_url, false, fmtElapsed(Date.now() - startTime));
             TaskHistory.save('video', model, prompt, res.local_path || res.video_url);
             toast('影片生成完成！', 'success');
-            addVideoCost(model, { resolution, seconds: duration });
+            addVideoCost(model, { resolution, seconds: duration, audio,
+                                  mode: document.getElementById('videoAnimateMode')?.value });
         } else {
             toast(res.error || '生成失敗', 'error');
             console.error('Video generation error:', res);
