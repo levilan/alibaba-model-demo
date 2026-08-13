@@ -765,18 +765,39 @@ function estimateVideoTokenCost(modelId, resolution, seconds) {
     return tokens / 1e6 * p.output * ratio;       // input/output 同價，用 output 即可
 }
 
-function formatPriceSuffix(modelId) {
+// 每秒單價（USD）。用**整整 24 幀**算，而不是把 seconds=1 丟進 estimateVideoTokenCost()
+// ——那條公式的幀數是 `秒數 × 24 + 1`，多出來的那 1 幀是整支影片只算一次的固定開銷，
+// 拿去當每秒費率會高估。
+//
+// 這個算法對得上兩個已知的官方每秒單價（720p）：
+//   dreamina-seedance-2.5  1280×720×24/1024 = 21,600 tokens × $10.7/1M = $0.2311/秒 ✓
+//   dreamina-seedance-2.0  同上 tokens × $7.0/1M              = $0.1512/秒 ✓
+// 兩個都跟 README 記錄的官方數字完全相符，所以這條換算是可信的。
+function estimateVideoPerSecond(modelId, resolution) {
+    const p = pricingMap[modelId];
+    if (!p || p.type !== 'token') return null;
+    const dims = _SEEDANCE_DIMS[modelId]?.[resolution];
+    if (!dims) return null;
+    const tokensPerSec = dims[0] * dims[1] * 24 / 1024;
+    const ratio = _SEEDANCE_RES_RATIO[resolution] || 1;
+    return tokensPerSec / 1e6 * p.output * ratio;
+}
+
+// resolution 省略時用目前選到的解析度（模型旁的即時提示用），傳入固定值則用該值
+// （下拉選單用）——選單是拿來**比較模型**的，每個項目都用同一個基準解析度才比得出
+// 高下；先前是用「建立選單當下」的解析度，等於基準隨使用者的操作順序而變。
+const PRICE_BASELINE_RESOLUTION = '720P';
+
+function formatPriceSuffix(modelId, resolution) {
     const p = pricingMap[modelId];
     if (!p) return '';
     if (p.type === 'fixed') return ` ・ $${formatUsd(p.price)}/次`;
-    // 影片模型按 token 計費時，改成用目前選到的解析度與時長換算成「這一次大約多少錢」，
-    // 那才是使用者看得懂的資訊；換算不出來才退回原本的每 1M 顯示
-    if (_SEEDANCE_DIMS[modelId]) {
-        const res = document.getElementById('videoResolution')?.value;
-        const sec = parseInt(document.getElementById('videoDuration')?.value) || 0;
-        const est = estimateVideoTokenCost(modelId, res, sec);
-        if (est) return ` ・ 約 $${formatUsd(Number(est.toFixed(4)))}/次（${res} ${sec}秒）`;
-    }
+    // 影片模型按 token 計費時，改成換算成**每秒**單價。先前是換算成「這一次大約多少錢」
+    // （例如「約 $0.2614/次（720P 5秒）」），但那個數字會跟著時長 slider 一直跳，而且
+    // 「/次」讓人以為是固定價；影片本來就是按秒計費，每秒單價才是穩定、可跨模型比較的資訊。
+    const res = resolution || document.getElementById('videoResolution')?.value;
+    const perSec = estimateVideoPerSecond(modelId, res);
+    if (perSec) return ` ・ 約 $${formatUsd(Number(perSec.toFixed(4)))}/秒（${res}）`;
     return ` ・ $${formatUsd(p.input)}→$${formatUsd(p.output)}/1M`;
 }
 
@@ -803,7 +824,7 @@ function populateSelect(id, list, filterFn = null) {
             group = m.group;
         }
         sel.lastElementChild.appendChild(
-            Object.assign(document.createElement('option'), { value: m.id, textContent: `${m.name} — ${m.desc}${formatPriceSuffix(m.id)}` })
+            Object.assign(document.createElement('option'), { value: m.id, textContent: `${m.name} — ${m.desc}${formatPriceSuffix(m.id, PRICE_BASELINE_RESOLUTION)}` })
         );
     });
     // 只有新清單裡真的還有這個值才恢復，否則保持瀏覽器預設行為（自動選第一項）——
