@@ -304,6 +304,23 @@ MODELS = {
         {"id": "dola-seed-sc",       "name": "Seed SC",          "group": "ByteDance", "desc": "字節跳動豆包，一般對話", "thinking": False},
         {"id": "dola-seed-2.0-lite", "name": "Seed 2.0 Lite",    "group": "ByteDance", "desc": "字節跳動豆包，輕量推理", "thinking": False},
         {"id": "dola-seed-2.0-pro",  "name": "Seed 2.0 Pro",     "group": "ByteDance", "desc": "字節跳動豆包，旗艦推理", "thinking": False},
+        # ── 月之暗面 Kimi（走阿里百煉直供，僅華北2/北京地域）──────────────────
+        # 純思考模型，**思考關不掉**：送 enable_thinking:false 或 reasoning_effort:none
+        # 都會 400。而且錯誤訊息會誤導——它回的是
+        #   "invalid temperature: only 0.6 is allowed for this model"
+        # 但我們根本沒送 temperature（實測 temperature=0.7 反而正常）。真正的原因是
+        # 閘道在關閉思考時會改送上游不接受的 temperature，所以 thinking 維持 False
+        # （不給開關），並且**完全不送 enable_thinking**（見 _NO_ENABLE_THINKING_MODELS）。
+        #
+        # reasoning_effort：max/high/medium/low/minimal 都收，只有 none 會 400。但實測
+        # 各檔的思考長度**分不出來**（每檔 3 次：minimal 43~235、medium 122~384，區間
+        # 大幅重疊），官方也只寫支援 max，所以不給強度選單——寧可不給，也不要給一個
+        # 看不出有沒有作用的控制項。
+        #
+        # ⚠️ **不要標 vision。** 官方支援 Text/Image/Video 輸入，但**只接受公網 URL、
+        # 不接受 Base64**（閘道的 ali 通道是原樣轉發、不做轉存），而本平台的視覺輸入
+        # 送的是 data URI。標了會讓使用者一上傳圖就失敗、錯誤訊息還看不出根因。
+        {"id": "kimi/kimi-k3", "name": "Kimi K3", "group": "月之暗面", "desc": "深度推理，百萬字上下文", "thinking": False},
         # ── Claude（實測過 enable_thinking 與 Anthropic 原生 thinking 參數在這個
         #    網關上都不會回傳任何思考過程，thinking 一律維持 False；temperature/
         #    top_p 也不能送，Bedrock 後端會直接回 400 "temperature is deprecated"）──
@@ -344,6 +361,11 @@ MODELS = {
         #   gemini-2.5-flash-lite 思考關得掉，但過程拿不到（送 includeThoughts 直接
         #                         400），所以有開關、但不會顯示思考區塊
         {"id": "gemini-3.1-pro-preview",      "name": "Gemini 3.1 Pro Preview",      "group": "Gemini", "desc": "旗艦，最強推理",   "thinking": True},
+        # gemini-3.7-flash：思考**關不掉**，但跟 2.5-pro 的失敗方式不同——2.5-pro 送
+        # thinkingBudget=0 會直接 400，3.7-flash 是**收下但照樣思考**（兩種題目各 5 次：
+        # 需推理題 5/5、簡單題 4/5 仍有 thoughtsTokenCount，budget=0 那次甚至比不帶
+        # 設定還多）。所以不給思考開關，但過程看得到（includeThoughts 正常）。
+        {"id": "gemini-3.7-flash",            "name": "Gemini 3.7 Flash",            "group": "Gemini", "desc": "最新均衡模型",     "thinking": False},
         {"id": "gemini-3.6-flash",            "name": "Gemini 3.6 Flash",            "group": "Gemini", "desc": "新一代均衡模型",   "thinking": True},
         {"id": "gemini-3.5-flash",            "name": "Gemini 3.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
         {"id": "gemini-3-flash-preview",      "name": "Gemini 3 Flash Preview",      "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
@@ -1168,9 +1190,14 @@ async def ws_omni_proxy(websocket: WebSocket, api_key: str, model: str = "qwen3.
 _GEMINI_NATIVE_TEXT_MODELS = {
     m["id"] for m in MODELS["text"] if m["id"].startswith("gemini-")
 }
-# gemini-2.5-pro 不接受 thinkingBudget=0（回 "The model does not support setting
-# thinking_budget to 0"）——它的思考關不掉，只能顯示過程
-_GEMINI_NO_THINKING_OFF = {"gemini-2.5-pro"}
+# 這些型號的思考**關不掉**，只能顯示過程。兩種失敗方式都算在內：
+#   gemini-2.5-pro    送 thinkingBudget=0 直接 400（"The model does not support
+#                     setting thinking_budget to 0"）——會報錯，看得出來
+#   gemini-3.7-flash  送 thinkingBudget=0 **收下但照樣思考**，完全不報錯。實測兩種
+#                     題目各 5 次：需推理題 5/5、簡單題 4/5 仍有 thoughtsTokenCount，
+#                     而且 budget=0 的量（86~158）跟不帶設定（139~170）是同一個級別。
+#                     這種靜默忽略比報錯更危險——不實測就會以為開關有效。
+_GEMINI_NO_THINKING_OFF = {"gemini-2.5-pro", "gemini-3.7-flash"}
 # gemini-2.5-flash-lite 不接受 includeThoughts（回 "Thinking_config.include_thoughts
 # is not supported"）——它的思考可以關掉，但過程拿不到
 _GEMINI_NO_INCLUDE_THOUGHTS = {"gemini-2.5-flash-lite"}
@@ -1178,6 +1205,16 @@ _GEMINI_NO_INCLUDE_THOUGHTS = {"gemini-2.5-flash-lite"}
 # 要送 thinkingBudget: -1（動態預算）才會真的啟動——否則「思考開」那一檔會完全沒有
 # 作用。其餘型號預設就會思考，只要 includeThoughts 把過程要出來即可。
 _GEMINI_THINKING_OFF_BY_DEFAULT = {"gemini-2.5-flash-lite", "gemini-3.5-flash-lite"}
+
+# 這些模型**連 enable_thinking 欄位都不能送**（送 false 會 400），所以整個欄位略過，
+# 不是送 True 了事。GPT 系列是另一個原因（送了回 "Unknown parameter"），寫在送出處。
+#
+# kimi/kimi-k3：純思考模型，送 enable_thinking:false 回
+#   "invalid temperature: only 0.6 is allowed for this model"
+# ——錯誤訊息指向 temperature，但我們沒送 temperature（實測 temperature=0.7 正常），
+# 真正的原因是閘道關閉思考時會改送上游不接受的取樣參數。這個模型的 thinking 旗標是
+# False，前端因此會送 enable_thinking:false，不排除就會**每一次呼叫都失敗**。
+_NO_ENABLE_THINKING_MODELS = {"kimi/kimi-k3"}
 
 
 def _build_gemini_body(data: "TextGenerateRequest", messages: list) -> dict:
@@ -1357,7 +1394,7 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
     # 其餘家族（含 Claude/Gemini，實測過送 enable_thinking:false 不會報錯，只是沒
     # 有效果）一律明確帶上 True 或 False。
     extra_body = {}
-    if not data.model.startswith("gpt-"):
+    if not data.model.startswith("gpt-") and data.model not in _NO_ENABLE_THINKING_MODELS:
         extra_body["enable_thinking"] = data.enable_thinking
 
     create_kwargs = dict(

@@ -165,6 +165,35 @@ def test_gemini_thinking_off_by_default_needs_budget():
     assert "gemini-3.5-flash-lite" in app._GEMINI_THINKING_OFF_BY_DEFAULT
 
 
+def test_kimi_must_not_receive_enable_thinking():
+    """kimi/kimi-k3 送 enable_thinking:false 會 400，且錯誤訊息指向 temperature。
+
+    起因：它是純思考模型、MODELS 標 thinking=False，前端因此會送 enable_thinking:false。
+    後端原本對所有非 GPT 模型一律帶這個欄位，不排除就是**每一次呼叫都失敗**。
+    錯誤訊息是 "invalid temperature: only 0.6 is allowed for this model"——完全沒有
+    提到 thinking，光看訊息會往 temperature 的方向查（實測 temperature=0.7 反而正常）。
+    """
+    assert "kimi/kimi-k3" in app._NO_ENABLE_THINKING_MODELS
+
+
+def test_gemini_37_flash_thinking_cannot_be_turned_off():
+    """gemini-3.7-flash 送 thinkingBudget=0 會**收下但照樣思考**，不報錯。
+
+    跟 gemini-2.5-pro 同一個集合、但失敗方式不同：2.5-pro 直接 400，3.7-flash 是
+    靜默忽略（兩種題目各 5 次，需推理題 5/5、簡單題 4/5 仍有 thoughtsTokenCount）。
+    靜默忽略比報錯危險——不實測就會以為開關有效。
+    """
+    assert "gemini-3.7-flash" in app._GEMINI_NO_THINKING_OFF
+    assert "gemini-3.7-flash" not in app._GEMINI_NO_INCLUDE_THOUGHTS, "它的思考過程看得到"
+    ids = {m["id"] for m in app.MODELS["text"]}
+    assert "gemini-3.7-flash" in ids and "kimi/kimi-k3" in ids
+    meta = {m["id"]: m for m in app.MODELS["text"]}
+    assert meta["gemini-3.7-flash"]["thinking"] is False, "關不掉就不該給開關"
+    assert meta["kimi/kimi-k3"]["thinking"] is False, "純思考模型，關不掉"
+    assert "vision" not in meta["kimi/kimi-k3"], \
+        "kimi 只接受公網 URL 的圖片，而平台送的是 data URI——標了 vision 會一上傳就失敗"
+
+
 def test_proxy_whitelist_covers_upstream_output_hosts():
     """白名單要涵蓋上游直接回傳產出網址的網域，否則 Canvas 接續會被擋。"""
     def allowed(host):
