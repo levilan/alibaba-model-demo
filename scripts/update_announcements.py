@@ -17,12 +17,16 @@
    寫錯任何一個都會影響整個站台。要寫入的 key 在程式碼裡寫死（`OPTION_KEY`），
    **沒有 CLI 旗標可以改**。
 
-⚠️ **這個 API 回報成功不代表真的寫進去了。** 實測遇過同一個 PUT 回
-   `{"success":true}` 但儲存值沒變，重送一次才生效。所以本腳本寫入後一律
-   **回讀比對**，不一致就重試、再不一致就報錯——只看 `success` 會把失敗當成功。
+⚠️ **這個 API 的寫入不是即時生效的，而且回報成功不代表已經生效。**
+   實測：PUT 回 `{"success":true}` 之後立刻回讀還是舊值，隔一段時間再讀就對了。
+   所以本腳本寫入後**輪詢回讀**（最多等 56 秒）才判定成敗。
 
-⚠️ 公開端點 `GET /api/status` 讀到的公告可能是**快取**，寫入後立刻讀會看到舊值。
-   要確認寫入結果請用認證端點 `/api/option/`（本腳本的做法）。
+   ⚠️ **一讀不符時不要重送 PUT。** 早期版本會重送，看起來「第二次才成功」，
+   其實是第二次的回讀剛好等到傳播完成、跟重送無關。這次的操作剛好是冪等的所以
+   沒出事，但同樣的寫法用在「附加一則」上就會重複新增。
+
+⚠️ 公開端點 `GET /api/status` 讀到的公告也可能是**快取**。要確認寫入結果請用
+   認證端點 `/api/option/`（本腳本的做法）。
 """
 from __future__ import annotations
 
@@ -32,6 +36,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 import httpx
@@ -104,28 +109,51 @@ def backup(items: list[dict]) -> Path:
     return path
 
 
-def write_items(items: list[dict]) -> None:
-    """寫入後**回讀比對**——這個 API 回 success 不代表真的寫進去了。"""
-    payload = json.dumps(items, ensure_ascii=False)
-    for attempt in (1, 2):
-        r = httpx.put(f"{BASE}/api/option/", headers=_headers(), timeout=60,
-                      json={"key": OPTION_KEY, "value": payload})
-        if r.status_code != 200:
-            sys.exit(f"寫入失敗 HTTP {r.status_code}：{r.text[:300]}")
-        try:
-            ok = r.json().get("success")
-        except Exception:
-            sys.exit(f"寫入回應不是 JSON：{r.text[:300]}")
-        if not ok:
-            sys.exit(f"寫入被拒：{r.json().get('message') or r.text[:300]}")
+# 回讀確認的等待節奏（秒）。這個 API 的寫入**不是即時生效的**：
+# 實測 backfill 那次，PUT 回 success 之後立刻讀還是舊值，隔幾分鐘再讀就對了。
+# 所以驗證要「等待重讀」，不能一讀不符就當失敗——更不能因此重送一次 PUT
+# （這次剛好是冪等所以沒事，但同樣的寫法用在「附加一則」上就會重複新增）。
+VERIFY_DELAYS = (0, 3, 8, 15, 30)
 
-        if read_items() == items:
-            print(f"✅ 已寫入並回讀確認（第 {attempt} 次嘗試）")
-            return
-        print(f"⚠️ 第 {attempt} 次寫入回報成功，但回讀的內容不一致"
-              + ("，重試一次…" if attempt == 1 else ""))
-    sys.exit("寫入後回讀仍然不一致，請到網頁後台確認目前狀態。備份檔在 "
-             f"{BACKUP_DIR}")
+
+def _verify(expected: list[dict]) -> bool:
+    """輪詢回讀直到與預期一致；全部等完仍不一致才回 False。"""
+    for i, delay in enumerate(VERIFY_DELAYS):
+        if delay:
+            time.sleep(delay)
+        if read_items() == expected:
+            waited = sum(VERIFY_DELAYS[:i + 1])
+            print(f"✅ 已寫入並回讀確認（等待 {waited} 秒）")
+            return True
+    return False
+
+
+def write_items(items: list[dict]) -> None:
+    """寫入後輪詢回讀確認。
+
+    ⚠️ 只 PUT 一次。這個 API 回 `success: true` 不代表值已經生效，但**重送並不會
+    讓它更快生效**——實測那次「重送才成功」其實是第二次的回讀剛好等到傳播完成，
+    不是重送起的作用。重送對非冪等的操作反而危險，所以這裡改成只送一次、耐心等。
+    """
+    payload = json.dumps(items, ensure_ascii=False)
+    r = httpx.put(f"{BASE}/api/option/", headers=_headers(), timeout=60,
+                  json={"key": OPTION_KEY, "value": payload})
+    if r.status_code != 200:
+        sys.exit(f"寫入失敗 HTTP {r.status_code}：{r.text[:300]}")
+    try:
+        ok = r.json().get("success")
+    except Exception:
+        sys.exit(f"寫入回應不是 JSON：{r.text[:300]}")
+    if not ok:
+        sys.exit(f"寫入被拒：{r.json().get('message') or r.text[:300]}")
+
+    if _verify(items):
+        return
+    sys.exit(
+        f"⚠️ 寫入回報成功，但等了 {sum(VERIFY_DELAYS)} 秒回讀仍然不一致。\n"
+        "**不要直接重跑**——這個 API 的寫入會延遲生效，很可能其實已經成功了。\n"
+        f"請先用 --show 再確認一次，或到網頁後台看。備份檔在 {BACKUP_DIR}"
+    )
 
 
 def to_english(items: list[dict]) -> list[dict]:
