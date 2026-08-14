@@ -190,8 +190,8 @@ def test_gemini_37_flash_thinking_cannot_be_turned_off():
     meta = {m["id"]: m for m in app.MODELS["text"]}
     assert meta["gemini-3.7-flash"]["thinking"] is False, "關不掉就不該給開關"
     assert meta["kimi/kimi-k3"]["thinking"] is False, "純思考模型，關不掉"
-    assert "vision" not in meta["kimi/kimi-k3"], \
-        "kimi 只接受公網 URL 的圖片，而平台送的是 data URI——標了 vision 會一上傳就失敗"
+    assert meta["kimi/kimi-k3"].get("vision") is True, \
+        "kimi 的 data URI 圖片輸入正式環境實測 9/9 可用（三種尺寸各 3 次）"
 
 
 def test_proxy_whitelist_covers_upstream_output_hosts():

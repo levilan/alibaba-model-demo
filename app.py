@@ -317,10 +317,14 @@ MODELS = {
         # 大幅重疊），官方也只寫支援 max，所以不給強度選單——寧可不給，也不要給一個
         # 看不出有沒有作用的控制項。
         #
-        # ⚠️ **不要標 vision。** 官方支援 Text/Image/Video 輸入，但**只接受公網 URL、
-        # 不接受 Base64**（閘道的 ali 通道是原樣轉發、不做轉存），而本平台的視覺輸入
-        # 送的是 data URI。標了會讓使用者一上傳圖就失敗、錯誤訊息還看不出根因。
-        {"id": "kimi/kimi-k3", "name": "Kimi K3", "group": "月之暗面", "desc": "深度推理，百萬字上下文", "thinking": False},
+        # 圖片輸入：**data URI 可用**（正式環境實測 9/9，三種尺寸各 3 次，都正確辨識
+        # 顏色，且 prompt_tokens 隨尺寸增長 120→211→377，證明圖真的被處理）。
+        # ⚠️ 這一條一度被寫成「只接受公網 URL、不接受 Base64」而沒有標 vision——
+        # 那是轉述閘道端的說法，對方後來自己複驗推翻了（他們原本那筆失敗是模型服務
+        # 剛開通時的短暫狀態，被推導成協定層級的限制）。這是「單一次失敗 ≠ 不支援」
+        # 的又一個實例，見 memory.md 4d。
+        # 影片輸入只有公網 URL 被驗過，data URI 未驗，所以不宣稱支援影片。
+        {"id": "kimi/kimi-k3", "name": "Kimi K3", "group": "月之暗面", "desc": "深度推理，百萬字上下文，支援看圖", "thinking": False, "vision": True},
         # ── Claude（實測過 enable_thinking 與 Anthropic 原生 thinking 參數在這個
         #    網關上都不會回傳任何思考過程，thinking 一律維持 False；temperature/
         #    top_p 也不能送，Bedrock 後端會直接回 400 "temperature is deprecated"）──

@@ -93,7 +93,7 @@ python app.py
 | gpt-5.6-terra / sol / luna | GPT 5.6 特化系列 | GPT | reasoning_effort |
 | gpt-5.5 / 5.4 / 5.4-mini / 5.4-nano / 5.2 / 5-mini | GPT 5.x 系列 | GPT | reasoning_effort |
 | gemini-3.7-flash 等 9 個 Gemini 模型 | Gemini 系列 | Gemini | thinkingConfig（走原生 API） |
-| kimi/kimi-k3 | Kimi K3 | 月之暗面 | 純思考，關不掉；回 reasoning_content |
+| kimi/kimi-k3 | Kimi K3 | 月之暗面 | 純思考，關不掉；回 reasoning_content（支援圖片輸入） |
 | grok-4.3 | Grok 4.3 | xAI Grok | reasoning_effort（5 段，支援看圖） |
 | grok-4-20-reasoning / -non-reasoning | xAI Grok | xAI Grok | reasoning_effort（僅 -20-reasoning 有效） |
 | grok-4-1-fast-reasoning / -non-reasoning | xAI Grok | xAI Grok | — |
