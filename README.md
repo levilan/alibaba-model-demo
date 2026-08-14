@@ -111,7 +111,7 @@ python app.py
 > |---|---|---|---|
 > | `gemini-3.1-pro-preview`、`3.6-flash`、`3.5-flash`、`3-flash-preview`、`2.5-flash` | ✓ | ✓ | 有 |
 > | `gemini-2.5-pro` | ✓ | ✗ `The model does not support setting thinking_budget to 0` | 無（關不掉，一律顯示過程） |
-> | `gemini-3.7-flash` | ✓ | ✗ **收下但照樣思考，完全不報錯** | 無（關不掉，一律顯示過程） |
+> | `gemini-3.7-flash` | ✓ | △ **大幅降低但不歸零** | 有 |
 > | `gemini-2.5-flash-lite` | ✗ `Thinking_config.include_thoughts is not supported` | ✓ | 有（但不顯示思考區塊） |
 >
 > 兩個 `flash-lite` 還有一個共同陷阱：它們的思考**預設是關的**，不帶 `thinkingConfig` 時 `thoughtsTokenCount` 欄位根本不出現。開關要送 `thinkingBudget: -1`（動態預算）才會真的啟動思考，否則那個開關會完全沒有作用（實測開/關都是 1 個 token）。這也是 `_GEMINI_THINKING_OFF_BY_DEFAULT` 這個集合存在的原因。

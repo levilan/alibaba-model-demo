@@ -365,11 +365,15 @@ MODELS = {
         #   gemini-2.5-flash-lite 思考關得掉，但過程拿不到（送 includeThoughts 直接
         #                         400），所以有開關、但不會顯示思考區塊
         {"id": "gemini-3.1-pro-preview",      "name": "Gemini 3.1 Pro Preview",      "group": "Gemini", "desc": "旗艦，最強推理",   "thinking": True},
-        # gemini-3.7-flash：思考**關不掉**，但跟 2.5-pro 的失敗方式不同——2.5-pro 送
-        # thinkingBudget=0 會直接 400，3.7-flash 是**收下但照樣思考**（兩種題目各 5 次：
-        # 需推理題 5/5、簡單題 4/5 仍有 thoughtsTokenCount，budget=0 那次甚至比不帶
-        # 設定還多）。所以不給思考開關，但過程看得到（includeThoughts 正常）。
-        {"id": "gemini-3.7-flash",            "name": "Gemini 3.7 Flash",            "group": "Gemini", "desc": "最新均衡模型",     "thinking": False},
+        # gemini-3.7-flash：thinkingBudget=0 **會大幅降低思考但不歸零**。
+        # ⚠️ 我一度寫成「關不掉、靜默忽略」——那是**只用一個提示詞**測出來的錯誤結論。
+        # 用會觸發大量思考的題目背對背重測（各 5 次，正式環境）才看得出來：
+        #     多步算術題   budget=0 → 76~94（中位 89）   不帶設定 → 180~294（中位 208）  完全不重疊
+        #     短句陷阱題   budget=0 → 0~158（中位 132）  不帶設定 → 121~183（中位 167）  重疊
+        # 陷阱題的基準思考量本來就低（~167），沒有下降空間，所以看不出差別。
+        # 結論：開關是有作用的（推理重的題目可省約一半 thinking token），因此給開關。
+        # 這是 memory.md 4d「樣本數解決雜訊，解決不了變因沒被控制」的第三個實例。
+        {"id": "gemini-3.7-flash",            "name": "Gemini 3.7 Flash",            "group": "Gemini", "desc": "最新均衡模型",     "thinking": True},
         {"id": "gemini-3.6-flash",            "name": "Gemini 3.6 Flash",            "group": "Gemini", "desc": "新一代均衡模型",   "thinking": True},
         {"id": "gemini-3.5-flash",            "name": "Gemini 3.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
         {"id": "gemini-3-flash-preview",      "name": "Gemini 3 Flash Preview",      "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
@@ -1197,11 +1201,10 @@ _GEMINI_NATIVE_TEXT_MODELS = {
 # 這些型號的思考**關不掉**，只能顯示過程。兩種失敗方式都算在內：
 #   gemini-2.5-pro    送 thinkingBudget=0 直接 400（"The model does not support
 #                     setting thinking_budget to 0"）——會報錯，看得出來
-#   gemini-3.7-flash  送 thinkingBudget=0 **收下但照樣思考**，完全不報錯。實測兩種
-#                     題目各 5 次：需推理題 5/5、簡單題 4/5 仍有 thoughtsTokenCount，
-#                     而且 budget=0 的量（86~158）跟不帶設定（139~170）是同一個級別。
-#                     這種靜默忽略比報錯更危險——不實測就會以為開關有效。
-_GEMINI_NO_THINKING_OFF = {"gemini-2.5-pro", "gemini-3.7-flash"}
+# ⚠️ gemini-3.7-flash 一度被加進這個集合，是錯的——見 MODELS 裡它那則註解。
+# 它的 thinkingBudget=0 有作用（推理重的題目 208 → 89），只是不會歸零；當初只用一個
+# 基準思考量偏低的提示詞測，才誤判成「沒有作用」。
+_GEMINI_NO_THINKING_OFF = {"gemini-2.5-pro"}
 # gemini-2.5-flash-lite 不接受 includeThoughts（回 "Thinking_config.include_thoughts
 # is not supported"）——它的思考可以關掉，但過程拿不到
 _GEMINI_NO_INCLUDE_THOUGHTS = {"gemini-2.5-flash-lite"}

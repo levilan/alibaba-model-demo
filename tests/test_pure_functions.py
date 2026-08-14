@@ -176,19 +176,22 @@ def test_kimi_must_not_receive_enable_thinking():
     assert "kimi/kimi-k3" in app._NO_ENABLE_THINKING_MODELS
 
 
-def test_gemini_37_flash_thinking_cannot_be_turned_off():
-    """gemini-3.7-flash 送 thinkingBudget=0 會**收下但照樣思考**，不報錯。
+def test_gemini_37_flash_thinking_toggle_is_effective():
+    """gemini-3.7-flash 的 thinkingBudget=0 有作用，所以要給開關。
 
-    跟 gemini-2.5-pro 同一個集合、但失敗方式不同：2.5-pro 直接 400，3.7-flash 是
-    靜默忽略（兩種題目各 5 次，需推理題 5/5、簡單題 4/5 仍有 thoughtsTokenCount）。
-    靜默忽略比報錯危險——不實測就會以為開關有效。
+    起因：一度誤判成「關不掉、靜默忽略」而不給開關——那是**只用一個提示詞**測出來的。
+    用會觸發大量思考的題目背對背重測（正式環境各 5 次）才看得出來：
+        多步算術題  budget=0 → 76~94   不帶設定 → 180~294   完全不重疊
+        短句陷阱題  budget=0 → 0~158   不帶設定 → 121~183   重疊
+    陷阱題基準思考量本來就低，沒有下降空間。開關能省約一半 thinking token。
     """
-    assert "gemini-3.7-flash" in app._GEMINI_NO_THINKING_OFF
+    assert "gemini-3.7-flash" not in app._GEMINI_NO_THINKING_OFF, \
+        "budget=0 有作用（208 → 89），不該歸在關不掉那一類"
     assert "gemini-3.7-flash" not in app._GEMINI_NO_INCLUDE_THOUGHTS, "它的思考過程看得到"
     ids = {m["id"] for m in app.MODELS["text"]}
     assert "gemini-3.7-flash" in ids and "kimi/kimi-k3" in ids
     meta = {m["id"]: m for m in app.MODELS["text"]}
-    assert meta["gemini-3.7-flash"]["thinking"] is False, "關不掉就不該給開關"
+    assert meta["gemini-3.7-flash"]["thinking"] is True, "budget=0 有作用，該給開關"
     assert meta["kimi/kimi-k3"]["thinking"] is False, "純思考模型，關不掉"
     assert meta["kimi/kimi-k3"].get("vision") is True, \
         "kimi 的 data URI 圖片輸入正式環境實測 9/9 可用（三種尺寸各 3 次）"
