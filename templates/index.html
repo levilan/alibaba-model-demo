@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=30">
+    <link rel="stylesheet" href="/static/css/style.css?v=36">
     <link rel="icon" type="image/png" href="/static/img/logo.png">
     <script>
         // 在 CSS 套用前就先決定 light/dark，避免登入畫面先閃一下錯的主題再跳回來
@@ -121,6 +121,9 @@
             </div>
             <span class="brand-name">NenAI</span>
             <span class="brand-badge">AI Lab</span>
+            <!-- 只在手機出現（CSS 控制）：收合左側參數欄，把畫面讓給結果 -->
+            <button class="mobile-params-toggle" id="mobileParamsToggle"
+                    onclick="toggleMobileParams()" aria-expanded="true">▲ 參數</button>
         </div>
 
         <nav class="tab-nav">
@@ -981,6 +984,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=73"></script>
+<script src="/static/js/app.js?v=75"></script>
 </body>
 </html>

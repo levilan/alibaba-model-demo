@@ -653,6 +653,17 @@ function formatUsd(n) {
 // ── 即時花費統計 ──────────────────────────────────────────────
 // 只是根據網關自己的計費表（pricingMap）粗略估算，不是精確帳單；固定價格以外
 // 的計費方式（例如少數以 token 計費的圖片模型）目前沒有對應資料，故不計入
+// 手機版：收合／展開左側參數欄。桌面版這顆按鈕是隱藏的（CSS 的 media query），
+// 所以這裡不需要判斷視窗寬度。
+function toggleMobileParams() {
+    const collapsed = document.body.classList.toggle('params-collapsed');
+    const btn = document.getElementById('mobileParamsToggle');
+    if (btn) {
+        btn.textContent = collapsed ? '▼ 參數' : '▲ 參數';
+        btn.setAttribute('aria-expanded', String(!collapsed));
+    }
+}
+
 function addCost(amount) {
     if (!amount || !isFinite(amount)) return;
     sessionCost += amount;

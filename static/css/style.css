@@ -1191,3 +1191,101 @@ input[type="range"]::-webkit-slider-thumb {
     border-color: var(--accent);
     color: var(--accent);
 }
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   手機版面（≤ 760px）
+   ══════════════════════════════════════════════════════════════════════════
+   桌面版是「header 固定 + 側欄與主區各自內捲」的三欄結構，那在手機上會壞掉：
+   側欄固定 280px 就吃掉 390px 螢幕的 72%，主區只剩 105px；而 6 個頁籤橫排
+   共 649px，整個 header 撐破視窗、整頁被迫橫向捲動（實測文件寬度 1144px）。
+
+   手機改成兩件事：
+   1. header 折成兩列（品牌＋狀態在上、頁籤獨立一列可橫向滑動），頁籤不再撐破版面
+   2. 版面改成**整頁捲動**而不是內層各自捲動——手機上巢狀捲動區很難操作，
+      常常滑到的是外層而不是想捲的那一層。側欄與主區改成垂直堆疊、高度自然撐開。
+   側欄可用 header 上的按鈕收合，設定完參數就能把整個畫面讓給結果。
+   ────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+    .app-header {
+        height: auto;
+        flex-wrap: wrap;
+        row-gap: 6px;
+        /* 品牌 163px + 右側狀態 213px = 376px，容器內寬 385px——桌面版那個較大的
+           column-gap 剛好把它們擠成兩列。縮到 6px 才併得回同一列 */
+        column-gap: 6px;
+        padding: 8px 12px;
+        position: sticky; top: 0; z-index: 50;
+    }
+    /* 允許品牌區被壓縮（例如加上更多狀態元件時），不要硬撐把右側擠下去 */
+    .header-brand { order: 1; flex: 0 1 auto; min-width: 0; }
+    .header-right { order: 2; margin-left: auto; gap: 6px; }
+    /* 頁籤獨立一列、可橫向滑動；隱藏捲軸避免在窄螢幕上再佔掉幾 px */
+    .tab-nav {
+        order: 3;
+        flex-basis: 100%;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+    .tab-nav::-webkit-scrollbar { display: none; }
+    /* 頁籤在手機上縮小內距與字級。注意桌面版的 .tab-nav/.tab-btn 綁著
+       height: var(--header-h)（整條列跟 header 等高），不覆寫掉的話按鈕仍是 52px，
+       改內距完全看不出效果——這裡要連 height 一起放掉 */
+    .tab-nav { height: auto; }
+    .tab-btn {
+        flex: 0 0 auto; white-space: nowrap;
+        height: auto; padding: 7px 10px; font-size: 0.78rem;
+    }
+    .tab-btn svg { width: 13px; height: 13px; }
+
+    /* API Key 指示器整個收起來：手機上寬度有限，而「已連線」這件事在登入後
+       本來就是常態，右上角還有登出鈕可以確認狀態 */
+    .api-key-indicator { display: none; }
+    /* 品牌只留 logo：容器內容寬只有 361px（385 減掉左右各 12px 的 padding），
+       而品牌 163 + 右側狀態 213 + 間距 6 = 382，收掉文字與徽章才併得回同一列 */
+    .brand-badge, .brand-name { display: none; }
+
+    /* 「API Key Connected」在手機上只留那顆代表連線狀態的圓點，文字太佔位 */
+    .api-key-indicator #apiKeyLabel { display: none; }
+    .session-cost-indicator { font-size: 0.72rem; }
+
+    /* 側欄與主區改為垂直堆疊、整頁捲動 */
+    .tab-content { height: auto; }
+    .tab-content.active { flex-direction: column; }
+    .panel-sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        overflow-y: visible;
+    }
+    .panel-main { overflow: visible; }
+
+    /* 內層捲動區在手機上全部改成自然高度，交給整頁捲動 */
+    .results-area, .video-results-area, .chat-container, .chat-messages {
+        overflow-y: visible;
+        min-height: 0;
+        flex: none;
+    }
+    /* 空狀態原本用 flex:1 撐滿內捲區的高度，改成整頁捲動後給一個固定高度，
+       否則只剩下 padding 的高度、看起來像被壓扁 */
+    .empty-state { min-height: 220px; }
+
+    /* 圖片結果網格在 390px 下一列只放得下一張，把最小欄寬降下來避免被裁切 */
+    #imageResults { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+
+    /* 收合側欄：把整個畫面讓給結果 */
+    body.params-collapsed .panel-sidebar { display: none; }
+}
+
+/* 收合鈕只在手機出現 */
+.mobile-params-toggle { display: none; }
+@media (max-width: 760px) {
+    .mobile-params-toggle {
+        display: inline-flex; align-items: center; justify-content: center;
+        gap: 4px; padding: 4px 8px; margin-left: 8px;
+        background: var(--bg-white); color: var(--text);
+        border: 1px solid var(--border); border-radius: var(--radius-sm);
+        font-size: 0.72rem; cursor: pointer; white-space: nowrap;
+    }
+}
