@@ -369,3 +369,40 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
     background: var(--cv-border);
     opacity: 0.6;
 }
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   手機版面（≤ 760px）
+   ══════════════════════════════════════════════════════════════════════════
+   畫布本身會自己填滿視窗、不會撐破版面，問題全在頂欄：匯入／匯出／清空畫布／
+   返回主控台四顆按鈕加上標題輸入框，在 390px 下總寬 512px，右邊三顆整個被切掉
+   而且點不到（頂欄沒有捲動、也不換行）。
+
+   ⚠️ 節點的拖拉、連線、縮放在觸控裝置上仍然不好操作——那是 litegraph 本身的
+   互動模型問題，不是版面能解決的。這裡只保證「控制項都碰得到、畫布看得到」。
+   ────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 760px) {
+    .canvas-topbar {
+        height: auto; min-height: 48px;
+        flex-wrap: wrap; row-gap: 6px; column-gap: 6px;
+        padding: 6px 10px;
+    }
+    /* 標題輸入框讓它可壓縮，不要硬撐把按鈕擠出畫面 */
+    .canvas-title-input { flex: 1 1 90px; min-width: 0; }
+    /* 麵包屑在窄螢幕上是純裝飾，收起來換空間給實際能按的東西 */
+    .canvas-breadcrumb, .canvas-breadcrumb-sep { display: none; }
+    /* 按鈕列獨立一列並可橫向滑動，四顆都碰得到 */
+    .canvas-topbar-right {
+        margin-left: 0;
+        flex-basis: 100%;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+    .canvas-topbar-right::-webkit-scrollbar { display: none; }
+    .canvas-btn-ghost { flex: 0 0 auto; padding: 5px 9px; font-size: 0.74rem; }
+    #canvasSaveStatus { flex: 0 0 auto; }
+
+    /* 工具列與縮放列避開兩列高的頂欄 */
+    .canvas-toolbar { top: 92px; }
+}
