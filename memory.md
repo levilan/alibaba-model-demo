@@ -10,7 +10,7 @@
 
 ### 1. 測試平台（本專案）
 
-- 路徑：`/Users/levi/program_lab/AI_lab/alibaba/alibaba-model-nenAI`
+- 路徑：`/Users/levi/claude_code/nen_ai_project/nenai-playground`
 - 遠端：`github.com/levilan/alibaba-model-demo`，開發分支 `nenai`
 - 技術：FastAPI（單檔 `app.py`）＋ 原生 JS，無資料庫、無 build
 - 正式站：**https://playground.nen.com.tw**

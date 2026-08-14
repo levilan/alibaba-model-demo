@@ -15,7 +15,7 @@
 
 ```bash
 git clone <專案網址>
-cd alibaba-model-nenAI
+cd nenai-playground
 docker compose up -d --build
 ```
 
@@ -25,7 +25,7 @@ docker compose up -d --build
 
 ```bash
 # 查看日誌
-docker logs -f alibaba-model-nenai-ai-model-tester-1
+docker logs -f nenai-playground-ai-model-tester-1
 
 # 停止服務
 docker compose down

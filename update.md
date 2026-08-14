@@ -8,6 +8,13 @@
 
 ## 2026-08-14
 
+- chore：**專案搬到 `/Users/levi/claude_code/nen_ai_project/nenai-playground`**，跟閘道（`nen-ai-platform`）、文檔站（`Nen-AI-Docs-V1`）、官網（`website`）並列在同一層。原路徑 `/Users/levi/program_lab/AI_lab/alibaba/alibaba-model-nenAI`。
+  - ⚠️ **venv 必須重建**，不是改設定能解決的：`venv/bin` 底下有 **23 個執行檔把舊路徑寫死在 shebang 裡**。已 `rm -rf venv` 重建並重裝 `requirements.txt`（含 pytest），24 條測試通過。
+  - **Docker 容器名稱跟著變**：`docker-compose.yml` 沒有指定 `container_name`，專案名是從目錄名衍生的，所以 `alibaba-model-nenai-ai-model-tester-1` → **`nenai-playground-ai-model-tester-1`**。`README.md` 與 `CLAUDE.md` 裡的 `docker logs -f ...` 已更新。
+  - 一併更新：`README.md` 的 `cd` 指令、`memory.md` 記錄的本專案路徑。
+  - **不需要改的**：`scripts/update_announcements.py` 的 `NEN_ENV_PATH`（指向 `nen_ai_project/.env`，是別人的絕對路徑）、`CLAUDE.md`／`memory.md` 裡指向另外兩個 repo 的路徑、`.github/workflows/deploy-cloud-run.yml`（用 `SERVICE_NAME: nenai-testing-platform`，不依賴目錄名）、git remote。`update.md` 的歷史條目也保留原樣——那是當時的事實。
+  - 驗證：容器重建後首頁與 `/canvas` 都回 200、`/api/models` 114 個模型（含新增的 `gemini-3.7-flash` 與 `kimi/kimi-k3`）、兩支腳本（公告、漂移比對）在新位置都正常。
+
 - feat：**新增 `gemini-3.7-flash` 與 `kimi/kimi-k3`**（對正式環境完整驗證）。兩個都已在閘道的 `/v1/models` 與計費表：3.7-flash 是 `model_ratio` 0.75 / `completion_ratio` 5（$1.5→$7.5 每 1M）、kimi 是 1.5 / 5（$3→$15），kimi 的倍率與閘道端先前給的規格完全一致。
   - **⚠️ `gemini-3.7-flash` 的思考開關修正（同日稍晚）：`thinkingBudget: 0` 是有作用的，我一開始判錯了。** 原本寫成「關不掉、靜默忽略」而不給開關——那是**只用一個提示詞**測出來的結論。閘道端的 session 用第三組獨立數據（測試網關：`budget=0` 平均 88、不帶設定 269，區間完全不重疊）提出質疑，我在正式環境用兩種題目背對背重測：**多步算術題 `budget=0` 76～94 vs 不帶設定 180～294（完全不重疊）；短句陷阱題 0～158 vs 121～183（重疊）**。陷阱題的基準思考量本來就低（~167），沒有下降空間，所以看不出差別。改回 `thinking: True` 並移出 `_GEMINI_NO_THINKING_OFF`；端到端量測關閉思考後 `completion_tokens` 中位數 **252 → 96**。這是 `memory.md` 4d「**樣本數解決雜訊，解決不了變因沒被控制**」的第三個實例——每格 5 次很紮實，但只用一個 prompt 就把結論的適用範圍寫錯了。
   - ~~**`gemini-3.7-flash` 的思考關不掉，而且是「靜默」的。**~~（已由上一條推翻，保留原記錄） 送 `thinkingBudget: 0` **收下但照樣思考、完全不報錯**——實測兩種題目各 5 次，需推理題 5/5、簡單題 4/5 仍有 `thoughtsTokenCount`，而且 `budget=0` 的量（86～158）跟不帶設定（139～170）同級。這跟 `gemini-2.5-pro` 歸在同一個 `_GEMINI_NO_THINKING_OFF` 集合，但失敗方式不同：2.5-pro 會直接 400、看得出來。**靜默忽略比報錯危險**——不實測就會以為開關有效，使用者關掉後照樣付思考的錢。所以 `thinking: False`（不給開關），思考過程仍看得到。
