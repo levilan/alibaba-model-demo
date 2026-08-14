@@ -6,6 +6,17 @@
 
 ---
 
+## 2026-08-14
+
+- feat（流程）：**新增模型上架後的第二個必做步驟——更新 nen.com.tw 的系統公告（`Notice`）**，寫進 `CLAUDE.md`。原本只有「通知文檔 session」一項，現在是公告 + 文檔兩項。新增 `scripts/update_notice.py` 與英文草稿 `docs/notice-en.md`。
+  - **公告一律用英文**（依使用者指定）。腳本內建中日韓字元防呆，避免把中文草稿送上去。
+  - 腳本的三個安全設計，都是這個 API 的形狀逼出來的、不是操作習慣問題：①**整份覆寫、沒有 append**，要加一則得自己讀出現值再合併；②**沒有樂觀鎖**，讀寫之間有人從網頁改過會被靜默蓋掉，所以一律先備份到 `outputs/notice-backups/`（已 gitignore）——**那是唯一的還原方式，這個 API 沒有版本歷史**；③**所有客戶都看得到**，所以預設是預演模式，要寫入必須明確加 `--confirm`。
+  - **憑證還沒有。** 需要 `NEN_TOKEN`（系統存取權杖，網頁 → 個人設定 → 生成）與 `NEN_USER_ID`。實測：呼叫模型的 API key（`sk-...`）打 `/api/option/` 會回「access token 无效」，而且**HTTP 狀態碼仍是 200**、只有 body 的 `success` 是 false——腳本因此不看狀態碼、只看 `success`，否則會把失敗當成功。上層目錄的 `.env` 只有 `DASHSCOPE_API_KEY`，不是這個用途。
+  - 站上另有 `Announcements`（列表式公告，`GET /api/status` 的 `data.announcements`）與 `Notice` 是不同東西，那個由閘道端管理，本專案不動。
+- fix（canvas）：**移除「一鍵執行整張圖」（Run All）**。使用者實際使用後認為用不到——原因可以從設計本身看出來：Run All 刻意不執行文字節點（它的「生成文字」是 opt-in，自動呼叫會把使用者寫好的 prompt 換成 LLM 生成的內容），所以在「文字 → TTS」這種兩節點的圖上實際只跑 1 個節點，跟直接按那個節點自己的按鈕完全一樣、還多一個確認對話框。它要有價值得是四五個節點的長鏈。移除 `canvas.js` 148 行（`runAll`／`_topoSort`／`_upstreamOf`／`_nodeHasResult`／`_runnableNodes`）＋事件綁定＋工具列按鈕，零殘留。需要時可從 commit `4545908` 取回。`canvas.js` v=37。
+- docs：`scripts/probe_model.py` 的 `drift_check()` 註記 `/api/pricing` 是公開端點、且有 `pricing_version`（全域一個 hash、每模型各一個），要做定期變更偵測時比 diff 整份 JSON 便宜（📄 轉述自閘道端 session，未自行驗證）。
+- docs：`memory.md` 記下 `kimi/kimi-k3` 等待渠道上架，以及**上架時先不要標 `vision`** ——該模型的圖片／影片輸入只接受公網 URL、不接受 Base64，而本平台的視覺輸入送的是 data URI。
+
 ## 2026-08-12
 
 - fix：**「本次花費」與送出前確認改用每秒 × 秒數，先前嚴重低估**。兩者現在共用同一個入口 `videoCostFor()`，不再各算各的。

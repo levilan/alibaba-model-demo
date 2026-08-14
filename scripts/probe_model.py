@@ -123,7 +123,13 @@ def probe_sizes(base: str, key: str, model: str, sizes: list[str]) -> None:
 
 
 def drift_check(base: str, key: str) -> int:
-    """比對 MODELS ↔ /v1/models ↔ /api/pricing，回傳有問題的項數。"""
+    """比對 MODELS ↔ /v1/models ↔ /api/pricing，回傳有問題的項數。
+
+    附記（📄 轉述自閘道端 session，未自行驗證）：`/api/pricing` 是**公開端點、免認證**，
+    而且回應裡有 `pricing_version`（全域一個 hash，每個模型也各有一個）。要做「有沒有
+    變動」的偵測時，比對那個 hash 比 diff 整份 JSON 便宜。這支腳本目前是手動執行、
+    一次全撈，沒有必要優化；但如果哪天要做定期自動偵測，從那個欄位下手。
+    """
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     import app  # noqa: E402
 

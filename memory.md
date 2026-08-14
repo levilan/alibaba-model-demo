@@ -256,6 +256,9 @@ Go struct 描述的是某一條路徑的資料結構，不等於所有路徑的�
 
 ## 五、跨 session 協作紀錄（進行中的事項）
 
+- **`kimi/kimi-k3`（月之暗面直供，走阿里百煉）等待渠道上架**（2026-08-14）。閘道端程式碼已改但在 `feat/carrothub-channel-support` 分支未部署，渠道憑證（華北2／北京地域 API Key、Base URL `https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com`、倍率 1.5 / 5 / 0.1）也還沒設。實查正式環境 `/v1/models`（123 個模型）與 `/api/pricing` **都沒有它**，所以現在加進 `MODELS` 只會做出一個必定失敗、且沒有單價的選項。渠道上線後再上架。
+  - ⚠️ **上架時「先不要標 `vision`」**：這個模型的圖片／影片輸入**僅接受公網 URL、不接受 Base64**（上游限制，閘道的 `relay/channel/ali` 是原樣轉發、不做轉存）。而我們平台的視覺輸入送的是 **data URI**（瀏覽器端讀成 base64 塞進 `image_url`），目前的 vision 模型（qwen3-vl、grok-4.3、Gemini）都吃得下所以一直沒事。標了 `vision` 會讓使用者一上傳圖就失敗、而且錯誤訊息看不出根因。要支援得把既有的「上傳到雲端物件儲存換簽名網址」那條路（影片模型在用，因為上游同樣不收 base64）接到文字節點的視覺上傳——那是新功能不是設定。
+  - 上架時的設定：`reasoning_efforts: ["max"]`（唯一支援值，也是預設）、**不給思考開關**（純思考模型、關不掉），會回傳 `reasoning_content`。倍率換算與本平台公式一致：輸入 $3/1M ÷ 2 = 1.5、輸出 $15 ÷ $3 = 5。
 - **閘道端已修但尚未部署**：`glm-5.2` 的 `thinking` 映射與非串流思考回傳（推到 `feat/carrothub-channel-support`，`main` 未合）。切回 `/v1/messages` 需要：程式碼部署 **＋** 渠道後台開啟「thinking 映射為 enable_thinking」開關（預設關）。目前刻意不切——現在走的 `/v1/chat/completions` 三項能力（開關思考、非串流看得到思考、7 段 `reasoning_effort`）都有，切回去反而少一項。
 - **`wan3.0-video`**：已上架但**從未成功呼叫過**，閘道端測試一直是 `AccessDenied`（模型層級未開通）。`input.media` 的 type 詞彙仍未驗證。
 - **`glm-5.2-us` / `glm-5.2-fast-preview`**：閘道上沒有，但上架**不需要改程式碼**，後台把模型名加進渠道即可。
