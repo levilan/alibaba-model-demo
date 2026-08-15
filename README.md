@@ -202,7 +202,9 @@ python app.py
 > 2. 再逐張 `input_image_buffer.append`（裸 base64 JPEG，不含 data URI 前綴）
 > 3. 然後才 `conversation.item.create` 送問題 + `response.create`
 >
-> ⚠️ **而且必須先把 `turn_detection` 關掉**。開著 `semantic_vad` 時那段靜音會被 VAD 判定成「沒有語音」而丟掉，圖片緩衝就不會被帶上——**不會有任何錯誤訊息**，模型會回一個編出來的答案。前端在帶畫面提問時會自動關掉、答完再還原成使用者選的設定。
+> ⚠️ **而且必須先把 `turn_detection` 關掉**。開著 `semantic_vad` 時圖片緩衝就是不會被帶上——**不會有任何錯誤訊息**，模型會回一個編出來的答案。這**與時機無關**：用真人語音（不是靜音）測過「影格在語音前／語音後／語音後再 commit」三種時機，開著 VAD 時三種都失敗。可用的組合只有「關掉 `turn_detection` ＋ 說完手動 commit」。
+>
+> 所以前端在**附上畫面的那一輪**會自動切成手動模式（關 VAD、顯示「送出語音」鈕），答完再還原成使用者選的設定；文字與語音兩條送出路徑都會帶上影格。
 >
 > 以下四種寫法**都不行**，其中兩種是「收下但看不到」，比報錯危險：`content` 裡放 `input_image` + `image_url`（data URI）→ 回 `Invalid video file.`；`input_image` + `image`（裸 base64）→ **不報錯但模型看不到**；`image_url` 物件（chat 格式）→ 解析失敗；`input_video` + 影格陣列 → **不報錯但模型看不到**。
 >

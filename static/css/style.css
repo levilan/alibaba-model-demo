@@ -1289,3 +1289,18 @@ input[type="range"]::-webkit-slider-thumb {
         font-size: 0.72rem; cursor: pointer; white-space: nowrap;
     }
 }
+
+/* 即時對話裡送出的畫面縮圖：一列橫向排開，超出就自己捲，不要把對話欄撐開 */
+.rt-frames {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    margin-bottom: 8px;
+}
+.rt-frames img {
+    height: 96px;
+    width: auto;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    flex: 0 0 auto;
+}

@@ -2419,15 +2419,29 @@ function rtSetStatus(text) {
     if (el) el.textContent = text;
 }
 
-function rtLog(who, text, cls) {
+// frames 有值時把送出的畫面也貼在對話裡——不然使用者只看得到自己打的字，
+// 無從確認「這一輪到底有沒有把圖帶上去」
+function rtLog(who, text, cls, frames) {
     const area = document.getElementById('voiceResults');
     area.querySelector('.empty-state')?.remove();
     const line = el('div', { className: 'voice-result' });
     line.innerHTML = `<div class="voice-result-header"><span>${who}</span></div>` +
                      `<div style="padding:8px 10px;font-size:0.85rem;${cls === 'err' ? 'color:var(--red)' : ''}"></div>`;
-    line.lastElementChild.textContent = text;
+    const body = line.lastElementChild;
+    if (frames && frames.length) {
+        const strip = el('div', { className: 'rt-frames' });
+        frames.forEach(f => {
+            const img = new Image();
+            img.src = `data:image/jpeg;base64,${f}`;
+            strip.appendChild(img);
+        });
+        body.appendChild(strip);
+    }
+    const p = el('div');
+    p.textContent = text;
+    body.appendChild(p);
     area.insertBefore(line, area.firstChild);
-    return line.lastElementChild;
+    return p;
 }
 
 function clearRealtimeLog() {
@@ -2702,6 +2716,7 @@ function onRealtimeFileChange(event) {
         icon.textContent = '✅';
         label.textContent = `${file.name}（${n} 張畫面）`;
         document.getElementById('voiceRtClearFileBtn').style.display = '';
+        rtEnterFrameTurnMode();
     };
     if (file.type.startsWith('video/')) {
         rtExtractVideoFrames(file).then(frames => { rtPendingFrames = frames; done(frames.length); })
@@ -2712,12 +2727,29 @@ function onRealtimeFileChange(event) {
     }
 }
 
+// 附上畫面的那一輪**必須手動送出**。原因見 rtSendFramesIfAny 的註解：只要 VAD 開著，
+// 影格就不會被帶上（而且不報錯）。所以一附上畫面就把這一輪切成手動模式，並且明白
+// 告訴使用者要按哪顆按鈕——否則使用者對著麥克風問「這張圖是什麼」，模型會回
+// 「我沒看到圖片」，而畫面上沒有任何線索說明為什麼。
+function rtEnterFrameTurnMode() {
+    document.getElementById('voiceRtCommitBtn').style.display = '';
+    if (!rtWs || rtWs.readyState !== WebSocket.OPEN) return;
+    if (document.getElementById('voiceRtTurnDetection').value !== 'none') {
+        rtWs.send(JSON.stringify({ type: 'session.update', session: { turn_detection: null } }));
+        rtVadOverridden = true;
+    }
+    rtSetStatus(rtMicStream ? '已附上畫面：說完後按「送出語音」' : '已附上畫面：可打字送出，或開麥克風說完後按「送出語音」');
+}
+
 function clearRealtimeFile() {
     rtPendingFrames = [];
     document.getElementById('voiceRtFileInput').value = '';
     document.getElementById('voiceRtUpIcon').textContent = '🖼';
     document.getElementById('voiceRtUpLabel').textContent = '上傳圖片或影片';
     document.getElementById('voiceRtClearFileBtn').style.display = 'none';
+    // 手動送出鈕只在使用者自己選了手動模式時才留著
+    document.getElementById('voiceRtCommitBtn').style.display =
+        document.getElementById('voiceRtTurnDetection').value === 'none' ? '' : 'none';
 }
 
 function rtImageToJpegBase64(file) {
@@ -2792,9 +2824,10 @@ function sendRealtimeText() {
     const box = document.getElementById('voiceRtText');
     const text = box.value.trim();
     if (!text && !rtPendingFrames.length) return;
-    const sentFrames = rtSendFramesIfAny();
-    rtLog('你', (sentFrames ? `［畫面 ${rtPendingFrames.length} 張］ ` : '') + text);
-    if (sentFrames) clearRealtimeFile();
+    const frames = rtPendingFrames.slice();
+    rtSendFramesIfAny();
+    rtLog('你', text, null, frames);
+    if (frames.length) clearRealtimeFile();
     rtWs.send(JSON.stringify({
         type: 'conversation.item.create',
         item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: text || '描述你看到的畫面。' }] },
@@ -2806,6 +2839,14 @@ function sendRealtimeText() {
 
 function commitRealtimeAudio() {
     if (!rtWs || rtWs.readyState !== WebSocket.OPEN) return;
+    // 語音提問也要帶畫面——先前只有「送出文字」那條路徑會送影格，所以使用者用說的
+    // 問「這張圖是什麼」，模型永遠回「我沒看到圖片」
+    const frames = rtPendingFrames.slice();
+    if (frames.length) {
+        rtSendFramesIfAny();
+        rtLog('你（畫面）', '', null, frames);
+        clearRealtimeFile();
+    }
     rtWs.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
     rtWs.send(JSON.stringify({ type: 'response.create' }));
     rtSetStatus('思考中…');
