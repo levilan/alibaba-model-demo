@@ -2257,7 +2257,11 @@ def _apply_audio_flag(payload: dict, meta: dict, audio: bool) -> None:
     """
     payload["audio"] = audio        # 統一請求的頂層欄位（阿里不讀，其他家備援）
     meta["audio"] = audio           # wan2.6-i2v-flash 唯一吃得到的來源
-    meta["generateAudio"] = audio   # Veo（非 bool 或缺省一律當無音訊，也影響計費）
+    # Veo：只有明確的 bool False 才是「不要配音」。缺漏或非 bool 都按**有聲**的檔次
+    # 計費——因為欄位不帶時 Veo 會用自己的預設，而它的預設是產生音訊（閘道端實測：
+    # 回傳的影片帶 AAC 48kHz 立體聲且非靜音）。所以這裡一律帶顯式 bool，不要改成
+    # 「只在為真時才帶」，那會讓使用者關掉開關卻照樣付有聲的錢。
+    meta["generateAudio"] = audio
     meta["generate_audio"] = audio  # doubao（影響計費 audio_presence）
 
 
