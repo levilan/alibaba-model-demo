@@ -2343,12 +2343,26 @@ function onVoiceTaskChange() {
     document.getElementById('voiceTtsAdvancedSection').style.display = t === 'tts' ? '' : 'none';
     document.getElementById('voiceAsrPromptPanel').style.display = t === 'asr' ? '' : 'none';
     document.getElementById('voiceTtsPromptPanel').style.display = t === 'tts' ? '' : 'none';
+    document.getElementById('voiceRealtimeSection').style.display = t === 'realtime' ? '' : 'none';
+    document.getElementById('voiceRealtimePromptPanel').style.display = t === 'realtime' ? '' : 'none';
+    // 離開即時對話頁面就把連線收掉——WebSocket 連著不會自己斷，而使用者切走之後
+    // 看不到任何狀態，麥克風卻還開著
+    if (t !== 'realtime') stopRealtime();
     onVoiceModelChange();
 }
 
 function onVoiceModelChange() {
     const t = document.getElementById('voiceTaskType').value;
     updateModelPriceHint('voiceModelPrice', document.getElementById('voiceModel').value);
+    if (t === 'realtime') {
+        const model = document.getElementById('voiceModel').value;
+        const info = (models.voice?.realtime || []).find(m => m.id === model);
+        const sel = document.getElementById('voiceRtVoice');
+        sel.innerHTML = (info?.voices || [])
+            .map(v => `<option value="${v.id}"${v.id === info.default_voice ? ' selected' : ''}>${v.name} — ${v.desc}</option>`)
+            .join('');
+        return;
+    }
     if (t !== 'tts') return;
     const model = document.getElementById('voiceModel').value;
     // Gemini TTS 走 /v1/audio/speech，只吃 model/input/voice——instructions 帶了
@@ -2383,6 +2397,306 @@ function clearVoiceAsrFile() {
     document.getElementById('voiceAsrLabel').innerHTML = '上傳音檔<br><span style="font-size:11px;color:var(--text-muted)">支援 WAV / MP3 / OGG 等常見格式</span>';
     document.getElementById('voiceAsrIcon').textContent = '🎙';
     document.getElementById('voiceAsrClearBtn').style.display = 'none';
+}
+
+// ── 即時語音對話（realtime）────────────────────────────────────────────────
+// 走後端的 /ws/omni 代理，不直連閘道：瀏覽器的 WebSocket 建構子不能帶 header，
+// 直連只能把金鑰塞進子協定（openai-insecure-api-key.<key>），那會讓金鑰出現在
+// 前端可見的握手參數裡。
+//
+// 音訊格式（實測）：上行 PCM 16kHz、下行 PCM 24kHz，都是 mono s16le 裸流。
+// 下行沒有 wav 檔頭，要自己塞進 AudioBuffer 播放。
+const RT_IN_RATE = 16000, RT_OUT_RATE = 24000;
+
+let rtWs = null;            // 與後端代理的連線
+let rtMicStream = null;     // getUserMedia 拿到的麥克風
+let rtInCtx = null, rtProcessor = null, rtMicSink = null;
+let rtOutCtx = null, rtPlayhead = 0, rtSources = [];
+let rtAssistantLine = null; // 目前這一輪 AI 逐字稿的 DOM 節點（逐字更新同一行）
+
+function rtSetStatus(text) {
+    const el = document.getElementById('voiceRtStatus');
+    if (el) el.textContent = text;
+}
+
+function rtLog(who, text, cls) {
+    const area = document.getElementById('voiceResults');
+    area.querySelector('.empty-state')?.remove();
+    const line = el('div', { className: 'voice-result' });
+    line.innerHTML = `<div class="voice-result-header"><span>${who}</span></div>` +
+                     `<div style="padding:8px 10px;font-size:0.85rem;${cls === 'err' ? 'color:var(--red)' : ''}"></div>`;
+    line.lastElementChild.textContent = text;
+    area.insertBefore(line, area.firstChild);
+    return line.lastElementChild;
+}
+
+function clearRealtimeLog() {
+    const area = document.getElementById('voiceResults');
+    area.innerHTML = '<div class="empty-state" style="width:100%"><p>對話內容將顯示在此處</p></div>';
+    rtAssistantLine = null;
+}
+
+function toggleRealtimeConnection() {
+    if (rtWs) { stopRealtime(); return; }
+    startRealtime();
+}
+
+function startRealtime() {
+    const model = document.getElementById('voiceModel').value;
+    const key = apiKey;
+    if (!key) { toast('請先登入', 'error'); return; }
+
+    rtSetStatus('連線中…');
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    rtWs = new WebSocket(`${proto}://${location.host}/ws/omni?api_key=${encodeURIComponent(key)}&model=${encodeURIComponent(model)}`);
+
+    rtWs.onopen = () => {
+        rtSetStatus('已連線');
+        document.getElementById('voiceRtConnectBtn').innerHTML = '結束對話';
+        document.getElementById('voiceRtMicBtn').disabled = false;
+        document.getElementById('voiceRtSendBtn').disabled = false;
+        rtSendSessionUpdate();
+        rtOutCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: RT_OUT_RATE });
+        rtPlayhead = 0;
+    };
+    rtWs.onmessage = (e) => rtHandleEvent(JSON.parse(e.data));
+    rtWs.onerror = () => rtLog('系統', '連線發生錯誤', 'err');
+    rtWs.onclose = () => { if (rtWs) { rtLog('系統', '連線已結束'); stopRealtime(); } };
+}
+
+function rtSendSessionUpdate() {
+    if (!rtWs || rtWs.readyState !== WebSocket.OPEN) return;
+    const modalities = document.getElementById('voiceRtModalities').value.split(',');
+    const td = document.getElementById('voiceRtTurnDetection').value;
+    rtWs.send(JSON.stringify({
+        type: 'session.update',
+        session: {
+            modalities,
+            voice: document.getElementById('voiceRtVoice').value,
+            input_audio_format: 'pcm16',
+            output_audio_format: 'pcm',
+            instructions: document.getElementById('voiceRtInstructions').value,
+            turn_detection: td === 'none' ? null : { type: td },
+        },
+    }));
+    // 手動送出模式要自己按按鈕結束一輪，自動斷句則由伺服器判斷
+    document.getElementById('voiceRtCommitBtn').style.display = td === 'none' ? '' : 'none';
+}
+
+function onRealtimeVoiceChange() { rtSendSessionUpdate(); }
+
+function stopRealtime() {
+    const ws = rtWs;
+    rtWs = null;                        // 先清空，避免 onclose 再繞回來
+    if (ws) { try { ws.close(); } catch (e) {} }
+    stopRealtimeMic();
+    rtStopPlayback();
+    if (rtOutCtx) { try { rtOutCtx.close(); } catch (e) {} rtOutCtx = null; }
+    rtSetStatus('尚未連線');
+    const btn = document.getElementById('voiceRtConnectBtn');
+    if (btn) btn.innerHTML = '開始對話';
+    const mic = document.getElementById('voiceRtMicBtn');
+    if (mic) { mic.disabled = true; mic.innerHTML = '開啟麥克風'; }
+    const send = document.getElementById('voiceRtSendBtn');
+    if (send) send.disabled = true;
+}
+
+// ── 麥克風上行 ────────────────────────────────────────────────────────────
+async function toggleRealtimeMic() {
+    if (rtMicStream) { stopRealtimeMic(); return; }
+    try {
+        rtMicStream = await navigator.mediaDevices.getUserMedia({
+            audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+        });
+    } catch (err) {
+        toast('無法取得麥克風權限', 'error');
+        return;
+    }
+    // 要求 16kHz，但瀏覽器不保證會照給（Safari 常常給 44.1k/48k），所以下面一律
+    // 以 ctx.sampleRate 為準做重取樣，不能假設拿到的就是 16k
+    rtInCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: RT_IN_RATE });
+    const src = rtInCtx.createMediaStreamSource(rtMicStream);
+    rtProcessor = rtInCtx.createScriptProcessor(4096, 1, 1);
+    rtProcessor.onaudioprocess = (e) => {
+        if (!rtWs || rtWs.readyState !== WebSocket.OPEN) return;
+        const pcm = rtFloatToPcm16(e.inputBuffer.getChannelData(0), rtInCtx.sampleRate);
+        rtWs.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: rtBytesToBase64(pcm) }));
+    };
+    src.connect(rtProcessor);
+    // ⚠️ ScriptProcessor 必須連到 destination 才會持續觸發，但直接連過去會把麥克風
+    // 原音播出來變成回授。所以中間串一個 gain=0 的節點：節點鏈完整、聲音是靜音的
+    rtMicSink = rtInCtx.createGain();
+    rtMicSink.gain.value = 0;
+    rtProcessor.connect(rtMicSink);
+    rtMicSink.connect(rtInCtx.destination);
+
+    document.getElementById('voiceRtMicBtn').innerHTML = '關閉麥克風';
+    rtSetStatus('麥克風已開啟，可以直接說話');
+}
+
+function stopRealtimeMic() {
+    if (rtProcessor) { try { rtProcessor.disconnect(); } catch (e) {} rtProcessor = null; }
+    if (rtMicSink) { try { rtMicSink.disconnect(); } catch (e) {} rtMicSink = null; }
+    if (rtMicStream) { rtMicStream.getTracks().forEach(t => t.stop()); rtMicStream = null; }
+    if (rtInCtx) { try { rtInCtx.close(); } catch (e) {} rtInCtx = null; }
+    const btn = document.getElementById('voiceRtMicBtn');
+    if (btn) btn.innerHTML = '開啟麥克風';
+}
+
+// Float32（-1~1）→ 16kHz PCM16。srcRate 不是 16k 時線性重取樣
+function rtFloatToPcm16(input, srcRate) {
+    let data = input;
+    if (srcRate !== RT_IN_RATE) {
+        const ratio = srcRate / RT_IN_RATE;
+        const outLen = Math.floor(input.length / ratio);
+        data = new Float32Array(outLen);
+        for (let i = 0; i < outLen; i++) data[i] = input[Math.floor(i * ratio)];
+    }
+    const out = new Int16Array(data.length);
+    for (let i = 0; i < data.length; i++) {
+        const s = Math.max(-1, Math.min(1, data[i]));
+        out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    return new Uint8Array(out.buffer);
+}
+
+function rtBytesToBase64(bytes) {
+    let bin = '';
+    const CHUNK = 0x8000;   // 一次全部展開會在長音訊上爆掉呼叫堆疊
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+        bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(bin);
+}
+
+// ── 下行播放 ──────────────────────────────────────────────────────────────
+function rtPlayChunk(b64) {
+    if (!rtOutCtx) return;
+    const bin = atob(b64);
+    const pcm = new Int16Array(bin.length / 2);
+    for (let i = 0; i < pcm.length; i++) {
+        pcm[i] = (bin.charCodeAt(i * 2) | (bin.charCodeAt(i * 2 + 1) << 8)) << 16 >> 16;
+    }
+    const buf = rtOutCtx.createBuffer(1, pcm.length, RT_OUT_RATE);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+    const node = rtOutCtx.createBufferSource();
+    node.buffer = buf;
+    node.connect(rtOutCtx.destination);
+    // 依序接續播放：每塊排在前一塊結束的時間點，否則會全部同時播出變成雜音
+    const now = rtOutCtx.currentTime;
+    if (rtPlayhead < now) rtPlayhead = now + 0.05;
+    node.start(rtPlayhead);
+    rtPlayhead += buf.duration;
+    rtSources.push(node);
+    node.onended = () => { rtSources = rtSources.filter(s => s !== node); };
+}
+
+function rtStopPlayback() {
+    rtSources.forEach(s => { try { s.stop(); } catch (e) {} });
+    rtSources = [];
+    rtPlayhead = 0;
+}
+
+// ── 事件處理 ──────────────────────────────────────────────────────────────
+function rtHandleEvent(ev) {
+    switch (ev.type) {
+        case 'session.created':
+            rtSetStatus('已連線');
+            break;
+        case 'input_audio_buffer.speech_started':
+            // 使用者插話：立刻停掉正在播的回答，否則兩個人的聲音會疊在一起
+            rtStopPlayback();
+            rtSetStatus('聽到你在說話…');
+            break;
+        case 'input_audio_buffer.speech_stopped':
+            rtSetStatus('思考中…');
+            break;
+        case 'conversation.item.input_audio_transcription.completed':
+            if (ev.transcript) rtLog('你（語音）', ev.transcript);
+            break;
+        case 'response.audio.delta':
+            if (ev.delta) rtPlayChunk(ev.delta);
+            break;
+        case 'response.audio_transcript.delta':
+            if (!rtAssistantLine) rtAssistantLine = rtLog('AI', '');
+            rtAssistantLine.textContent += ev.delta || '';
+            break;
+        case 'response.text.delta':
+            if (!rtAssistantLine) rtAssistantLine = rtLog('AI', '');
+            rtAssistantLine.textContent += ev.delta || '';
+            break;
+        case 'response.done':
+            rtAssistantLine = null;
+            rtSetStatus(rtMicStream ? '麥克風已開啟，可以直接說話' : '已連線');
+            rtApplyUsage(ev.response?.usage);
+            break;
+        case 'error':
+            rtLog('系統', ev.error?.message || JSON.stringify(ev), 'err');
+            rtSetStatus('發生錯誤');
+            break;
+    }
+}
+
+// realtime 的花費估算。四檔單價全部來自 /api/pricing（後端已把音訊那兩檔一起帶出來），
+// 不做人工快照——這四檔會跟著後台走。
+//
+// ⚠️ 「同時輸出語音時，輸出的文字不計費」這條規則的條件是**這次回應真的產出了音訊
+// token**，不是「開了語音模式」。同一個 session 裡某次只回文字的話，那次的文字照常
+// 收費。所以要依 audio_tokens 是否 > 0 分支，不能一律當免費。
+const _RT_AUDIO_ONLY_OUTPUT_BILLING = new Set(['qwen3.5-omni-plus-realtime']);
+
+function rtApplyUsage(usage) {
+    if (!usage) return;
+    // 這支上游回的是**複數**的 input_tokens_details / output_tokens_details，
+    // 跟 OpenAI 的單數 input_token_details 不同，兩種都收
+    const inD = usage.input_tokens_details || usage.input_token_details || {};
+    const outD = usage.output_tokens_details || usage.output_token_details || {};
+    const inText = inD.text_tokens || 0, inAudio = inD.audio_tokens || 0;
+    const outText = outD.text_tokens || 0, outAudio = outD.audio_tokens || 0;
+
+    const model = document.getElementById('voiceModel').value;
+    const p = pricingMap[model];
+    let cost = null;
+    if (p && p.type === 'token') {
+        const textOutFree = outAudio > 0 && _RT_AUDIO_ONLY_OUTPUT_BILLING.has(model);
+        cost = inText / 1e6 * p.input
+             + (textOutFree ? 0 : outText / 1e6 * p.output)
+             + inAudio / 1e6 * (p.audio_input || p.input)
+             + outAudio / 1e6 * (p.audio_output || p.output);
+        addCost(cost);
+    }
+    const tok = (text, audio) => {
+        const s = [`${text} 文字`];
+        if (audio) s.push(`${audio} 語音`);
+        return s.join('、');
+    };
+    document.getElementById('voiceRtUsage').textContent =
+        `輸入 ${tok(inText, inAudio)}　輸出 ${tok(outText, outAudio)}` +
+        (cost != null ? `　約 $${formatUsd(Number(cost.toFixed(6)))}` : '');
+}
+
+// ── 送出 ──────────────────────────────────────────────────────────────────
+function sendRealtimeText() {
+    if (!rtWs || rtWs.readyState !== WebSocket.OPEN) { toast('請先開始對話', 'error'); return; }
+    const box = document.getElementById('voiceRtText');
+    const text = box.value.trim();
+    if (!text) return;
+    rtLog('你', text);
+    rtWs.send(JSON.stringify({
+        type: 'conversation.item.create',
+        item: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] },
+    }));
+    rtWs.send(JSON.stringify({ type: 'response.create' }));
+    box.value = '';
+    rtSetStatus('思考中…');
+}
+
+function commitRealtimeAudio() {
+    if (!rtWs || rtWs.readyState !== WebSocket.OPEN) return;
+    rtWs.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+    rtWs.send(JSON.stringify({ type: 'response.create' }));
+    rtSetStatus('思考中…');
 }
 
 function addVoiceResultCard(title) {

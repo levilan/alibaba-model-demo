@@ -223,6 +223,75 @@ _GEMINI_TTS_VOICES = [
     {"id": "Sadaltager", "name": "Sadaltager", "desc": "Knowledgeable"}, {"id": "Sulafat", "name": "Sulafat", "desc": "Warm"},
 ]
 
+# qwen3.5-omni-plus-realtime 的音色。**這 55 個是逐一對正式環境實測過的**：
+# 送 session.update 帶音色再 response.create，有效的會開始回傳音訊、無效的回
+# `InternalError.Algo.InvalidParameter: Voice 'X' is not supported.`（用兩個亂編的
+# 名字與有效音色交錯跑，確認過那個錯誤是音色造成的、不是速率限制）。
+#
+# ⚠️ 別用 session.update 的回應來驗——它對任何字串都回 session.updated，
+# 連 `NoSuchVoiceZZZ` 都照收。也別想用「產出音訊比對」來驗：同音色同輸入重跑
+# 兩次的音訊位元**不相同**（長度相同、內容不同）。
+#
+# 舊清單裡的 `Chelsie` 已移除——實測不支援（那是 qwen2.5-omni 的音色）。
+_QWEN35_OMNI_REALTIME_VOICES = [
+    {"id": "Tina", "name": "Tina 甜甜", "desc": "甜美暖心"},
+    {"id": "Cindy", "name": "Cindy 林欣宜", "desc": "台灣嗲嗲"},
+    {"id": "Liora Mira", "name": "Liora Mira 清歡", "desc": "煙火溫柔"},
+    {"id": "Sunnybobi", "name": "Sunnybobi 知芝", "desc": "大咧咧"},
+    {"id": "Raymond", "name": "Raymond 林川野", "desc": "宅男清亮"},
+    {"id": "Ethan", "name": "Ethan 晨煦", "desc": "陽光活力"},
+    {"id": "Theo Calm", "name": "Theo Calm 予安", "desc": "療癒靜默"},
+    {"id": "Serena", "name": "Serena 蘇瑤", "desc": "溫柔小姐姐"},
+    {"id": "Harvey", "name": "Harvey 厚", "desc": "低沉歲月感"},
+    {"id": "Maia", "name": "Maia 四月", "desc": "知性溫柔"},
+    {"id": "Evan", "name": "Evan 江晨", "desc": "年下奶狗"},
+    {"id": "Qiao", "name": "Qiao 小喬妹", "desc": "台灣甜妹"},
+    {"id": "Momo", "name": "Momo 茉兔", "desc": "撒嬌搞怪"},
+    {"id": "Wil", "name": "Wil 偉倫", "desc": "港台腔小哥"},
+    {"id": "Angel", "name": "Angel 安琪", "desc": "台式口音甜美"},
+    {"id": "Li Cassian", "name": "Li Cassian 李公公", "desc": "察言觀色"},
+    {"id": "Mia", "name": "Mia 舒然", "desc": "慢生活博主"},
+    {"id": "Joyner", "name": "Joyner 阿逗", "desc": "搞笑接地氣"},
+    {"id": "Gold", "name": "Gold 金爺", "desc": "Rapper"},
+    {"id": "Katerina", "name": "Katerina 卡捷琳娜", "desc": "御姐韻律"},
+    {"id": "Ryan", "name": "Ryan 甜茶", "desc": "戲感張力"},
+    {"id": "Jennifer", "name": "Jennifer 詹妮弗", "desc": "電影質感美語"},
+    {"id": "Aiden", "name": "Aiden 艾登", "desc": "廚藝大男孩"},
+    {"id": "Mione", "name": "Mione 敏兒", "desc": "英式知性"},
+    {"id": "Roya", "name": "Roya 蘿雅", "desc": "熱愛運動"},
+    {"id": "Sunny", "name": "Sunny 四川晴兒", "desc": "甜川妹"},
+    {"id": "Dylan", "name": "Dylan 北京曉東", "desc": "北京少年"},
+    {"id": "Eric", "name": "Eric 四川程川", "desc": "成都男子"},
+    {"id": "Peter", "name": "Peter 天津李彼得", "desc": "相聲捧哏"},
+    {"id": "Joseph Chen", "name": "Joseph Chen 阿樸伯", "desc": "閩南老華僑"},
+    {"id": "Marcus", "name": "Marcus 陝西秦川", "desc": "老陝沉聲"},
+    {"id": "Li", "name": "Li 南京老李", "desc": "碎嘴日常"},
+    {"id": "Kiki", "name": "Kiki 粵語阿清", "desc": "港妹閨蜜"},
+    {"id": "Rocky", "name": "Rocky 粵語阿強", "desc": "幽默陪聊"},
+    {"id": "Sohee", "name": "Sohee 素熙", "desc": "韓國歐尼"},
+    {"id": "Lenn", "name": "Lenn 萊恩", "desc": "德國叛逆青年"},
+    {"id": "Ono Anna", "name": "Ono Anna 小野杏", "desc": "日本鬼靈精"},
+    {"id": "Sonrisa", "name": "Sonrisa 索尼莎", "desc": "拉美熱情"},
+    {"id": "Bodega", "name": "Bodega 博德加", "desc": "西班牙大叔"},
+    {"id": "Emilien", "name": "Emilien 埃米爾安", "desc": "法國浪漫"},
+    {"id": "Andre", "name": "Andre 安德雷", "desc": "磁性沉穩"},
+    {"id": "Radio Gol", "name": "Radio Gol", "desc": "葡語足球詩人"},
+    {"id": "Alek", "name": "Alek 阿列克", "desc": "俄羅斯冷暖"},
+    {"id": "Rizky", "name": "Rizky 阿力", "desc": "印尼個性青年"},
+    {"id": "Arda", "name": "Arda 阿爾達", "desc": "土耳其溫潤"},
+    {"id": "Hana", "name": "Hana 阿幸", "desc": "越南成熟姐姐"},
+    {"id": "Dolce", "name": "Dolce 多爾切", "desc": "義大利慵懶"},
+    {"id": "Jakub", "name": "Jakub 雅克", "desc": "波蘭磁性"},
+    {"id": "Griet", "name": "Griet 海娜", "desc": "荷蘭文藝"},
+    {"id": "Eliška", "name": "Eliška 艾莉卡", "desc": "捷克匠心"},
+    {"id": "Marina", "name": "Marina 瑪麗娜", "desc": "多元文化"},
+    {"id": "Siiri", "name": "Siiri 西芮", "desc": "芬蘭舒緩"},
+    {"id": "Ingrid", "name": "Ingrid 林恩", "desc": "挪威鄉村"},
+    {"id": "Sigga", "name": "Sigga 席佳", "desc": "冰島知性"},
+    {"id": "Bea", "name": "Bea 雅娜", "desc": "菲律賓甜甜"},
+    {"id": "Chloe", "name": "Chloe 思怡", "desc": "馬來西亞白領"},
+]
+
 # MAI Image 家族（2.5 / 2.5-Flash / 2.5-Pro）共用的尺寸清單。約束見 MODELS 裡的註解：
 # 每邊 ≥ 768 像素、總像素 ≤ 1,056,768。這五個都逐一對正式網關實測確認可用。
 # MAI 的尺寸有兩條**互相獨立**的限制，兩條都要滿足：每邊至少 768 px、總像素 ≤ 1,056,768。
@@ -861,6 +930,14 @@ MODELS = {
         {"id": "face-swap",               "name": "圖像換臉",            "group": "圖像換臉", "desc": "換臉模型 (來源圖 + 換臉參考圖)"},
     ],
     "voice": {
+        # 即時語音對話：WebSocket 雙向串流，與 ASR/TTS 的「送出→等結果」流程完全不同，
+        # 所以獨立成一個任務類型。輸入 PCM 16kHz、輸出 PCM 24kHz（皆為 mono s16le）。
+        "realtime": [
+            {"id": "qwen3.5-omni-plus-realtime", "name": "Qwen3.5 Omni Plus Realtime", "group": "即時語音",
+             "desc": "全模態即時語音對話，可聽可說、支援語意斷句與插話",
+             "voices": _QWEN35_OMNI_REALTIME_VOICES, "default_voice": "Tina",
+             "input_rate": 16000, "output_rate": 24000},
+        ],
         "asr": [
             {"id": "qwen-audio-3.0-asr-flash", "name": "Qwen Audio 3.0 ASR Flash", "group": "語音辨識",
              "desc": "極速語音辨識，上傳完整音檔一次回傳逐字稿"},
@@ -999,6 +1076,34 @@ async def get_models(api_key: str = Depends(get_api_key)):
 _PRICING_CACHE: Dict[str, Any] = {"data": None, "ts": 0.0}
 _PRICING_CACHE_TTL = 3600
 
+def _pricing_entry(m: dict) -> dict:
+    """把網關 /api/pricing 的一筆記錄換算成前端要的美金單價。"""
+    if m.get("quota_type") == 1:
+        # 不要粗暴 round 到固定小數位——像語音辨識這類每次呼叫只要 $0.000035 的
+        # 模型，round(x, 4) 會直接捨去變成 0，讓使用者誤以為免費。保留原始精度，
+        # 顯示位數交給前端依數值大小動態決定。
+        return {"type": "fixed", "price": m.get("model_price", 0) or 0}
+
+    model_ratio = m.get("model_ratio", 0) or 0
+    completion_ratio = m.get("completion_ratio", 1) or 1
+    entry = {
+        "type": "token",
+        "input": model_ratio * 2,
+        "output": model_ratio * completion_ratio * 2,
+    }
+    # 全模態模型的音訊 token 另有兩檔倍率（qwen3.5-omni-plus-realtime 的音訊輸入
+    # 是文字的 7.86 倍、音訊輸出更高）。這兩個欄位在網關是 `*float64` + `omitempty`
+    # ——**只有該模型真的設定了才會出現**，所以在其他模型上看不到是正常的，不代表
+    # API 不吐（我一度誤判成 API 沒給，差點為此做一份會過期的人工快照）。
+    audio_ratio = m.get("audio_ratio")
+    if audio_ratio:
+        entry["audio_input"] = model_ratio * audio_ratio * 2
+        entry["audio_output"] = (
+            model_ratio * audio_ratio * (m.get("audio_completion_ratio") or 1) * 2
+        )
+    return entry
+
+
 async def _fetch_pricing_map(api_key: str) -> dict:
     now = time.time()
     if _PRICING_CACHE["data"] is not None and now - _PRICING_CACHE["ts"] < _PRICING_CACHE_TTL:
@@ -1012,19 +1117,7 @@ async def _fetch_pricing_map(api_key: str) -> dict:
         mid = m.get("model_name")
         if not mid:
             continue
-        if m.get("quota_type") == 1:
-            # 不要粗暴 round 到固定小數位——像語音辨識這類每次呼叫只要 $0.000035 的
-            # 模型，round(x, 4) 會直接捨去變成 0，讓使用者誤以為免費。保留原始精度，
-            # 顯示位數交給前端依數值大小動態決定。
-            result[mid] = {"type": "fixed", "price": m.get("model_price", 0) or 0}
-        else:
-            model_ratio = m.get("model_ratio", 0) or 0
-            completion_ratio = m.get("completion_ratio", 1) or 1
-            result[mid] = {
-                "type": "token",
-                "input": model_ratio * 2,
-                "output": model_ratio * completion_ratio * 2,
-            }
+        result[mid] = _pricing_entry(m)
     _PRICING_CACHE["data"] = result
     _PRICING_CACHE["ts"] = now
     return result
@@ -1146,25 +1239,20 @@ async def omni_chat(data: OmniChatRequest, api_key: str = Depends(get_api_key)):
     )
 
 
-# ⚠️ 這支 realtime 代理目前**沒有任何 UI 入口**，而且上游也還不支援——保留是因為
-# 阿里那邊補上 realtime 之後就能直接用，不必重寫。現況（2026-08-11 對正式環境實測
-# ＋ 網關端查證原始碼確認）：
+# realtime 的 WebSocket 代理。**2026-08-16 對正式環境實測可用**（先前這段註解記載的
+# 「上游還不支援」已經過期——當時阿里 adaptor 沒有 realtime 分支，握手後會立刻斷線；
+# 閘道端補上之後就通了）。實測：握手 34ms、文字輸入到首包音訊 2.1s、產出 24kHz 音訊
+# 非靜音，事件序與 OpenAI realtime 相容。
 #
-#   - 網關的 WebSocket 路由只有 `/v1/realtime` 與 `/v1/responses` 兩條。原本這裡寫死的
-#     `/api-ws/v1/realtime` **從來就不是網關對外的路徑**（那是 DashScope 上游給 TTS/ASR
-#     用的內部路徑），所以一直回 404。已改成正確的 `/v1/realtime`。
-#   - 但改對路徑也還不能用：realtime 中繼**只有 OpenAI 系的 adaptor 有實作**，
-#     `qwen3.5-omni-*-realtime` 屬於阿里渠道，而阿里 adaptor 的 WebSocket 支援只涵蓋
-#     TTS 與 ASR，沒有 realtime 分支。請求會掉進一般 HTTP 路徑，導致網關端型別斷言
-#     失敗而 panic——這就是實測看到「握手成功（HTTP 101）後立刻斷線、連 close frame
-#     都沒有」的原因。網關端已修成回傳可讀的錯誤，但那只是讓失敗可診斷，不會讓
-#     qwen omni realtime 變得可用。
+# 路徑是 `/v1/realtime`。**不要寫成 `/api-ws/v1/realtime`**——那是 DashScope 上游的
+# 內部路徑，不是我們閘道對外的路由，會回 404。
 #
-# 所以前端的 realtime UI 在 commit 8c012ac 之後被移除是**正確的決定**：那個功能當時
-# 就是壞的。要恢復需要阿里 adaptor 先補上整套 realtime 支援（撥上游 WS、DashScope
-# realtime 協定與 OpenAI realtime 事件格式互轉、usage 計費），那是獨立的功能開發。
+# 為什麼要有這一層代理，而不是讓瀏覽器直連閘道：瀏覽器的 WebSocket 建構子不能帶
+# header，直連只能把金鑰塞進子協定（`openai-insecure-api-key.<key>`），名稱裡的
+# insecure 是認真的——金鑰會出現在前端可見的握手參數裡。走這支代理的話，金鑰只在
+# 我們自己的後端往上游帶。
 @app.websocket("/ws/omni")
-async def ws_omni_proxy(websocket: WebSocket, api_key: str, model: str = "qwen3.5-omni-flash-realtime"):
+async def ws_omni_proxy(websocket: WebSocket, api_key: str, model: str = "qwen3.5-omni-plus-realtime"):
     await websocket.accept()
     url = f"{NENAI_BASE.replace('https://', 'wss://').replace('http://', 'ws://')}/v1/realtime?model={model}"
     headers = {"Authorization": f"Bearer {api_key}"}

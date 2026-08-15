@@ -188,11 +188,15 @@ python app.py
 >
 > 沒有雲端儲存另外還有兩個既有風險：**（1）** Cloud Run 每個實例的檔案系統獨立，`maxScale` 是 5，產出的圖片存在某個實例上、下次請求被路由到別的實例就會 404（實測當下只有單一實例在服務，問題尚未浮現但風險存在）；**（2）** 容器重啟後產出全部消失。要根治就是把 OSS／S3／GCS 任一個的憑證設進 Cloud Run。
 
-> **realtime（即時語音對話）目前不可用，測試平台沒有對應 UI。** `qwen3.5-omni-plus-realtime` / `-flash-realtime` 雖然出現在 `/v1/models` 清單裡，但 realtime 通道叫不動——**清單有它不代表通道可用**。
+> **realtime（即時語音對話）2026-08-16 起可用**，在「語音模型」分頁的任務類型選「即時語音對話 (Realtime)」。先前不可用的原因（阿里 adaptor 沒有 realtime 分支，握手成功後立刻斷線）已由閘道端修掉。
 >
-> 2026-08-11 實測 ＋ 網關端查證原始碼確認的原因：網關的 WebSocket 路由只有 `/v1/realtime` 與 `/v1/responses`（`app.py` 原本寫死的 `/api-ws/v1/realtime` 從來不是對外路徑，那是 DashScope 上游給 TTS/ASR 用的，已改正）；而 realtime 中繼**只有 OpenAI 系的 adaptor 有實作**，這兩個模型屬於阿里渠道，阿里 adaptor 的 WebSocket 支援只涵蓋 TTS 與 ASR、沒有 realtime 分支，請求會掉進一般 HTTP 路徑導致網關端型別斷言失敗而 panic——這就是實測看到「握手成功（HTTP 101）後立刻斷線、連 close frame 都沒有」的原因。
+> 實測（正式環境）：握手 34ms、文字輸入到首包音訊 2.1s、產出 24kHz 音訊非靜音、事件序與 OpenAI realtime 相容。上行 PCM **16kHz**、下行 PCM **24kHz**，都是 mono s16le 裸流（下行沒有 wav 檔頭）。
 >
-> 後端的 `/ws/omni` 代理保留著（路徑已修正），等阿里 adaptor 補上 realtime 就能直接用。前端 UI 在 `8c012ac` 之後被移除是**正確的決定**——那個功能當時就是壞的。
+> 路徑是 `/v1/realtime`。**不要寫成 `/api-ws/v1/realtime`**——那是 DashScope 上游的內部路徑、不是閘道對外的路由，會回 404。
+>
+> 瀏覽器走後端的 `/ws/omni` 代理，不直連閘道：WebSocket 建構子不能帶 header，直連只能把金鑰塞進子協定（`openai-insecure-api-key.<key>`），那會讓金鑰出現在前端可見的握手參數裡。
+>
+> **音色 56 個都逐一實測過**（`app.py` 的 `_QWEN35_OMNI_REALTIME_VOICES`）：送 `session.update` 帶音色再 `response.create`，有效的會開始回傳音訊、無效的回 `Voice 'X' is not supported.`。舊清單裡的 `Chelsie` 實測不支援（那是 qwen2.5-omni 的音色）已移除。⚠️ **不要用 `session.update` 的回應來驗**——它對任何字串都回 `session.updated`，連亂編的名字都照收；也不要用音訊位元比對，同音色同輸入重跑兩次的位元並不相同。
 
 > **`qwen3-vl-plus` / `qwen3-vl-flash` 是視覺語言模型**，可在對話中帶入圖片。用標準的 OpenAI `image_url` 格式（實測 data URI 可用），MODELS 以 `vision: True` 標記、前端據此顯示圖片上傳欄位。圖片只附在**當下這一輪**的提問上，不會進入對話歷史——上游對「歷史訊息裡的圖片」的行為未驗證，不主動送。切換到不支援視覺的模型時前端會清掉已選的圖，避免靜默夾帶造成 400。
 
@@ -510,6 +514,7 @@ python app.py
 
 | 模型 ID | 名稱 | 分類 | 功能 |
 |---|---|---|---|
+| qwen3.5-omni-plus-realtime | Qwen3.5 Omni Plus Realtime | 即時語音 | WebSocket 雙向串流，可聽可說、支援語意斷句與插話 |
 | qwen-audio-3.0-asr-flash | Qwen Audio 3.0 ASR Flash | 語音辨識 | 上傳完整音檔，一次回傳逐字稿 |
 | qwen-audio-3.0-asr-flash-streaming | Qwen Audio 3.0 ASR Flash（串流） | 語音辨識 | SSE 串流回傳中間辨識結果 |
 | qwen-audio-3.0-tts-plus | Qwen Audio 3.0 TTS Plus | 語音合成 | 高品質語音合成 |

@@ -837,11 +837,41 @@
                     <select id="voiceTaskType" class="select-input" onchange="onVoiceTaskChange()">
                         <option value="asr">語音辨識 (ASR)</option>
                         <option value="tts">語音合成 (TTS)</option>
+                        <option value="realtime">即時語音對話 (Realtime)</option>
                     </select>
                 </div>
                 <div class="form-group">
                     <label class="form-label">模型 <span class="param-hint" id="voiceModelPrice"></span></label>
                     <select id="voiceModel" class="select-input" onchange="onVoiceModelChange()"></select>
+                </div>
+            </div>
+
+            <!-- 即時語音對話（realtime 專用） -->
+            <div class="sidebar-section" id="voiceRealtimeSection" style="display:none">
+                <div class="sidebar-section-title">對話設定</div>
+                <div class="form-group">
+                    <label class="form-label" data-tip="決定 AI 用哪個聲音回答。連線後切換會立即套用到下一次回答">音色 (voice)</label>
+                    <select id="voiceRtVoice" class="select-input" onchange="onRealtimeVoiceChange()"></select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-tip="設定 AI 的角色與回答風格。例如：你是親切的旅遊嚮導，回答不超過三句話">系統指令 (instructions)</label>
+                    <textarea id="voiceRtInstructions" class="textarea-input" rows="3"
+                              placeholder="你是友善的中文語音助理，回答簡潔自然。">你是友善的中文語音助理，回答簡潔自然。</textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-tip="語音＋文字：同時聽到聲音並看到逐字稿；只有文字：不產生語音，回應速度較快">回應形式</label>
+                    <select id="voiceRtModalities" class="select-input">
+                        <option value="text,audio">語音 ＋ 文字</option>
+                        <option value="text">只有文字</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0">
+                    <label class="form-label" data-tip="自動斷句：說完停頓一下就會自動回答；手動：按下「送出語音」才回答">斷句方式</label>
+                    <select id="voiceRtTurnDetection" class="select-input">
+                        <option value="semantic_vad">自動斷句（依語意）</option>
+                        <option value="server_vad">自動斷句（依靜音）</option>
+                        <option value="none">手動送出</option>
+                    </select>
                 </div>
             </div>
 
@@ -952,6 +982,38 @@
                 </div>
                 <div class="chat-actions-row" style="padding-top:8px;">
                     <span style="font-size:0.75rem;color:var(--text-muted)">Ctrl+Enter 快速發送</span>
+                </div>
+            </div>
+            <div class="prompt-panel" id="voiceRealtimePromptPanel" style="display:none">
+                <div class="prompt-row">
+                    <div class="prompt-col">
+                        <div class="form-group" style="margin-bottom:0">
+                            <label class="form-label">
+                                對話狀態
+                                <span class="param-hint" id="voiceRtStatus">尚未連線</span>
+                            </label>
+                            <textarea id="voiceRtText" class="textarea-input" rows="2" placeholder="連線後可以直接說話，也可以在這裡打字送出..."
+                                      onkeydown="if((event.ctrlKey || event.metaKey) && event.key==='Enter'){event.preventDefault();sendRealtimeText();}"></textarea>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;justify-content:flex-end;gap:6px">
+                        <button id="voiceRtConnectBtn" class="btn btn-primary" onclick="toggleRealtimeConnection()" style="height:40px">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                            開始對話
+                        </button>
+                        <button id="voiceRtMicBtn" class="btn btn-ghost" onclick="toggleRealtimeMic()" style="height:40px" disabled>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+                            開啟麥克風
+                        </button>
+                    </div>
+                </div>
+                <div class="chat-actions-row" style="padding-top:8px;gap:10px;align-items:center">
+                    <button id="voiceRtSendBtn" class="btn btn-ghost btn-sm" onclick="sendRealtimeText()" disabled>送出文字</button>
+                    <button id="voiceRtCommitBtn" class="btn btn-ghost btn-sm" onclick="commitRealtimeAudio()" style="display:none">送出語音</button>
+                    <button id="voiceRtClearBtn" class="btn btn-ghost btn-sm" onclick="clearRealtimeLog()">清除紀錄</button>
+                    <span style="font-size:0.75rem;color:var(--text-muted)">Ctrl+Enter 快速發送</span>
+                    <span style="flex:1"></span>
+                    <span id="voiceRtUsage" style="font-size:0.75rem;color:var(--text-muted)"></span>
                 </div>
             </div>
             <div id="voiceResults" class="results-area" style="flex:1;flex-direction:column;align-items:stretch">

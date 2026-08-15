@@ -1,0 +1,20 @@
+- generic [ref=e5]:
+  - button "拉燈切換深淺色模式" [ref=e6] [cursor=pointer]
+  - generic [ref=e15]:
+    - generic [ref=e16]:
+      - img "NenAI" [ref=e18]
+      - generic [ref=e19]:
+        - heading "AI Testing Platform" [level=1] [ref=e20]
+        - paragraph [ref=e21]: NenAI Platform
+    - generic [ref=e22]:
+      - generic [ref=e23]:
+        - text: 使用您的
+        - strong [ref=e24]: NenAI API Key
+        - text: （格式：
+        - code [ref=e25]: sk-...
+        - text: ）登入，所有 AI 呼叫將使用此 Key。
+      - generic [ref=e26]:
+        - generic [ref=e27]: NenAI API Key
+        - textbox "NenAI API Key" [ref=e28]:
+          - /placeholder: sk-xxxxxxxxxxxxxxxxxxxxxxxx
+      - button "登入" [ref=e29] [cursor=pointer]

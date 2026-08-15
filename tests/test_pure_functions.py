@@ -294,3 +294,50 @@ def test_veo_resolutions_exclude_480p():
     assert len(veo) == 9, "t2v/i2v/r2v × 三個型號"
     for m in veo:
         assert m.get("resolutions") == ["720P", "1080P"], f"{m['id']}（{m['type']}）"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# _pricing_entry：全模態模型的音訊單價要一起帶出來
+# 起因：`audio_ratio` / `audio_completion_ratio` 在網關是 `*float64` + `omitempty`，
+# **只有該模型真的設定了才會出現**。我一度查了幾個模型都沒看到就判定「API 不吐」，
+# 差點為此做一份會過期的人工快照——實際上 qwen3.5-omni-plus-realtime 有這兩個欄位。
+# （更正一次自己的錯誤流程：那次是我的查詢只印固定幾個欄位，把答案自己濾掉了。）
+#
+# 數字對照 2026-08-16 正式站 /api/pricing 的實際回應，以及阿里雲官方牌價：
+#   輸入文字 $2.1/1M、輸出文字 $12.4/1M、輸入音訊 $16.5/1M、輸出音訊 $62/1M
+def test_pricing_entry_carries_audio_rates():
+    m = {
+        "model_name": "qwen3.5-omni-plus-realtime", "quota_type": 0,
+        "model_ratio": 1.05, "completion_ratio": 5.904761904762,
+        "audio_ratio": 7.857142857143, "audio_completion_ratio": 3.757575757576,
+    }
+    e = app._pricing_entry(m)
+    assert e["type"] == "token"
+    assert round(e["input"], 4) == 2.1
+    assert round(e["output"], 4) == 12.4
+    assert round(e["audio_input"], 4) == 16.5, "音訊輸入是文字的 7.86 倍，漏掉會低估"
+    assert round(e["audio_output"], 4) == 62.0, "音訊輸出最貴的一檔"
+
+
+def test_pricing_entry_without_audio_rates():
+    """沒有音訊倍率的模型不該憑空生出音訊欄位（前端會據此決定要不要用預設值）。"""
+    e = app._pricing_entry({"quota_type": 0, "model_ratio": 0.75, "completion_ratio": 4})
+    assert "audio_input" not in e and "audio_output" not in e
+
+
+def test_realtime_voices_verified():
+    """56 個音色都逐一對正式環境實測過；Chelsie 實測不支援，不可以再列回來。
+
+    驗法：session.update 帶音色 + response.create，有效的會開始回傳音訊、無效的回
+    `Voice 'X' is not supported.`。**不要用 session.update 的回應驗**——它對任何
+    字串都回 session.updated，連亂編的名字都照收。也不要用音訊位元比對——同音色
+    同輸入重跑兩次的位元並不相同。
+    """
+    rt = app.MODELS["voice"]["realtime"]
+    assert [m["id"] for m in rt] == ["qwen3.5-omni-plus-realtime"]
+    voices = rt[0]["voices"]
+    assert len(voices) == 56
+    ids = {v["id"] for v in voices}
+    assert "Chelsie" not in ids, "實測不支援（那是 qwen2.5-omni 的音色）"
+    assert rt[0]["default_voice"] in ids
+    assert (rt[0]["input_rate"], rt[0]["output_rate"]) == (16000, 24000)
