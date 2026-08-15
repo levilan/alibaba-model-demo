@@ -207,3 +207,62 @@ def test_proxy_whitelist_covers_upstream_output_hosts():
     assert allowed("storage.googleapis.com")
     assert not allowed("evil.com")
     assert not allowed("volces.com.evil.com"), "偽裝後綴必須擋下（SSRF 防護）"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Veo 的每秒單價表：唯一的防線是註解，補一條測試把數字釘住
+# 那張表在 `static/js/app.js`（前端顯示用的人工快照），閘道的 /api/pricing 只給
+# **基準價**、不給檔次倍率，所以沒有任何 API 能驗證它——這條測試就是驗證。
+#
+# 起因有三個都實際發生過：
+#   1. Lite 一度註明「不支援配音」而漏了有聲檔次，有聲時顯示比實付低 66%
+#   2. Fast 的基準價一度被填成官方的 3 倍，差點反過來把顯示改成 $0.24 那組
+#   3. 閘道端的 Lite 修正部署時程未定，**這段期間拿正式站帳單來對照會發現這裡偏高**
+#      ——那不是錯。沒有這條測試的話，下一個比對帳單的人很可能把正確值改回錯的。
+#
+# 數字來源：Google 官方價格表，由 nen-ai-platform 逐格核對（2026-08-15）。
+_VEO_EXPECTED = {
+    "veo-3.1-generate-001":      ({"720P": 0.20, "1080P": 0.20, "4K": 0.40},
+                                  {"720P": 0.40, "1080P": 0.40, "4K": 0.60}),
+    "veo-3.1-fast-generate-001": ({"720P": 0.08, "1080P": 0.10, "4K": 0.25},
+                                  {"720P": 0.10, "1080P": 0.12, "4K": 0.30}),
+    # Lite 沒有 4K 檔次，4K 請求會落到 1080P 的價，所以兩者相同
+    "veo-3.1-lite-generate-001": ({"720P": 0.03, "1080P": 0.05, "4K": 0.05},
+                                  {"720P": 0.05, "1080P": 0.08, "4K": 0.08}),
+}
+
+
+def _veo_price_entry(model_id):
+    """從 app.js 的 _VIDEO_SEC_PRICE 取出某個 veo 型號的（無聲, 有聲）單價。"""
+    import re
+
+    src = (Path(__file__).resolve().parent.parent / "static" / "js" / "app.js").read_text("utf-8")
+    table = src.split("const _VIDEO_SEC_PRICE = {", 1)[1].split("\n};", 1)[0]
+    # 取這個 id 到下一個 id（或表尾）之間的片段，去掉空白與註解行後再解析
+    body = table.split(f"'{model_id}':", 1)[1]
+    body = re.split(r"\n\s*(?://|')", body, maxsplit=1)[0]
+    base_txt, _, audio_txt = body.partition("_withAudio")
+
+    def tiers(txt):
+        return {k: float(v) for k, v in re.findall(r"'(\d+P|4K)':\s*([0-9.]+)", txt)}
+
+    return tiers(base_txt), tiers(audio_txt)
+
+
+@pytest.mark.parametrize("model_id", sorted(_VEO_EXPECTED))
+def test_veo_per_second_prices(model_id):
+    expected_base, expected_audio = _VEO_EXPECTED[model_id]
+    base, audio = _veo_price_entry(model_id)
+    assert base == expected_base, f"{model_id} 的無聲每秒單價與官方價格表不符"
+    assert audio == expected_audio, f"{model_id} 的有聲每秒單價與官方價格表不符"
+
+
+def test_veo_resolutions_exclude_480p():
+    """480P 不是 Veo 的檔次：閘道計費端用 == "4k" / == "720p" 判斷，480p 兩個都不中，
+    會落進 else 的 1080P 檔——使用者被以較高檔次預扣，然後請求被上游擋掉拿不到影片。
+    4K 不列入：UI 的解析度選單裡沒有 4K，我們也沒實測過。
+    """
+    veo = [m for m in app.MODELS["video"] if m["id"].startswith("veo-")]
+    assert len(veo) == 9, "t2v/i2v/r2v × 三個型號"
+    for m in veo:
+        assert m.get("resolutions") == ["720P", "1080P"], f"{m['id']}（{m['type']}）"
