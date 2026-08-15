@@ -2344,7 +2344,9 @@ function onVoiceTaskChange() {
     document.getElementById('voiceAsrPromptPanel').style.display = t === 'asr' ? '' : 'none';
     document.getElementById('voiceTtsPromptPanel').style.display = t === 'tts' ? '' : 'none';
     document.getElementById('voiceRealtimeSection').style.display = t === 'realtime' ? '' : 'none';
-    document.getElementById('voiceRealtimePromptPanel').style.display = t === 'realtime' ? '' : 'none';
+    document.getElementById('voiceRealtimePromptPanel').style.display = t === 'realtime' ? 'flex' : 'none';
+    // 即時對話有自己的訊息區，ASR/TTS 的結果區在這個模式下要收起來
+    document.getElementById('voiceResults').style.display = t === 'realtime' ? 'none' : '';
     // 離開即時對話頁面就把連線收掉——WebSocket 連著不會自己斷，而使用者切走之後
     // 看不到任何狀態，麥克風卻還開著
     if (t !== 'realtime') stopRealtime();
@@ -2414,20 +2416,28 @@ let rtInCtx = null, rtProcessor = null, rtMicSink = null;
 let rtOutCtx = null, rtPlayhead = 0, rtSources = [];
 let rtAssistantLine = null; // 目前這一輪 AI 逐字稿的 DOM 節點（逐字更新同一行）
 
-function rtSetStatus(text) {
+// state：'' 未連線／'on' 已連線／'busy' 處理中／'err' 出錯——狀態燈比文字更快讀
+function rtSetStatus(text, state = '') {
     const el = document.getElementById('voiceRtStatus');
     if (el) el.textContent = text;
+    const dot = document.getElementById('voiceRtDot');
+    if (dot) dot.className = 'rt-dot' + (state ? ' ' + state : '');
 }
 
-// frames 有值時把送出的畫面也貼在對話裡——不然使用者只看得到自己打的字，
-// 無從確認「這一輪到底有沒有把圖帶上去」
-function rtLog(who, text, cls, frames) {
-    const area = document.getElementById('voiceResults');
-    area.querySelector('.empty-state')?.remove();
-    const line = el('div', { className: 'voice-result' });
-    line.innerHTML = `<div class="voice-result-header"><span>${who}</span></div>` +
-                     `<div style="padding:8px 10px;font-size:0.85rem;${cls === 'err' ? 'color:var(--red)' : ''}"></div>`;
-    const body = line.lastElementChild;
+// 對話一律**往下追加**、最新在底並自動捲到底；自己說的靠右、AI 靠左。
+// frames 有值時把送出的畫面貼在該則訊息上方——不然使用者只看得到自己打的字，
+// 無從確認「這一輪到底有沒有把圖帶上去」。
+// kind：'me' | 'ai' | 'sys' | 'err'
+function rtLog(who, text, kind = 'ai', frames) {
+    const area = document.getElementById('voiceRtMessages');
+    document.getElementById('voiceRtEmpty')?.remove();
+    const wrap = el('div', { className: `rt-msg ${kind}` });
+    if (who) {
+        const w = el('div', { className: 'rt-who' });
+        w.textContent = who;
+        wrap.appendChild(w);
+    }
+    const bubble = el('div', { className: 'rt-bubble' });
     if (frames && frames.length) {
         const strip = el('div', { className: 'rt-frames' });
         frames.forEach(f => {
@@ -2435,18 +2445,28 @@ function rtLog(who, text, cls, frames) {
             img.src = `data:image/jpeg;base64,${f}`;
             strip.appendChild(img);
         });
-        body.appendChild(strip);
+        bubble.appendChild(strip);
     }
     const p = el('div');
     p.textContent = text;
-    body.appendChild(p);
-    area.insertBefore(line, area.firstChild);
+    bubble.appendChild(p);
+    wrap.appendChild(bubble);
+    area.appendChild(wrap);
+    rtScrollToBottom();
     return p;
 }
 
+// 只有在使用者本來就貼在底部時才自動捲——他往上翻看舊訊息時把畫面拉走很惱人
+function rtScrollToBottom(force) {
+    const area = document.getElementById('voiceRtMessages');
+    if (!area) return;
+    const nearBottom = area.scrollHeight - area.scrollTop - area.clientHeight < 120;
+    if (force || nearBottom) area.scrollTop = area.scrollHeight;
+}
+
 function clearRealtimeLog() {
-    const area = document.getElementById('voiceResults');
-    area.innerHTML = '<div class="empty-state" style="width:100%"><p>對話內容將顯示在此處</p></div>';
+    const area = document.getElementById('voiceRtMessages');
+    area.innerHTML = '<div class="rt-empty" id="voiceRtEmpty"><p>對話內容會顯示在這裡</p></div>';
     rtAssistantLine = null;
 }
 
@@ -2460,22 +2480,25 @@ function startRealtime() {
     const key = apiKey;
     if (!key) { toast('請先登入', 'error'); return; }
 
-    rtSetStatus('連線中…');
+    rtSetStatus('連線中…', 'busy');
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     rtWs = new WebSocket(`${proto}://${location.host}/ws/omni?api_key=${encodeURIComponent(key)}&model=${encodeURIComponent(model)}`);
 
-    rtWs.onopen = () => {
-        rtSetStatus('已連線');
+    rtWs.onopen = async () => {
+        rtSetStatus('已連線', 'on');
         document.getElementById('voiceRtConnectBtn').innerHTML = '結束對話';
         document.getElementById('voiceRtMicBtn').disabled = false;
         document.getElementById('voiceRtSendBtn').disabled = false;
         rtSendSessionUpdate();
         rtOutCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: RT_OUT_RATE });
         rtPlayhead = 0;
+        // 這是「語音對話」，按下開始就該能直接講話——不要再逼使用者找第二顆按鈕。
+        // 麥克風被拒絕也不當成失敗：打字那條路仍然完整可用
+        await toggleRealtimeMic();
     };
     rtWs.onmessage = (e) => rtHandleEvent(JSON.parse(e.data));
-    rtWs.onerror = () => rtLog('系統', '連線發生錯誤', 'err');
-    rtWs.onclose = () => { if (rtWs) { rtLog('系統', '連線已結束'); stopRealtime(); } };
+    rtWs.onerror = () => rtLog('', '連線發生錯誤', 'err');
+    rtWs.onclose = () => { if (rtWs) { rtLog('', '對話已結束', 'sys'); stopRealtime(); } };
 }
 
 function rtSendSessionUpdate() {
@@ -2493,8 +2516,7 @@ function rtSendSessionUpdate() {
             turn_detection: td === 'none' ? null : { type: td },
         },
     }));
-    // 手動送出模式要自己按按鈕結束一輪，自動斷句則由伺服器判斷
-    document.getElementById('voiceRtCommitBtn').style.display = td === 'none' ? '' : 'none';
+    rtUpdateCommitButton();
 }
 
 function onRealtimeVoiceChange() { rtSendSessionUpdate(); }
@@ -2510,7 +2532,7 @@ function stopRealtime() {
     const btn = document.getElementById('voiceRtConnectBtn');
     if (btn) btn.innerHTML = '開始對話';
     const mic = document.getElementById('voiceRtMicBtn');
-    if (mic) { mic.disabled = true; mic.innerHTML = '開啟麥克風'; }
+    if (mic) { mic.disabled = true; mic.classList.remove('live'); }
     const send = document.getElementById('voiceRtSendBtn');
     if (send) send.disabled = true;
 }
@@ -2523,7 +2545,8 @@ async function toggleRealtimeMic() {
             audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
         });
     } catch (err) {
-        toast('無法取得麥克風權限', 'error');
+        // 不擋流程：打字那條路仍然完整可用，只是要讓使用者知道為什麼不能講話
+        rtLog('', '沒有麥克風權限，可以先用打字的', 'sys');
         return;
     }
     // 要求 16kHz，但瀏覽器不保證會照給（Safari 常常給 44.1k/48k），所以下面一律
@@ -2544,8 +2567,10 @@ async function toggleRealtimeMic() {
     rtProcessor.connect(rtMicSink);
     rtMicSink.connect(rtInCtx.destination);
 
-    document.getElementById('voiceRtMicBtn').innerHTML = '關閉麥克風';
-    rtSetStatus('麥克風已開啟，可以直接說話');
+    const btn = document.getElementById('voiceRtMicBtn');
+    btn.classList.add('live');
+    btn.title = '關閉麥克風';
+    rtSetStatus(rtPendingFrames.length ? '已附上畫面：說完後按「說完了，送出」' : '收音中，直接說話就好', 'on');
 }
 
 function stopRealtimeMic() {
@@ -2554,7 +2579,7 @@ function stopRealtimeMic() {
     if (rtMicStream) { rtMicStream.getTracks().forEach(t => t.stop()); rtMicStream = null; }
     if (rtInCtx) { try { rtInCtx.close(); } catch (e) {} rtInCtx = null; }
     const btn = document.getElementById('voiceRtMicBtn');
-    if (btn) btn.innerHTML = '開啟麥克風';
+    if (btn) { btn.classList.remove('live'); btn.title = '麥克風'; }
 }
 
 // Float32（-1~1）→ 16kHz PCM16。srcRate 不是 16k 時線性重取樣
@@ -2616,40 +2641,38 @@ function rtStopPlayback() {
 function rtHandleEvent(ev) {
     switch (ev.type) {
         case 'session.created':
-            rtSetStatus('已連線');
+            rtSetStatus('已連線', 'on');
             break;
         case 'input_audio_buffer.speech_started':
             // 使用者插話：立刻停掉正在播的回答，否則兩個人的聲音會疊在一起
             rtStopPlayback();
-            rtSetStatus('聽到你在說話…');
+            rtSetStatus('聽到你在說話…', 'on');
             break;
         case 'input_audio_buffer.speech_stopped':
-            rtSetStatus('思考中…');
+            rtSetStatus('思考中…', 'busy');
             break;
         case 'conversation.item.input_audio_transcription.completed':
-            if (ev.transcript) rtLog('你（語音）', ev.transcript);
+            if (ev.transcript) rtLog('你說的', ev.transcript, 'me');
             break;
         case 'response.audio.delta':
             if (ev.delta) rtPlayChunk(ev.delta);
             break;
         case 'response.audio_transcript.delta':
-            if (!rtAssistantLine) rtAssistantLine = rtLog('AI', '');
-            rtAssistantLine.textContent += ev.delta || '';
-            break;
         case 'response.text.delta':
-            if (!rtAssistantLine) rtAssistantLine = rtLog('AI', '');
+            if (!rtAssistantLine) rtAssistantLine = rtLog('AI', '', 'ai');
             rtAssistantLine.textContent += ev.delta || '';
+            rtScrollToBottom();
             break;
         case 'response.done':
             rtAssistantLine = null;
             // 帶畫面提問時暫時關掉的斷句偵測，答完就還原成使用者選的設定
             if (rtVadOverridden) { rtVadOverridden = false; rtSendSessionUpdate(); }
-            rtSetStatus(rtMicStream ? '麥克風已開啟，可以直接說話' : '已連線');
+            rtSetStatus(rtMicStream ? '收音中，直接說話就好' : '已連線', 'on');
             rtApplyUsage(ev.response?.usage);
             break;
         case 'error':
-            rtLog('系統', ev.error?.message || JSON.stringify(ev), 'err');
-            rtSetStatus('發生錯誤');
+            rtLog('', ev.error?.message || JSON.stringify(ev), 'err');
+            rtSetStatus('發生錯誤', 'err');
             break;
     }
 }
@@ -2709,13 +2732,14 @@ let rtPendingFrames = [];         // 待送出的影格（裸 base64 JPEG，不�
 function onRealtimeFileChange(event) {
     const file = event.target.files[0];
     if (!file) return;
-    const icon = document.getElementById('voiceRtUpIcon');
-    const label = document.getElementById('voiceRtUpLabel');
-    label.textContent = '處理中…';
+    const box = document.getElementById('voiceRtAttach');
+    const name = document.getElementById('voiceRtAttachName');
+    box.style.display = '';
+    name.textContent = '處理中…';
     const done = (n) => {
-        icon.textContent = '✅';
-        label.textContent = `${file.name}（${n} 張畫面）`;
-        document.getElementById('voiceRtClearFileBtn').style.display = '';
+        // 直接把第一張畫面當縮圖，使用者才確定「我附上的是這個」
+        document.getElementById('voiceRtAttachThumb').src = `data:image/jpeg;base64,${rtPendingFrames[0]}`;
+        name.textContent = n > 1 ? `${file.name}・取樣 ${n} 張畫面` : file.name;
         rtEnterFrameTurnMode();
     };
     if (file.type.startsWith('video/')) {
@@ -2732,24 +2756,32 @@ function onRealtimeFileChange(event) {
 // 告訴使用者要按哪顆按鈕——否則使用者對著麥克風問「這張圖是什麼」，模型會回
 // 「我沒看到圖片」，而畫面上沒有任何線索說明為什麼。
 function rtEnterFrameTurnMode() {
-    document.getElementById('voiceRtCommitBtn').style.display = '';
+    rtUpdateCommitButton();
     if (!rtWs || rtWs.readyState !== WebSocket.OPEN) return;
     if (document.getElementById('voiceRtTurnDetection').value !== 'none') {
         rtWs.send(JSON.stringify({ type: 'session.update', session: { turn_detection: null } }));
         rtVadOverridden = true;
     }
-    rtSetStatus(rtMicStream ? '已附上畫面：說完後按「送出語音」' : '已附上畫面：可打字送出，或開麥克風說完後按「送出語音」');
+    rtSetStatus(rtMicStream ? '已附上畫面：說完後按「說完了，送出」' : '已附上畫面：可以打字送出，或開麥克風說', 'on');
+}
+
+// 手動送出鈕出現的兩種情形：使用者自己選了手動模式，或這一輪附了畫面（附畫面時
+// 一定要手動——開著 VAD 影格不會被帶上，見 rtSendFramesIfAny）
+function rtUpdateCommitButton() {
+    const manual = document.getElementById('voiceRtTurnDetection').value === 'none';
+    const show = manual || rtPendingFrames.length > 0;
+    document.getElementById('voiceRtCommitBtn').style.display = show ? '' : 'none';
+    document.getElementById('voiceRtHintText').textContent = rtPendingFrames.length
+        ? '附了畫面時，說完要自己按「說完了，送出」'
+        : 'Enter 送出，Shift+Enter 換行';
 }
 
 function clearRealtimeFile() {
     rtPendingFrames = [];
     document.getElementById('voiceRtFileInput').value = '';
-    document.getElementById('voiceRtUpIcon').textContent = '🖼';
-    document.getElementById('voiceRtUpLabel').textContent = '上傳圖片或影片';
-    document.getElementById('voiceRtClearFileBtn').style.display = 'none';
-    // 手動送出鈕只在使用者自己選了手動模式時才留著
-    document.getElementById('voiceRtCommitBtn').style.display =
-        document.getElementById('voiceRtTurnDetection').value === 'none' ? '' : 'none';
+    document.getElementById('voiceRtAttach').style.display = 'none';
+    document.getElementById('voiceRtAttachThumb').removeAttribute('src');
+    rtUpdateCommitButton();
 }
 
 function rtImageToJpegBase64(file) {
@@ -2826,7 +2858,7 @@ function sendRealtimeText() {
     if (!text && !rtPendingFrames.length) return;
     const frames = rtPendingFrames.slice();
     rtSendFramesIfAny();
-    rtLog('你', text, null, frames);
+    rtLog('你', text, 'me', frames);
     if (frames.length) clearRealtimeFile();
     rtWs.send(JSON.stringify({
         type: 'conversation.item.create',
@@ -2834,7 +2866,7 @@ function sendRealtimeText() {
     }));
     rtWs.send(JSON.stringify({ type: 'response.create' }));
     box.value = '';
-    rtSetStatus('思考中…');
+    rtSetStatus('思考中…', 'busy');
 }
 
 function commitRealtimeAudio() {
@@ -2844,12 +2876,12 @@ function commitRealtimeAudio() {
     const frames = rtPendingFrames.slice();
     if (frames.length) {
         rtSendFramesIfAny();
-        rtLog('你（畫面）', '', null, frames);
+        rtLog('你附上的畫面', '', 'me', frames);
         clearRealtimeFile();
     }
     rtWs.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
     rtWs.send(JSON.stringify({ type: 'response.create' }));
-    rtSetStatus('思考中…');
+    rtSetStatus('思考中…', 'busy');
 }
 
 function addVoiceResultCard(title) {

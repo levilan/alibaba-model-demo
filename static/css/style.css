@@ -1290,17 +1290,178 @@ input[type="range"]::-webkit-slider-thumb {
     }
 }
 
-/* 即時對話裡送出的畫面縮圖：一列橫向排開，超出就自己捲，不要把對話欄撐開 */
-.rt-frames {
+/* ── 即時語音對話：聊天版型 ──────────────────────────────────────────────
+   刻意不沿用 .voice-result（ASR/TTS 的結果卡片）：那是「最新的插在最上面」，
+   用在對話上會變成要由下往上讀，而且「你」和「AI」兩種卡片長得一模一樣。 */
+.rt-shell {
     display: flex;
-    gap: 6px;
-    overflow-x: auto;
-    margin-bottom: 8px;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;                 /* 不寫這行，訊息區的捲動會被撐破 */
 }
+
+.rt-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-white);
+}
+.rt-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex: 0 0 auto;
+}
+.rt-dot.on   { background: var(--green); box-shadow: 0 0 0 3px rgba(0,179,101,.18); }
+.rt-dot.busy { background: var(--yellow); box-shadow: 0 0 0 3px rgba(250,140,22,.18); }
+.rt-dot.err  { background: var(--red); }
+.rt-state { font-size: 0.82rem; color: var(--text-body); }
+.rt-usage { font-size: 0.72rem; color: var(--text-muted); }
+
+.rt-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 18px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.rt-empty {
+    margin: auto;
+    text-align: center;
+    color: var(--text-muted);
+}
+.rt-empty p { margin-top: 10px; font-size: 0.85rem; line-height: 1.7; }
+.rt-empty span { font-size: 0.78rem; opacity: .75; }
+
+.rt-msg { max-width: min(72%, 640px); }
+.rt-msg.me { align-self: flex-end; }
+.rt-msg.ai { align-self: flex-start; }
+.rt-msg .rt-who {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+.rt-msg.me .rt-who { text-align: right; }
+.rt-bubble {
+    padding: 10px 13px;
+    border-radius: 14px;
+    font-size: 0.87rem;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.rt-msg.me .rt-bubble {
+    background: var(--ali-orange);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+}
+.rt-msg.ai .rt-bubble {
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+}
+.rt-msg.sys .rt-bubble {
+    background: transparent;
+    border: 1px dashed var(--border);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+.rt-msg.sys { align-self: center; max-width: 80%; }
+.rt-msg.err .rt-bubble { border-color: var(--red); color: var(--red); }
+
+/* 送出的畫面：貼在該則訊息上方，橫向排開 */
+.rt-frames { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 6px; }
 .rt-frames img {
-    height: 96px;
+    height: 92px;
     width: auto;
-    border-radius: 6px;
+    border-radius: 10px;
     border: 1px solid var(--border);
     flex: 0 0 auto;
 }
+
+.rt-compose {
+    border-top: 1px solid var(--border);
+    padding: 10px 16px 12px;
+    background: var(--bg-white);
+}
+.rt-input-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+}
+.rt-textarea {
+    flex: 1;
+    resize: none;
+    max-height: 140px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-white);
+    color: var(--text-body);
+    font: inherit;
+    font-size: 0.87rem;
+    line-height: 1.5;
+}
+.rt-textarea:focus { outline: none; border-color: var(--border-focus); }
+.rt-icon-btn {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-body);
+    cursor: pointer;
+}
+.rt-icon-btn:hover:not(:disabled) { border-color: var(--ali-orange); color: var(--ali-orange); }
+.rt-icon-btn:disabled { opacity: .38; cursor: not-allowed; }
+.rt-icon-btn.rt-send { background: var(--ali-orange); border-color: var(--ali-orange); color: #fff; }
+.rt-icon-btn.rt-send:disabled { background: transparent; color: var(--text-body); border-color: var(--border); }
+/* 麥克風開著時要一眼看得出來——這是唯一會持續收音的狀態 */
+.rt-icon-btn.rt-mic.live {
+    background: var(--red);
+    border-color: var(--red);
+    color: #fff;
+    animation: rtPulse 1.6s ease-in-out infinite;
+}
+@keyframes rtPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245,63,63,.5); }
+    50%      { box-shadow: 0 0 0 6px rgba(245,63,63,0); }
+}
+
+.rt-hint {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.rt-attach {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+.rt-attach img { height: 40px; width: 40px; object-fit: cover; border-radius: 6px; }
+.rt-attach span { font-size: 0.76rem; color: var(--text-muted); }
+.rt-attach-x {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+.rt-attach-x:hover { color: var(--red); }

@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=37">
+    <link rel="stylesheet" href="/static/css/style.css?v=39">
     <link rel="icon" type="image/png" href="/static/img/logo.png">
     <script>
         // 在 CSS 套用前就先決定 light/dark，避免登入畫面先閃一下錯的主題再跳回來
@@ -859,27 +859,18 @@
                               placeholder="你是友善的中文語音助理，回答簡潔自然。">你是友善的中文語音助理，回答簡潔自然。</textarea>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" data-tip="語音＋文字：同時聽到聲音並看到逐字稿；只有文字：不產生語音，回應速度較快">回應形式</label>
+                    <label class="form-label" data-tip="出聲回答：聽得到聲音，同時看得到逐字稿；只回文字：不產生語音，回應比較快">AI 怎麼回答你</label>
                     <select id="voiceRtModalities" class="select-input">
-                        <option value="text,audio">語音 ＋ 文字</option>
-                        <option value="text">只有文字</option>
+                        <option value="text,audio">出聲回答（含逐字稿）</option>
+                        <option value="text">只回文字</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label class="form-label" data-tip="可以帶圖片或影片一起提問。影片會取樣成數張畫面送出，最多 8 張">畫面（選填）</label>
-                    <div class="upload-zone" id="voiceRtUpZone" onclick="document.getElementById('voiceRtFileInput').click()" style="padding:12px">
-                        <input type="file" id="voiceRtFileInput" accept="image/*,video/*" style="display:none" onchange="onRealtimeFileChange(event)">
-                        <div class="upload-zone-icon" id="voiceRtUpIcon" style="font-size:20px">🖼</div>
-                        <p id="voiceRtUpLabel" style="font-size:11px">上傳圖片或影片</p>
-                    </div>
-                    <button class="btn btn-ghost btn-sm" id="voiceRtClearFileBtn" style="display:none;margin-top:6px;width:100%" onclick="clearRealtimeFile()">清除畫面</button>
-                </div>
                 <div class="form-group" style="margin-bottom:0">
-                    <label class="form-label" data-tip="自動斷句：說完停頓一下就會自動回答；手動：按下「送出語音」才回答">斷句方式</label>
+                    <label class="form-label" data-tip="自動：說完停頓一下 AI 就會接話；手動：說完自己按按鈕，AI 才回答">什麼時候算你說完</label>
                     <select id="voiceRtTurnDetection" class="select-input">
-                        <option value="semantic_vad">自動斷句（依語意）</option>
-                        <option value="server_vad">自動斷句（依靜音）</option>
-                        <option value="none">手動送出</option>
+                        <option value="semantic_vad">自動判斷（聽語意）</option>
+                        <option value="server_vad">自動判斷（聽停頓）</option>
+                        <option value="none">我自己按按鈕</option>
                     </select>
                 </div>
             </div>
@@ -993,36 +984,52 @@
                     <span style="font-size:0.75rem;color:var(--text-muted)">Ctrl+Enter 快速發送</span>
                 </div>
             </div>
-            <div class="prompt-panel" id="voiceRealtimePromptPanel" style="display:none">
-                <div class="prompt-row">
-                    <div class="prompt-col">
-                        <div class="form-group" style="margin-bottom:0">
-                            <label class="form-label">
-                                對話狀態
-                                <span class="param-hint" id="voiceRtStatus">尚未連線</span>
-                            </label>
-                            <textarea id="voiceRtText" class="textarea-input" rows="2" placeholder="連線後可以直接說話，也可以在這裡打字送出..."
-                                      onkeydown="if((event.ctrlKey || event.metaKey) && event.key==='Enter'){event.preventDefault();sendRealtimeText();}"></textarea>
-                        </div>
-                    </div>
-                    <div style="display:flex;flex-direction:column;justify-content:flex-end;gap:6px">
-                        <button id="voiceRtConnectBtn" class="btn btn-primary" onclick="toggleRealtimeConnection()" style="height:40px">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                            開始對話
-                        </button>
-                        <button id="voiceRtMicBtn" class="btn btn-ghost" onclick="toggleRealtimeMic()" style="height:40px" disabled>
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
-                            開啟麥克風
-                        </button>
+            <!-- 即時對話：走聊天版型（訊息由上而下、最新在底、輸入列在底部），
+                 不沿用 ASR/TTS 的結果卡片——那是倒序的，用在對話上要由下往上讀 -->
+            <div class="rt-shell" id="voiceRealtimePromptPanel" style="display:none">
+                <div class="rt-bar">
+                    <span class="rt-dot" id="voiceRtDot"></span>
+                    <span class="rt-state" id="voiceRtStatus">尚未連線</span>
+                    <span style="flex:1"></span>
+                    <span class="rt-usage" id="voiceRtUsage"></span>
+                    <button id="voiceRtClearBtn" class="btn btn-ghost btn-sm" onclick="clearRealtimeLog()">清除紀錄</button>
+                    <button id="voiceRtConnectBtn" class="btn btn-primary btn-sm" onclick="toggleRealtimeConnection()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+                        開始對話
+                    </button>
+                </div>
+
+                <div class="rt-messages" id="voiceRtMessages">
+                    <div class="rt-empty" id="voiceRtEmpty">
+                        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+                        <p>按「開始對話」後就可以直接說話<br><span>也可以打字，或附上圖片與影片一起問</span></p>
                     </div>
                 </div>
-                <div class="chat-actions-row" style="padding-top:8px;gap:10px;align-items:center">
-                    <button id="voiceRtSendBtn" class="btn btn-ghost btn-sm" onclick="sendRealtimeText()" disabled>送出文字</button>
-                    <button id="voiceRtCommitBtn" class="btn btn-ghost btn-sm" onclick="commitRealtimeAudio()" style="display:none">送出語音</button>
-                    <button id="voiceRtClearBtn" class="btn btn-ghost btn-sm" onclick="clearRealtimeLog()">清除紀錄</button>
-                    <span style="font-size:0.75rem;color:var(--text-muted)">Ctrl+Enter 快速發送</span>
-                    <span style="flex:1"></span>
-                    <span id="voiceRtUsage" style="font-size:0.75rem;color:var(--text-muted)"></span>
+
+                <div class="rt-compose">
+                    <div class="rt-attach" id="voiceRtAttach" style="display:none">
+                        <img id="voiceRtAttachThumb" alt="">
+                        <span id="voiceRtAttachName"></span>
+                        <button class="rt-attach-x" onclick="clearRealtimeFile()" title="移除">✕</button>
+                    </div>
+                    <div class="rt-input-row">
+                        <input type="file" id="voiceRtFileInput" accept="image/*,video/*" style="display:none" onchange="onRealtimeFileChange(event)">
+                        <button class="rt-icon-btn" id="voiceRtAttachBtn" onclick="document.getElementById('voiceRtFileInput').click()" title="附上圖片或影片">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                        </button>
+                        <textarea id="voiceRtText" class="rt-textarea" rows="1" placeholder="說話或打字都可以…"
+                                  onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendRealtimeText();}"></textarea>
+                        <button class="rt-icon-btn rt-mic" id="voiceRtMicBtn" onclick="toggleRealtimeMic()" title="麥克風" disabled>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+                        </button>
+                        <button class="rt-icon-btn rt-send" id="voiceRtSendBtn" onclick="sendRealtimeText()" title="送出" disabled>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                        </button>
+                    </div>
+                    <div class="rt-hint">
+                        <button id="voiceRtCommitBtn" class="btn btn-primary btn-sm" onclick="commitRealtimeAudio()" style="display:none">說完了，送出</button>
+                        <span id="voiceRtHintText">Enter 送出，Shift+Enter 換行</span>
+                    </div>
                 </div>
             </div>
             <div id="voiceResults" class="results-area" style="flex:1;flex-direction:column;align-items:stretch">
@@ -1055,6 +1062,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=78"></script>
+<script src="/static/js/app.js?v=79"></script>
 </body>
 </html>
