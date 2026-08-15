@@ -2628,6 +2628,8 @@ function rtHandleEvent(ev) {
             break;
         case 'response.done':
             rtAssistantLine = null;
+            // 帶畫面提問時暫時關掉的斷句偵測，答完就還原成使用者選的設定
+            if (rtVadOverridden) { rtVadOverridden = false; rtSendSessionUpdate(); }
             rtSetStatus(rtMicStream ? '麥克風已開啟，可以直接說話' : '已連線');
             rtApplyUsage(ev.response?.usage);
             break;
@@ -2676,16 +2678,126 @@ function rtApplyUsage(usage) {
         (cost != null ? `　約 $${formatUsd(Number(cost.toFixed(6)))}` : '');
 }
 
+// ── 畫面輸入（圖片／影片）────────────────────────────────────────────────
+// ⚠️ 這條路徑的形狀是實測出來的，**不要照 chat 的 image_url 寫法推**。實測結果：
+//   - content 裡放 input_image（image_url / image、data URI / 裸 base64）→ 全都不行。
+//     最危險的是「裸 base64」那個變體：**不報錯，但模型完全沒看到圖**（回「請提供圖片」）。
+//   - content 裡放 input_video + 影格陣列 → 也不行，同樣是收下但看不到。這個變體一度
+//     騙過我——單張圖問一次，它答「紅色」剛好對；換三張底色不同的圖再問，三次全都
+//     回「白色、圓形」，才看出那是編出來的答案。**驗這種事一定要有會變的對照組。**
+//   - 可用的是 `input_image_buffer.append`，但它有前置條件：必須**先送過音訊**，
+//     否則回 `Error append image before append audio.`。送一段靜音就夠了。
+// 驗證方式：三張底色與形狀都不同的圖各問一次，三次答案完全跟著圖變（藍/圓、綠/方、
+// 黃/三角），才判定它真的讀到了。
+const RT_MAX_FRAMES = 8;          // 影片取樣上限
+let rtPendingFrames = [];         // 待送出的影格（裸 base64 JPEG，不含 data URI 前綴）
+
+function onRealtimeFileChange(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const icon = document.getElementById('voiceRtUpIcon');
+    const label = document.getElementById('voiceRtUpLabel');
+    label.textContent = '處理中…';
+    const done = (n) => {
+        icon.textContent = '✅';
+        label.textContent = `${file.name}（${n} 張畫面）`;
+        document.getElementById('voiceRtClearFileBtn').style.display = '';
+    };
+    if (file.type.startsWith('video/')) {
+        rtExtractVideoFrames(file).then(frames => { rtPendingFrames = frames; done(frames.length); })
+            .catch(() => { toast('影片讀取失敗', 'error'); clearRealtimeFile(); });
+    } else {
+        rtImageToJpegBase64(file).then(b64 => { rtPendingFrames = [b64]; done(1); })
+            .catch(() => { toast('圖片讀取失敗', 'error'); clearRealtimeFile(); });
+    }
+}
+
+function clearRealtimeFile() {
+    rtPendingFrames = [];
+    document.getElementById('voiceRtFileInput').value = '';
+    document.getElementById('voiceRtUpIcon').textContent = '🖼';
+    document.getElementById('voiceRtUpLabel').textContent = '上傳圖片或影片';
+    document.getElementById('voiceRtClearFileBtn').style.display = 'none';
+}
+
+function rtImageToJpegBase64(file) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            // 縮到長邊 960，避免一張高解析度圖把單一 WebSocket 訊息撐得過大
+            const scale = Math.min(1, 960 / Math.max(img.width, img.height));
+            const c = document.createElement('canvas');
+            c.width = Math.round(img.width * scale);
+            c.height = Math.round(img.height * scale);
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            URL.revokeObjectURL(img.src);
+            resolve(c.toDataURL('image/jpeg', 0.85).split(',')[1]);
+        };
+        img.onerror = reject;
+        img.src = URL.createObjectURL(file);
+    });
+}
+
+// 影片在瀏覽器端取樣成畫面：上游的 image buffer 收的是一張張影格，不是影片檔
+function rtExtractVideoFrames(file) {
+    return new Promise((resolve, reject) => {
+        const video = document.createElement('video');
+        video.muted = true;
+        video.src = URL.createObjectURL(file);
+        video.onerror = reject;
+        video.onloadedmetadata = async () => {
+            const dur = video.duration || 0;
+            const n = Math.max(1, Math.min(RT_MAX_FRAMES, Math.ceil(dur)));
+            const scale = Math.min(1, 960 / Math.max(video.videoWidth, video.videoHeight));
+            const c = document.createElement('canvas');
+            c.width = Math.round(video.videoWidth * scale);
+            c.height = Math.round(video.videoHeight * scale);
+            const ctx = c.getContext('2d');
+            const frames = [];
+            for (let i = 0; i < n; i++) {
+                const t = dur * (i + 0.5) / n;
+                await new Promise(r => { video.onseeked = r; video.currentTime = t; });
+                ctx.drawImage(video, 0, 0, c.width, c.height);
+                frames.push(c.toDataURL('image/jpeg', 0.85).split(',')[1]);
+            }
+            URL.revokeObjectURL(video.src);
+            resolve(frames);
+        };
+    });
+}
+
+// image buffer 的前置條件：要先送過音訊。送一段靜音把門打開。
+//
+// ⚠️ 而且**必須先關掉斷句偵測**。開著 semantic_vad 時，那段靜音會被 VAD 判定成
+// 「沒有語音」而丟掉，圖片緩衝就不會被帶上——**不會有任何錯誤訊息**，模型會回一個
+// 編出來的答案（三張完全不同的圖都回「白色、圓形」）。這個變因是拿 turn_detection
+// 開/關兩組各跑三張對照圖才隔離出來的。
+let rtVadOverridden = false;
+
+function rtSendFramesIfAny() {
+    if (!rtPendingFrames.length) return false;
+    if (document.getElementById('voiceRtTurnDetection').value !== 'none') {
+        rtWs.send(JSON.stringify({ type: 'session.update', session: { turn_detection: null } }));
+        rtVadOverridden = true;
+    }
+    const silence = new Uint8Array(RT_IN_RATE * 0.6 * 2);   // 0.6 秒的 16kHz 靜音
+    rtWs.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: rtBytesToBase64(silence) }));
+    rtPendingFrames.forEach(f => rtWs.send(JSON.stringify({ type: 'input_image_buffer.append', image: f })));
+    return true;
+}
+
 // ── 送出 ──────────────────────────────────────────────────────────────────
 function sendRealtimeText() {
     if (!rtWs || rtWs.readyState !== WebSocket.OPEN) { toast('請先開始對話', 'error'); return; }
     const box = document.getElementById('voiceRtText');
     const text = box.value.trim();
-    if (!text) return;
-    rtLog('你', text);
+    if (!text && !rtPendingFrames.length) return;
+    const sentFrames = rtSendFramesIfAny();
+    rtLog('你', (sentFrames ? `［畫面 ${rtPendingFrames.length} 張］ ` : '') + text);
+    if (sentFrames) clearRealtimeFile();
     rtWs.send(JSON.stringify({
         type: 'conversation.item.create',
-        item: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] },
+        item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: text || '描述你看到的畫面。' }] },
     }));
     rtWs.send(JSON.stringify({ type: 'response.create' }));
     box.value = '';

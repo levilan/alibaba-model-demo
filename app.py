@@ -934,7 +934,7 @@ MODELS = {
         # 所以獨立成一個任務類型。輸入 PCM 16kHz、輸出 PCM 24kHz（皆為 mono s16le）。
         "realtime": [
             {"id": "qwen3.5-omni-plus-realtime", "name": "Qwen3.5 Omni Plus Realtime", "group": "即時語音",
-             "desc": "全模態即時語音對話，可聽可說、支援語意斷句與插話",
+             "desc": "全模態即時對話，可聽可說、看得懂圖片與影片，支援語意斷句與插話",
              "voices": _QWEN35_OMNI_REALTIME_VOICES, "default_voice": "Tina",
              "input_rate": 16000, "output_rate": 24000},
         ],

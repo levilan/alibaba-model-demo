@@ -865,6 +865,15 @@
                         <option value="text">只有文字</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label class="form-label" data-tip="可以帶圖片或影片一起提問。影片會取樣成數張畫面送出，最多 8 張">畫面（選填）</label>
+                    <div class="upload-zone" id="voiceRtUpZone" onclick="document.getElementById('voiceRtFileInput').click()" style="padding:12px">
+                        <input type="file" id="voiceRtFileInput" accept="image/*,video/*" style="display:none" onchange="onRealtimeFileChange(event)">
+                        <div class="upload-zone-icon" id="voiceRtUpIcon" style="font-size:20px">🖼</div>
+                        <p id="voiceRtUpLabel" style="font-size:11px">上傳圖片或影片</p>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" id="voiceRtClearFileBtn" style="display:none;margin-top:6px;width:100%" onclick="clearRealtimeFile()">清除畫面</button>
+                </div>
                 <div class="form-group" style="margin-bottom:0">
                     <label class="form-label" data-tip="自動斷句：說完停頓一下就會自動回答；手動：按下「送出語音」才回答">斷句方式</label>
                     <select id="voiceRtTurnDetection" class="select-input">
@@ -1046,6 +1055,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=75"></script>
+<script src="/static/js/app.js?v=77"></script>
 </body>
 </html>

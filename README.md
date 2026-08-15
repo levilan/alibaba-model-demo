@@ -196,6 +196,18 @@ python app.py
 >
 > 瀏覽器走後端的 `/ws/omni` 代理，不直連閘道：WebSocket 建構子不能帶 header，直連只能把金鑰塞進子協定（`openai-insecure-api-key.<key>`），那會讓金鑰出現在前端可見的握手參數裡。
 >
+> **圖片／影片輸入（全模態）的正確做法**——這條路徑的形狀完全是實測出來的，**不要照 chat 的 `image_url` 寫法推**：
+>
+> 1. 先 `input_audio_buffer.append` 送一段音訊（0.6 秒靜音就夠）——沒有的話 image buffer 會回 `Error append image before append audio.`
+> 2. 再逐張 `input_image_buffer.append`（裸 base64 JPEG，不含 data URI 前綴）
+> 3. 然後才 `conversation.item.create` 送問題 + `response.create`
+>
+> ⚠️ **而且必須先把 `turn_detection` 關掉**。開著 `semantic_vad` 時那段靜音會被 VAD 判定成「沒有語音」而丟掉，圖片緩衝就不會被帶上——**不會有任何錯誤訊息**，模型會回一個編出來的答案。前端在帶畫面提問時會自動關掉、答完再還原成使用者選的設定。
+>
+> 以下四種寫法**都不行**，其中兩種是「收下但看不到」，比報錯危險：`content` 裡放 `input_image` + `image_url`（data URI）→ 回 `Invalid video file.`；`input_image` + `image`（裸 base64）→ **不報錯但模型看不到**；`image_url` 物件（chat 格式）→ 解析失敗；`input_video` + 影格陣列 → **不報錯但模型看不到**。
+>
+> **驗證方式（重要）**：用三張底色與形狀都不同的圖各問一次，三次答案必須跟著圖變。只用一張圖驗會被騙——`input_video` 那個變體單張測時剛好答對一次，換成三張對照才看出它三次都回同一個「白色、圓形」。影片會在瀏覽器端取樣成畫面（最多 8 張）再走同一條路；實測 3 張影格模型看得到三個不同形狀與底色，但跨影格的順序與配色對應**不保證精確**。
+>
 > **若日後要加「上傳音檔」這條輸入路徑**：音檔尾端必須有 1～2 秒靜音，否則 `semantic_vad` 不會斷句——逐字稿會正常出、`speech_started` 也會來，但 `speech_stopped` 永遠不來，一路等到逾時。閘道端實測：1.96 秒無尾靜音的檔案卡滿 60 秒，補 2 秒靜音後同一個檔案立刻正常（`ffmpeg -af "apad=pad_dur=2"`）。目前的即時麥克風輸入天然有靜音，走不到這條路徑，所以我們自己沒有複驗過。
 >
 > **音色 56 個都逐一實測過**（`app.py` 的 `_QWEN35_OMNI_REALTIME_VOICES`）：送 `session.update` 帶音色再 `response.create`，有效的會開始回傳音訊、無效的回 `Voice 'X' is not supported.`。舊清單裡的 `Chelsie` 實測不支援（那是 qwen2.5-omni 的音色）已移除。⚠️ **不要用 `session.update` 的回應來驗**——它對任何字串都回 `session.updated`，連亂編的名字都照收；也不要用音訊位元比對，同音色同輸入重跑兩次的位元並不相同。
