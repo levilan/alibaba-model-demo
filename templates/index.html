@@ -436,7 +436,7 @@
                        onchange="onImgFilesAdd(this.files)">
                 <div id="imgThumbGrid" class="img-thumb-grid"></div>
                 <button type="button" class="upload-add-btn" id="imgAddBtn"
-                        onclick="document.getElementById('imgFileInput').click()">＋ 添加圖片</button>
+                        onclick="document.getElementById('imgFileInput').click()">＋ 加入圖片</button>
             </div>
         </aside>
 
@@ -481,7 +481,7 @@
                         <option value="t2v">文生影片 (T2V)</option>
                         <option value="i2v">圖生影片 (I2V)</option>
                         <option value="r2v">參考生影片 (R2V)</option>
-                        <option value="vedit">視頻編輯 (VideoEdit)</option>
+                        <option value="vedit">影片編輯 (VideoEdit)</option>
                         <option value="animate">動作動畫 (Animate)</option>
                     </select>
                 </div>
@@ -490,7 +490,7 @@
                     <select id="videoModel" class="select-input" onchange="onVidModelChange()"></select>
                 </div>
                 <div class="form-group" id="vidResolutionGroup">
-                    <label class="form-label" data-tip="生成影片的畫面分辨率。480P 速度最快，720P 品質與速度平衡（建議），1080P 畫質最佳但生成時間較長">解析度</label>
+                    <label class="form-label" data-tip="生成影片的畫面解析度。480P 速度最快，720P 品質與速度平衡（建議），1080P 畫質最佳但生成時間較長">解析度</label>
                     <select id="videoResolution" class="select-input" onchange="updateModelPriceHint('videoModelPrice', document.getElementById('videoModel').value)">
                         <option value="720P">720P</option>
                         <option value="1080P">1080P</option>
@@ -511,7 +511,7 @@
                 </div>
                 <!-- 畫面比例（vedit 專用） -->
                 <div class="form-group" id="vidRatioGroup" style="display:none">
-                    <label class="form-label" data-tip="輸出影片的長寬比例（視頻編輯模式專用）。留空則自動跟隨上傳來源影片的比例，也可指定裁切成特定比例">畫面比例
+                    <label class="form-label" data-tip="輸出影片的長寬比例（影片編輯模式專用）。留空則自動跟隨上傳來源影片的比例，也可指定裁切成特定比例">畫面比例
                         <span class="param-hint">（留空 = 跟隨來源）</span>
                     </label>
                     <select id="videoRatio" class="select-input">
@@ -525,9 +525,9 @@
                 </div>
                 <!-- 音訊設定（vedit 專用） -->
                 <div class="form-group" id="vidAudioSettingGroup" style="display:none">
-                    <label class="form-label" data-tip="auto：模型智能判斷是否保留或重新生成音效；origin：強制保留來源影片的原始音訊，不做任何音訊修改（視頻編輯模式專用）">音訊設定</label>
+                    <label class="form-label" data-tip="auto：模型自動判斷是否保留或重新生成音效；origin：強制保留來源影片的原始音訊，不做任何音訊修改（影片編輯模式專用）">音訊設定</label>
                     <select id="videoAudioSetting" class="select-input">
-                        <option value="auto">auto（模型智能決定）</option>
+                        <option value="auto">auto（模型自動決定）</option>
                         <option value="origin">origin（保留原始音訊）</option>
                     </select>
                 </div>
@@ -543,7 +543,7 @@
                     </select>
                 </div>
                 <div class="form-group" id="vidDurationGroup">
-                    <label class="form-label" data-tip="生成影片的長度（秒）。範圍因模型而異，視頻編輯模式中設為 0 可保留來源影片的原始長度">時長（秒）<span class="param-val" id="durVal">5</span>
+                    <label class="form-label" data-tip="生成影片的長度（秒）。範圍因模型而異，影片編輯模式中設為 0 可保留來源影片的原始長度">時長（秒）<span class="param-val" id="durVal">5</span>
                         <span class="param-hint" id="durRange">（2 ~ 15 秒）</span>
                         <span class="param-hint" id="durHintZero" style="display:none">（0 = 保留來源）</span>
                     </label>
@@ -552,7 +552,7 @@
                 </div>
                 <!-- 自動配音（萬相 2.6/2.7 的 T2V/I2V/R2V 皆支援） -->
                 <div class="toggle-row" id="vidAudioRow" style="display:none">
-                    <label data-tip="為生成的影片自動添加背景音效與環境音（萬相 2.6/2.7 系列 T2V/I2V/R2V 支援）。根據影片內容智能匹配音效">自動配音</label>
+                    <label data-tip="為生成的影片自動加入背景音效與環境音（萬相 2.6/2.7 系列 T2V/I2V/R2V 支援）。依影片內容自動搭配音效">自動配音</label>
                     <label class="toggle"><input type="checkbox" id="vidAudio" onchange="onVidAudioToggle(this)"><span class="toggle-slider"></span></label>
                 </div>
                 <!-- T2V 自訂音訊上傳（audio 開啟後顯示） -->
