@@ -877,10 +877,23 @@ function estimateVideoPerSecond(modelId, resolution) {
     return tokensPerSec / 1e6 * p.output * ratio;
 }
 
-// resolution 省略時用目前選到的解析度（模型旁的即時提示用），傳入固定值則用該值
-// （下拉選單用）——選單是拿來**比較模型**的，每個項目都用同一個基準解析度才比得出
-// 高下；先前是用「建立選單當下」的解析度，等於基準隨使用者的操作順序而變。
+// resolution 省略時用目前選到的解析度＋目前的配音開關（模型旁的即時提示用），
+// 傳入固定值則連配音也一併切成固定基準（下拉選單用）——選單是拿來**比較模型**的，
+// 每個項目都用同一個基準才比得出高下；先前是用「建立選單當下」的解析度，等於基準
+// 隨使用者的操作順序而變。
+//
+// ⚠️ 配音的基準是**含配音**，不是照當下的開關。理由是配音關閉時選單顯示的是純影片價
+// （Veo 標準版 $0.2），但同一行的文案寫「含原生配音」，一行之內自相矛盾；而且各家族
+// 表上的基準價含意本來就不同（萬相 2.6 i2v 的 $0.05 是**含**音訊、Veo 的 $0.2 是
+// **不含**），並排等於在比不同的東西。統一成含配音之後兩者才是同一個基準。
 const PRICE_BASELINE_RESOLUTION = '720P';
+
+// 價格會隨配音變動的模型，標上「含配音」才知道這個數字的基準是什麼；其餘模型
+// （Seedance、HappyHorse、萬相 2.7…）配音不影響單價，標了只是雜訊
+function _audioAffectsPrice(modelId) {
+    const t = _VIDEO_SEC_PRICE[modelId];
+    return !!(t && (t._withAudio || t._noAudioHalf));
+}
 
 function formatPriceSuffix(modelId, resolution) {
     const p = pricingMap[modelId];
@@ -888,15 +901,19 @@ function formatPriceSuffix(modelId, resolution) {
     // 影片模型優先用官方每秒單價（含按次計費登記的那些——它們的 model_price 其實是
     // 每秒基準價，顯示成「/次」會嚴重低估：例如 HappyHorse 標 $0.02 但 720P 官方是
     // $0.14/秒，一支 5 秒的片子差 35 倍）
+    const baseline = resolution != null;
     const res = resolution || document.getElementById('videoResolution')?.value;
+    const audio = baseline ? true : document.getElementById('vidAudio')?.checked;
     const perSec = videoPerSecondPrice(modelId, res, {
-        audio: document.getElementById('vidAudio')?.checked,
+        audio,
         mode: document.getElementById('videoAnimateMode')?.value,
     });
     if (perSec != null) {
         // 動作動畫固定 720P 輸出、UI 上根本沒有解析度選單，標上解析度只會誤導
         const byMode = !!_VIDEO_SEC_PRICE[modelId]?._byMode;
-        return ` ・ 約 $${formatUsd(Number(perSec.toFixed(4)))}/秒${byMode ? '' : `（${res}）`}`;
+        if (byMode) return ` ・ 約 $${formatUsd(Number(perSec.toFixed(4)))}/秒`;
+        const note = baseline && _audioAffectsPrice(modelId) ? '・含配音' : '';
+        return ` ・ 約 $${formatUsd(Number(perSec.toFixed(4)))}/秒（${res}${note}）`;
     }
     if (p.type === 'fixed') return ` ・ $${formatUsd(p.price)}/次`;
     return ` ・ $${formatUsd(p.input)}→$${formatUsd(p.output)}/1M`;
