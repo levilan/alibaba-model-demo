@@ -196,6 +196,8 @@ python app.py
 >
 > 瀏覽器走後端的 `/ws/omni` 代理，不直連閘道：WebSocket 建構子不能帶 header，直連只能把金鑰塞進子協定（`openai-insecure-api-key.<key>`），那會讓金鑰出現在前端可見的握手參數裡。
 >
+> **若日後要加「上傳音檔」這條輸入路徑**：音檔尾端必須有 1～2 秒靜音，否則 `semantic_vad` 不會斷句——逐字稿會正常出、`speech_started` 也會來，但 `speech_stopped` 永遠不來，一路等到逾時。閘道端實測：1.96 秒無尾靜音的檔案卡滿 60 秒，補 2 秒靜音後同一個檔案立刻正常（`ffmpeg -af "apad=pad_dur=2"`）。目前的即時麥克風輸入天然有靜音，走不到這條路徑，所以我們自己沒有複驗過。
+>
 > **音色 56 個都逐一實測過**（`app.py` 的 `_QWEN35_OMNI_REALTIME_VOICES`）：送 `session.update` 帶音色再 `response.create`，有效的會開始回傳音訊、無效的回 `Voice 'X' is not supported.`。舊清單裡的 `Chelsie` 實測不支援（那是 qwen2.5-omni 的音色）已移除。⚠️ **不要用 `session.update` 的回應來驗**——它對任何字串都回 `session.updated`，連亂編的名字都照收；也不要用音訊位元比對，同音色同輸入重跑兩次的位元並不相同。
 
 > **`qwen3-vl-plus` / `qwen3-vl-flash` 是視覺語言模型**，可在對話中帶入圖片。用標準的 OpenAI `image_url` 格式（實測 data URI 可用），MODELS 以 `vision: True` 標記、前端據此顯示圖片上傳欄位。圖片只附在**當下這一輪**的提問上，不會進入對話歷史——上游對「歷史訊息裡的圖片」的行為未驗證，不主動送。切換到不支援視覺的模型時前端會清掉已選的圖，避免靜默夾帶造成 400。
