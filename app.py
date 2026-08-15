@@ -741,24 +741,38 @@ MODELS = {
         {"id": "wan2.2-animate-move", "name": "萬相 2.2 圖生動作", "group": "萬相動作動畫",
          "desc": "將參考影片的動作與表情遷移到人物圖片", "type": "animate", "audio": False},
         # ── Veo（duration 僅接受 4/6/8 秒，dur_step 供前端滑桿對齊）──
+        # resolutions 明確只給 720P/1080P：480P **不是** Veo 的檔次，送上去多半會被上游
+        # 擋掉，但在那之前已經被以 1080P 的檔次預扣了——計費端是用 `== "4k"` / `== "720p"`
+        # 判斷，480p 兩個都不中就落進 else 的 1080P 檔（Fast 因此變 $0.10/秒而非 $0.08、
+        # Lite 變 $0.05 而非 $0.03）。留著這個選項只會讓使用者多付錢又拿不到影片。
+        # 4K 檔次目前不開：UI 的解析度選單裡沒有 4K，且我們沒有實測過。
         {"id": "veo-3.1-generate-001", "name": "Veo 3.1", "group": "Veo",
-         "desc": "Google 旗艦文生影片，含原生配音", "type": "t2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+         "desc": "Google 旗艦文生影片，含原生配音", "type": "t2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
+         "resolutions": ["720P", "1080P"]},
         {"id": "veo-3.1-fast-generate-001", "name": "Veo 3.1 Fast", "group": "Veo",
-         "desc": "Google 極速文生影片，含原生配音", "type": "t2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+         "desc": "Google 極速文生影片，含原生配音", "type": "t2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
+         "resolutions": ["720P", "1080P"]},
         {"id": "veo-3.1-lite-generate-001", "name": "Veo 3.1 Lite", "group": "Veo",
-         "desc": "Google 輕量文生影片，含原生配音", "type": "t2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+         "desc": "Google 輕量文生影片，含原生配音", "type": "t2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
+         "resolutions": ["720P", "1080P"]},
         {"id": "veo-3.1-generate-001", "name": "Veo 3.1（圖生影片）", "group": "Veo",
-         "desc": "Google 旗艦圖生影片，含原生配音", "type": "i2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+         "desc": "Google 旗艦圖生影片，含原生配音", "type": "i2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
+         "resolutions": ["720P", "1080P"]},
         {"id": "veo-3.1-fast-generate-001", "name": "Veo 3.1 Fast（圖生影片）", "group": "Veo",
-         "desc": "Google 極速圖生影片，含原生配音", "type": "i2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+         "desc": "Google 極速圖生影片，含原生配音", "type": "i2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
+         "resolutions": ["720P", "1080P"]},
         {"id": "veo-3.1-lite-generate-001", "name": "Veo 3.1 Lite（圖生影片）", "group": "Veo",
-         "desc": "Google 輕量圖生影片，含原生配音", "type": "i2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+         "desc": "Google 輕量圖生影片，含原生配音", "type": "i2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
+         "resolutions": ["720P", "1080P"]},
         {"id": "veo-3.1-generate-001", "name": "Veo 3.1（參考生影片）", "group": "Veo",
-         "desc": "Google 旗艦參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+         "desc": "Google 旗艦參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
+         "resolutions": ["720P", "1080P"]},
         {"id": "veo-3.1-fast-generate-001", "name": "Veo 3.1 Fast（參考生影片）", "group": "Veo",
-         "desc": "Google 極速參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+         "desc": "Google 極速參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
+         "resolutions": ["720P", "1080P"]},
         {"id": "veo-3.1-lite-generate-001", "name": "Veo 3.1 Lite（參考生影片）", "group": "Veo",
-         "desc": "Google 輕量參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2},
+         "desc": "Google 輕量參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
+         "resolutions": ["720P", "1080P"]},
         # ── ByteDance Seedance（字節跳動/即夢文生/圖生/參考生影片，走一般 /v1/videos
         #    任務制流程——跟萬相系列共用的 media/image/images 三欄位注入機制。
         #    t2v 三個模型都實測過；i2v 在 bytedance-seedance-1.5-pro 上實測完整跑到

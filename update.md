@@ -6,6 +6,18 @@
 
 ---
 
+## 2026-08-15
+
+（以下兩筆同屬 commit `41acafa`）
+
+- fix：**Veo 3.1 Lite 的配音檔次價格漏了**（`static/js/app.js` 的 `_VIDEO_SEC_PRICE`）。原本註明「Lite 不支援配音」，只有無聲一組數字；實際上 Lite 有配音檔次——720P 無聲 $0.03／有聲 $0.05，1080P 無聲 $0.05／有聲 $0.08，等於有聲時的單價提示與「本次花費」**顯示得比實付低**（實付比顯示的高 66%，720P $0.03→$0.05、1080P $0.05→$0.08）。Lite 沒有 4K 檔次、4K 請求會落到 1080P 的價，所以 `4K` 直接沿用 1080P 的兩個數字（UI 目前也沒有 4K 選項）。
+  - 來源：`nen-ai-platform` 的 session（後端 `VeoPriceMultiplier` 本來把 Lite 寫死成不支援音訊，同一個 commit 一併修了）。標準版與 Fast 的數字與我們表上的完全一致，不用動。
+  - **`/api/pricing` 對 veo 標準版與 lite 回報 `quota_type=0`／`model_ratio=37.5` 是錯的（純顯示產物，實際扣款一直是按秒），但這個專案不受影響**：veo 的每秒單價走自己維護的 `_VIDEO_SEC_PRICE` 官方價表，`formatPriceSuffix` 一定先命中它；`estimateVideoTokenCost` 只認 `_SEEDANCE_DIMS` 裡的 Seedance 模型，veo 查不到會回 null。所以沒有任何地方把 37.5 換算成 $75/1M 顯示出來。
+  - **Veo 3.1 Fast 的價格暫時維持顯示官方價**（720P $0.08/秒）。閘道後台配置的基準價是 $0.30/秒，是 Google 官方 Fast 基準價的 3 倍，是刻意加成還是設定填錯尚在確認；結論出來前不動，已在程式碼加註記說明確認後要改成實付數字，否則單價提示與 >$1 的確認框都會低估約 3 倍。
+- fix：**veo 九個項目補上 `resolutions: ["720P", "1080P"]`，收掉 480P**（`app.py`）。原本 veo 沒有 `resolutions` 限制，所以解析度選單的 480P 選得到，但 480P 不是 Veo 的檔次。閘道端讀程式碼確認的實際行為：`metadata.resolution` 明確給了就原字串往下走，計費端用 `== "4k"` / `== "720p"` 判斷，**480p 兩個都不中，落進 else 的 1080P 檔**——Fast 變 $0.10/秒（而非 720P 的 $0.08）、Lite 變 $0.05（而非 $0.03），標準版因 720P/1080P 同價所以無差。而請求本身多半會被上游擋掉（Google 只認 720p/1080p，3.1 另有 4k）。所以留著這個選項的後果不只是「查不到價格靜默不顯示」，是**使用者被以較高檔次預扣、又拿不到影片**。4K 檔次不開：UI 選單裡沒有 4K，我們也沒實測過。
+  - 依據是閘道端的程式碼判讀（`relay/relay_task.go`／`VeoPriceMultiplier`／`ResolveVeoResolution`），不是實測。收掉一個上游本來就不支援的選項風險夠低，所以直接做；反向的擴充（開 4K）仍照規矩要先實測。
+  - 順帶確認了 Fast 低估 3 倍那個推論是對的：實付 = `model_price × 秒數 × video_ratio × group_ratio`，倍率表與後台配置的 `model_price` 完全解耦，所以 `model_price=0.3` 下 Fast 的實付是 720P 無聲 $0.24／有聲 $0.30、1080P $0.30／$0.36、4K $0.75／$0.90。裁示下來要改 `_VIDEO_SEC_PRICE` 時用這組數字。
+
 ## 2026-08-14
 
 - chore：**專案搬到 `/Users/levi/claude_code/nen_ai_project/nenai-playground`**，跟閘道（`nen-ai-platform`）、文檔站（`Nen-AI-Docs-V1`）、官網（`website`）並列在同一層。原路徑 `/Users/levi/program_lab/AI_lab/alibaba/alibaba-model-nenAI`。
