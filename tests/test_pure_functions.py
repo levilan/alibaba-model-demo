@@ -395,6 +395,21 @@ def test_lyria_music_models():
     assert not by_id["lyria-002"].get("image_input")
 
 
+def test_seedance_25_video_entries():
+    """Seedance 2.5 的三個影片條目共用同一組實測約束（t2v 2026-08-11、i2v/r2v
+    2026-08-17 對測試網關端到端驗證）：時長 [4,30]、解析度只有 480P/720P（1080P/4K
+    上游拒絕）。r2v 的 max_ref=30（官方參考素材上限）；vedit 不列（家族既有結論是
+    上游拒絕）。上游按圖片張數分類模式（1→i2v、2→首尾幀、3+→r2v），r2v 少於 3 張
+    由後端擋下，這裡鎖住條目本身的形狀。"""
+    entries = [m for m in app.MODELS["video"] if m["id"] == "dreamina-seedance-2.5"]
+    assert sorted(m["type"] for m in entries) == ["i2v", "r2v", "t2v"]
+    for m in entries:
+        assert (m["min_dur"], m["max_dur"]) == (4, 30), m["type"]
+        assert m["resolutions"] == ["480P", "720P"], m["type"]
+    r2v = next(m for m in entries if m["type"] == "r2v")
+    assert r2v["max_ref"] == 30
+
+
 def test_mai_image_n_locked_to_one():
     """MAI 三個 t2i 的 max_n 鎖 1，**長期維持**（2026-08-16）：n=3 實測 data[] 只回
     1 筆 b64_json、無 metadata 可補，且閘道曾照 3 張計費（增幅 $0.3257 與 3 張的

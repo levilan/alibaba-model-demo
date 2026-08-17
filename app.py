@@ -928,6 +928,17 @@ MODELS = {
          "desc": "即夢 Seedance，極速文生影片，支援 480P/720P", "type": "t2v",
          "audio": True, "no_negative_prompt": True, "no_prompt_extend": True,
          "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
+        # ── Seedance 2.5 的 i2v/r2v（2026-08-17 對測試網關實測後補上；使用者回報
+        #    只上了 t2v）。doubao 對 seedance 的模式是**按送入圖片張數分類**的（免費
+        #    探測：非法解析度的錯誤訊息會標模式名）：1 張 → i2v、2 張 → flf2v（首尾
+        #    幀）、3 張以上 → r2v。所以 r2v 只帶 1~2 張參考圖會被靜默當成 i2v／首尾幀
+        #    跑——後端在 r2v 路徑對 2.5 擋掉少於 3 張的請求。時長/解析度限制沿用
+        #    2026-08-11 對 2.5 t2v 實測的值（[4,30] 秒、480P/720P）；vedit 家族既有
+        #    結論是上游拒絕，且本環境無雲端儲存也無從實測影片輸入，維持不列。──
+        {"id": "dreamina-seedance-2.5", "name": "Seedance 2.5（即夢，圖生影片）", "group": "ByteDance Seedance",
+         "desc": "即夢 Seedance 最新版圖生影片（首幀），最長 30 秒，支援 480P/720P", "type": "i2v",
+         "audio": True, "no_negative_prompt": True, "no_prompt_extend": True,
+         "min_dur": 4, "max_dur": 30, "resolutions": ["480P", "720P"]},
         {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro（圖生影片）", "group": "ByteDance Seedance",
          "desc": "字節跳動 Seedance，旗艦圖生影片（首幀）", "type": "i2v",
          "audio": True, "no_negative_prompt": True, "no_prompt_extend": True, "min_dur": 2, "max_dur": 15},
@@ -938,6 +949,10 @@ MODELS = {
          "desc": "即夢 Seedance，極速圖生影片（首幀），支援 480P/720P", "type": "i2v",
          "audio": True, "no_negative_prompt": True, "no_prompt_extend": True,
          "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
+        {"id": "dreamina-seedance-2.5", "name": "Seedance 2.5（即夢，參考生影片）", "group": "ByteDance Seedance",
+         "desc": "即夢 Seedance 最新版參考生影片，參考圖 3 張起、最多 30 張，最長 30 秒，支援 480P/720P", "type": "r2v",
+         "audio": True, "no_negative_prompt": True, "no_prompt_extend": True, "max_ref": 30,
+         "min_dur": 4, "max_dur": 30, "resolutions": ["480P", "720P"]},
         {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro（參考生影片）", "group": "ByteDance Seedance",
          "desc": "字節跳動 Seedance，旗艦參考生影片", "type": "r2v",
          "audio": True, "no_negative_prompt": True, "no_prompt_extend": True, "min_dur": 2, "max_dur": 15},
@@ -2728,6 +2743,11 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
             raise HTTPException(status_code=500, detail=str(e))
 
     actual_duration = duration
+    # Seedance 2.5 的首幀／首尾幀不吃 ratio——帶了上游直接拒絕（InvalidParameter.
+    # TaskTypeConstraint：輸出比例跟著首幀圖走；2026-08-17 實測）。r2v 帶 ratio 照收，
+    # 只有這條 i2v 路徑要拿掉。
+    if model == "dreamina-seedance-2.5":
+        ratio = ""
     payload: dict = {"model": model, "prompt": prompt}
     meta: dict = {"i2v_mode": i2v_mode}
     _apply_res_and_duration(payload, meta, resolution, actual_duration, ratio)
@@ -2923,6 +2943,12 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
 
     if not media_arr:
         return JSONResponse(status_code=400, content={"error": "At least one reference file is required"})
+
+    # Seedance 2.5：上游按圖片張數分類模式（免費探測實測：1 張→i2v、2 張→首尾幀、
+    # 3 張以上才是 r2v），少於 3 張會被**靜默**當成另一種模式跑掉——在這裡擋下並講清楚
+    if model == "dreamina-seedance-2.5" and len(media_arr) < 3:
+        return JSONResponse(status_code=400, content={
+            "error": "Seedance 2.5 的參考生影片需要至少 3 張參考圖；1～2 張會被視為首幀／首尾幀生成，請改用「圖生影片」。"})
 
     if model in _INTERACTIONS_VIDEO_MODELS:
         if not image_files:

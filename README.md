@@ -433,9 +433,11 @@ python app.py
 | dreamina-seedance-2.5 | Seedance 2.5（即夢） | ByteDance Seedance | 可開關 ⚠️ |
 | dreamina-seedance-2.0 | Seedance 2.0（即夢） | ByteDance Seedance | 可開關 ⚠️ |
 | dreamina-seedance-2.0-fast | Seedance 2.0 Fast（即夢） | ByteDance Seedance | 可開關 ⚠️ |
+| dreamina-seedance-2.5（圖生影片） | Seedance 2.5（即夢） | ByteDance Seedance | 可開關 ⚠️ |
 | bytedance-seedance-1.5-pro（圖生影片） | Seedance 1.5 Pro | ByteDance Seedance | 可開關 ⚠️ |
 | dreamina-seedance-2.0（圖生影片） | Seedance 2.0（即夢） | ByteDance Seedance | 可開關 ⚠️ |
 | dreamina-seedance-2.0-fast（圖生影片） | Seedance 2.0 Fast（即夢） | ByteDance Seedance | 可開關 ⚠️ |
+| dreamina-seedance-2.5（參考生影片） | Seedance 2.5（即夢） | ByteDance Seedance | 可開關 ⚠️ |
 | bytedance-seedance-1.5-pro（參考生影片） | Seedance 1.5 Pro | ByteDance Seedance | 可開關 ⚠️ |
 | dreamina-seedance-2.0（參考生影片） | Seedance 2.0（即夢） | ByteDance Seedance | 可開關 ⚠️ |
 | dreamina-seedance-2.0-fast（參考生影片） | Seedance 2.0 Fast（即夢） | ByteDance Seedance | 可開關 ⚠️ |
@@ -477,7 +479,7 @@ python app.py
 >
 > **上游支援但平台未送出的 Seedance 參數**（同樣來自 adaptor 結構，未實測）：`camera_fixed`（2.5 實測回 `InvalidParameter`）、`frames`、`output_format`（mp4/mov，僅 2.5）、`priority`（0–9）、`return_last_frame`、`draft`（僅 1.5-pro）、`omni_reference_task_type`（2.5 的 auto/reference/edit/extend）、`callback_url`／`service_tier`／`execution_expires_after`／`safety_identifier`／`tools`。另有兩個逃生門：`metadata.content` 可直接覆寫整個 content 陣列、`metadata.image_role` 可指定參考圖角色。
 >
-> **`dreamina-seedance-2.5` 與 2.0 系列差異很大，UI 需分開處理**（2026-08-11 對**測試網關** `192.168.0.245` 驗證——正式環境的模型清單裡雖然有它，但網關程式碼尚未部署、在那邊叫不動）：
+> **`dreamina-seedance-2.5` 與 2.0 系列差異很大，UI 需分開處理**（2026-08-11 對**測試網關** `192.168.0.245` 驗證；2026-08-17 免費探測確認**正式環境的 2.5 路徑也已部署**，兩邊都通）：
 >
 > | | 2.5 | 2.0 系列 |
 > |---|---|---|
@@ -491,7 +493,12 @@ python app.py
 >
 > ⚠️ 網關端說 `seed` 也不支援，但**實測沒有被拒**（任務照樣建立），與其規格說明不符——目前以實測為準，沒有特別擋。
 >
-> **目前只上架了文生影片（t2v）。** 圖生／參考生／視頻編輯需要帶入參考影片，而影片輸入必須是雲端網址（見上方），在雲端物件儲存設定好之前做了也不能用；另外 2.5 專屬的 `omni_reference_task_type`（顯式指定任務類型，避免參數不合要等到非同步階段才報錯）在測試網關上也還沒透傳。這兩件完成後再補。
+> **已上架 t2v／i2v／r2v**（i2v 與 r2v 於 2026-08-17 補上——使用者回報缺漏後對測試網關端到端驗證。當初只上 t2v 的理由「其他模式需要雲端網址」查證後只對影片/音訊輸入成立，**圖片用 data URI 就通**）。實測要點：
+>
+> - **上游按送入圖片張數分類模式**（免費探測：非法解析度的錯誤訊息會標模式名）：1 張 → `i2v`、2 張 → `flf2v`（首尾幀）、**3 張以上才是 `r2v`**。r2v 帶 1～2 張會被**靜默**當成首幀／首尾幀跑，所以後端對 2.5 的 r2v 擋掉少於 3 張的請求並講明原因。
+> - **i2v／flf2v 不吃 `ratio`**：帶了直接被拒（`InvalidParameter.TaskTypeConstraint`，輸出比例跟著首幀圖走——實測方形輸入圖產出 640×640）。後端對 2.5 的 i2v 路徑不送 ratio；r2v 帶 ratio 照收（實測 16:9 產出 854×480）。
+> - 端到端驗證（480P、4 秒）：i2v 一張圖 → SUCCEEDED，影片第一幀就是輸入圖；r2v 三張圖 → SUCCEEDED。
+> - **vedit 仍不列**：家族既有結論是上游拒絕（`image_url` 參數不合法），且視頻編輯的來源影片必須是雲端網址、目前環境無雲端儲存也無從實測。2.5 的影片/音訊參考素材（10 支/10 段）同樣受雲端儲存前置條件限制，未上。`omni_reference_task_type` 在網關上仍未透傳。
 >
 > 計費公式：`tokens = 寬 × 高 × 幀數 / 1024`，fps 固定 24。回傳的 `duration` 是無條件捨去，**計費按真實幀數**（要求 4 秒實際收 4.04 秒）。
 
