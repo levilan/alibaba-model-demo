@@ -3135,6 +3135,75 @@ async function sendVoiceTts() {
     btn.disabled = false;
 }
 
+// ── 剪貼簿貼上圖片 ────────────────────────────────────────────
+// 統一機制：把剪貼簿裡的圖片用 DataTransfer 塞進原本的 <input type=file> 再派發
+// change 事件——完全走「點擊選檔」的既有流程，預覽、狀態、張數上限都由原 handler
+// 處理，這裡只負責「路由到哪個輸入」。
+//
+// 每個分頁的圖片輸入按優先序列出（zone 是判斷可見性與閃提示用的容器）。貼上時取
+// 「第一個可見的目標」；單檔輸入已有檔案、且後面還有可見的目標時讓位給下一個——
+// 讓「貼首幀、再貼尾幀」這種兩段操作自然成立。AI Canvas 是獨立頁面（canvas.js），
+// 不在此處理。
+const _PASTE_TARGETS = {
+    text:  [{input: 'textVisionInput',       zone: 'textVisionGroup',        label: '對話圖片'}],
+    image: [{input: 'imgFileInput',          zone: 'imgUploadSection',       label: '參考圖片'}],
+    video: [{input: 'vidFirstFrameInput',    zone: 'vidFirstFrameZone',      label: '首幀圖片'},
+            {input: 'vidLastFrameInput',     zone: 'vidLastFrameZone',       label: '尾幀圖片'},
+            {input: 'vidEditRefInput',       zone: 'vidEditRefZone',         label: '參考圖片'},
+            {input: 'vidRefInput',           zone: 'vidR2VUpload',           label: '參考文件'},
+            {input: 'vidAnimateImgInput',    zone: 'vidAnimateImgZone',      label: '人物圖片'}],
+    muleai:[{input: 'muleaiFirstFrameInput', zone: 'muleaiImgUploadSection', label: '來源圖片'},
+            {input: 'muleaiFaceImgInput',    zone: 'muleaiFaceImgSection',   label: '換臉參考圖'}],
+    voice: [{input: 'voiceRtFileInput',      zone: 'voiceRtAttachBtn',       label: '即時對話畫面'},
+            {input: 'voiceMusicFileInput',   zone: 'voiceMusicImageGroup',   label: '靈感圖片'}],
+};
+
+function _pickPasteTarget(tab) {
+    const visible = (_PASTE_TARGETS[tab] || []).filter(t => {
+        const z = document.getElementById(t.zone);
+        return z && document.getElementById(t.input) && z.offsetParent !== null;
+    });
+    if (!visible.length) return null;
+    // 優先給「還沒有檔案」的單檔輸入；多檔輸入（multiple）本來就是追加，不用讓位
+    return visible.find(t => {
+        const inp = document.getElementById(t.input);
+        return inp.multiple || !inp.files.length;
+    }) || visible[0];
+}
+
+function _flashPasteZone(zoneId) {
+    const z = document.getElementById(zoneId);
+    if (!z) return;
+    z.classList.remove('paste-flash');
+    requestAnimationFrame(() => z.classList.add('paste-flash'));
+    setTimeout(() => z.classList.remove('paste-flash'), 1000);
+}
+
+document.addEventListener('paste', (e) => {
+    const cd = e.clipboardData;
+    if (!cd) return;
+    const imgs = [...(cd.files || [])].filter(f => f.type.startsWith('image/'));
+    if (!imgs.length) return;
+    // 還沒登入（主畫面隱藏）就不攔
+    const app = document.getElementById('mainApp');
+    if (!app || app.classList.contains('hidden')) return;
+    // 剪貼簿同時有文字、且焦點在文字欄位時，尊重「貼文字」的意圖不攔——
+    // 從網頁複製的內容常常文字與圖片並存，攔下來會把使用者要貼的字吃掉
+    const a = document.activeElement;
+    if (a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT') && cd.getData('text')) return;
+    const tab = document.querySelector('.tab-btn.active')?.dataset.tab;
+    const target = _pickPasteTarget(tab);
+    if (!target) return;   // 這個頁面沒有可收圖的欄位（例如 t2i 模式），安靜略過
+    e.preventDefault();
+    const input = document.getElementById(target.input);
+    const dt = new DataTransfer();
+    (input.multiple ? imgs : imgs.slice(0, 1)).forEach(f => dt.items.add(f));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change'));
+    _flashPasteZone(target.zone);
+    toast(`已貼上圖片 → ${target.label}`, 'success');
+});
+
 // ── API helpers ───────────────────────────────────────────────
 async function apiPost(url, body) {
     const r = await fetch(url, { method: 'POST', headers: authHeader(), body: JSON.stringify(body) });
