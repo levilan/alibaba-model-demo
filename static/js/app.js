@@ -516,6 +516,18 @@ function clearMuleaiAudio() {
 function populateSelectors() {
     populateSelect('textModel', models.text);
     populateSelect('muleaiModel', models.muleai || []);
+    // 部署閘門：後端會把正式環境還沒部署的模型從 /api/models 拿掉（app.py 的
+    // _DEPLOY_GATED_MODELS）。音樂整類都被拿掉時，連任務選項一起藏——留一個
+    // 選了之後模型下拉是空白的任務類型，比沒有更糟
+    const musicOpt = document.querySelector('#voiceTaskType option[value="music"]');
+    if (musicOpt) {
+        const hasMusic = (models.voice?.music || []).length > 0;
+        musicOpt.hidden = !hasMusic;
+        musicOpt.disabled = !hasMusic;
+        if (!hasMusic && document.getElementById('voiceTaskType').value === 'music') {
+            document.getElementById('voiceTaskType').value = 'asr';
+        }
+    }
     onTextModelChange();
     onImgTaskChange();
     onVidTaskChange();

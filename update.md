@@ -8,6 +8,7 @@
 
 ## 2026-08-17
 
+- feat：**部署閘門——測試網關先上、正式環境還沒有的模型自動隱藏**（Levi 裁示：這批上架是測試性質，正式部署前對外 playground 不可讓使用者選到六個新模型）。`/api/models` 回傳前用呼叫者的 key 查上游 `/v1/models`（快取 10 分鐘），`_DEPLOY_GATED_MODELS` 集合裡「上游清單沒有」的就拿掉；查詢失敗一律隱藏（fail closed）。音樂整類被拿掉時前端連任務選項一起藏。正式部署後自動出現、不用改程式碼；全部上線後把集合清空即可（機制保留給之後每一批「測試網關先上」的模型）。雙向實測：預設（正式環境）只剩 `qwen3.5-omni-plus-realtime`、音樂選項隱藏；`NENAI_BASE=測試網關` 時六個全部出現。順帶盤點確認：程式碼與設定**沒有任何寫死的測試機位址或測試 key**（上游一律看 `NENAI_BASE`，預設正式環境；測試 key 只存在 session 暫存目錄，探測腳本的 `--gateway test` 是既有的開發者工具選項）。`app.js?v=82`。
 
 - feat：**新增三個 Lyria 音樂生成模型**（閘道端在測試機逐一實測生成與計費後轉知；本平台對 clip 文字版、clip 帶圖版、lyria-002 走完整 UI 複驗）：`lyria-3-clip-preview`（$0.04/次，30 秒 MP3）、`lyria-3-pro-preview`（$0.08/次，完整歌曲＋曲式說明）、`lyria-002`（$0.06/次，48kHz WAV）。
   - 「語音模型」分頁改名「語音與音樂」，新增第四個任務類型「音樂生成」；後端新增 `POST /api/music/generate`（multipart，走 `/v1beta/interactions` 單輪同步，timeout 180s）。

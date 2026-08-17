@@ -1133,9 +1133,52 @@ async def login(data: LoginRequest, request: Request):
         return {"success": True}
 
 # ─── API: Models ──────────────────────────────────────────────────
+# 部署閘門（Levi 裁示 2026-08-17）：這批模型已在測試網關驗證上架，但正式環境尚未
+# 部署——對外 playground 在正式部署完成前不可讓使用者選到，選了只會打到一個
+# 404 的模型。做法是動態的：/api/models 回傳前用呼叫者的 key 查一次上游
+# /v1/models（快取 10 分鐘），集合裡「上游清單沒有」的模型就從回應拿掉。
+# 正式環境部署完成後它們會自動出現，不需要改程式碼、也沒有任何寫死的測試機
+# 位址（上游一律看 NENAI_BASE）。查詢失敗時一律隱藏（fail closed——寧可晚點
+# 出現，不要出現一個叫不動的選項）。只過濾這個集合、不動其他模型，避免上游
+# 清單暫時抖動把整個 UI 清空。
+# ⚠️ 反向不成立：「在 /v1/models 清單裡」不代表那條通道可用（memory.md 有實例），
+# 這個閘門只負責「藏住還沒部署的」，不能當作可用性的證明——可用性以各模型
+# 上架時的實測為準。全部部署上正式環境之後，這個集合清空即可（不要拆機制，
+# 之後每一批「測試網關先上」的模型都會再用到）。
+_DEPLOY_GATED_MODELS = {
+    "qwen3.5-omni-flash-realtime", "qwen-audio-3.0-realtime-plus", "qwen-audio-3.0-realtime-flash",
+    "lyria-3-clip-preview", "lyria-3-pro-preview", "lyria-002",
+}
+_UPSTREAM_IDS_CACHE: Dict[str, Any] = {"ids": None, "ts": 0.0}
+
+async def _upstream_model_ids(api_key: str) -> Optional[set]:
+    now = time.time()
+    if _UPSTREAM_IDS_CACHE["ids"] is not None and now - _UPSTREAM_IDS_CACHE["ts"] < 600:
+        return _UPSTREAM_IDS_CACHE["ids"]
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{NENAI_V1}/models",
+                                    headers={"Authorization": f"Bearer {api_key}"})
+            if resp.status_code != 200:
+                return None
+            ids = {m.get("id") for m in resp.json().get("data", [])}
+    except Exception:
+        return None
+    _UPSTREAM_IDS_CACHE.update(ids=ids, ts=now)
+    return ids
+
 @app.get("/api/models")
 async def get_models(api_key: str = Depends(get_api_key)):
-    return MODELS
+    upstream = await _upstream_model_ids(api_key)
+
+    def _keep(m: dict) -> bool:
+        return m["id"] not in _DEPLOY_GATED_MODELS or (upstream is not None and m["id"] in upstream)
+
+    out = dict(MODELS)
+    out["voice"] = dict(MODELS["voice"])
+    out["voice"]["realtime"] = [m for m in MODELS["voice"]["realtime"] if _keep(m)]
+    out["voice"]["music"] = [m for m in MODELS["voice"]["music"] if _keep(m)]
+    return out
 
 
 # ─── API: Pricing（供前端顯示各模型參考單價，資料來源是網關自己的計費表）───
