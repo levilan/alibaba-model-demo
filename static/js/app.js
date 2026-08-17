@@ -2359,10 +2359,27 @@ function onVoiceModelChange() {
     if (t === 'realtime') {
         const model = document.getElementById('voiceModel').value;
         const info = (models.voice?.realtime || []).find(m => m.id === model);
+        // 換模型就把既有連線收掉——連線綁在「開始對話」當下選的模型上，留著會變成
+        // 畫面上選 B、實際還連著 A；而且兩個家族的音色與斷句詞彙互不相容，
+        // 拿 B 的值對 A 送 session.update 只會收到一串錯誤
+        if (rtWs) { stopRealtime(); rtLog('', '已切換模型，請重新按「開始對話」', 'sys'); }
         const sel = document.getElementById('voiceRtVoice');
         sel.innerHTML = (info?.voices || [])
             .map(v => `<option value="${v.id}"${v.id === info.default_voice ? ' selected' : ''}>${v.name} — ${v.desc}</option>`)
             .join('');
+        // 「什麼時候算你說完」的選項依模型重建——兩個家族的 turn_detection 詞彙不同
+        // （omni 收 semantic_vad，audio-3.0 收 smart_turn），選項清單由後端 MODELS 的
+        // turn_modes 提供，都是逐一實測過的合法值
+        const tdSel = document.getElementById('voiceRtTurnDetection');
+        const modes = info?.turn_modes || ['semantic_vad', 'server_vad', 'none'];
+        const prevTd = tdSel.value;
+        tdSel.innerHTML = modes.map(m =>
+            `<option value="${m}">${_RT_TURN_MODE_LABELS[m] || m}</option>`).join('');
+        tdSel.value = modes.includes(prevTd) ? prevTd : modes[0];
+        // 純語音模型沒有畫面輸入——實測圖片會被上游靜默忽略（不報錯，模型口頭說
+        // 看不到），所以附件鈕直接藏起來，殘留的附件也一併清掉
+        document.getElementById('voiceRtAttachBtn').style.display = info?.audio_only ? 'none' : '';
+        if (info?.audio_only && rtPendingFrames.length) clearRealtimeFile();
         return;
     }
     if (t !== 'tts') return;
@@ -2683,7 +2700,26 @@ function rtHandleEvent(ev) {
 // ⚠️ 「同時輸出語音時，輸出的文字不計費」這條規則的條件是**這次回應真的產出了音訊
 // token**，不是「開了語音模式」。同一個 session 裡某次只回文字的話，那次的文字照常
 // 收費。所以要依 audio_tokens 是否 > 0 分支，不能一律當免費。
-const _RT_AUDIO_ONLY_OUTPUT_BILLING = new Set(['qwen3.5-omni-plus-realtime']);
+const _RT_AUDIO_ONLY_OUTPUT_BILLING = new Set([
+    'qwen3.5-omni-plus-realtime',
+    // 官方計費規則與閘道白名單都包含這三個（2026-08-16 上架）。⚠️ 測試網關實測
+    // 當下文字輸出「仍被計費」（用量增幅對帳：qwen-audio-3.0-realtime-flash 一輪
+    // 增幅 $0.0003663 = 文字照收的算式，免費版是 $0.0003393）——已回報閘道端，
+    // 這裡照**官方規則**估，修好前估算會略低於實收
+    'qwen3.5-omni-flash-realtime',
+    'qwen-audio-3.0-realtime-plus',
+    'qwen-audio-3.0-realtime-flash',
+]);
+
+// 「什麼時候算你說完」各選項的顯示文字。哪個模型有哪些選項由 MODELS 的 turn_modes
+// 決定（實測：omni 系列收 semantic_vad / server_vad，audio-3.0 系列收 server_vad /
+// smart_turn，null 兩邊都收）
+const _RT_TURN_MODE_LABELS = {
+    semantic_vad: '自動判斷（聽語意）',
+    server_vad: '自動判斷（聽停頓）',
+    smart_turn: '自動判斷（智慧斷句）',
+    none: '我自己按按鈕',
+};
 
 function rtApplyUsage(usage) {
     if (!usage) return;
@@ -2692,6 +2728,9 @@ function rtApplyUsage(usage) {
     const inD = usage.input_tokens_details || usage.input_token_details || {};
     const outD = usage.output_tokens_details || usage.output_token_details || {};
     const inText = inD.text_tokens || 0, inAudio = inD.audio_tokens || 0;
+    // 附上圖片/影格時，上游把它們計成 video_tokens（實測一張 480x480 約 225 個），
+    // 官方費率是跟文字同一檔。漏掉這塊的話，帶畫面的那幾輪估出來的花費會偏低
+    const inVisual = (inD.video_tokens || 0) + (inD.image_tokens || 0);
     const outText = outD.text_tokens || 0, outAudio = outD.audio_tokens || 0;
 
     const model = document.getElementById('voiceModel').value;
@@ -2699,19 +2738,20 @@ function rtApplyUsage(usage) {
     let cost = null;
     if (p && p.type === 'token') {
         const textOutFree = outAudio > 0 && _RT_AUDIO_ONLY_OUTPUT_BILLING.has(model);
-        cost = inText / 1e6 * p.input
+        cost = (inText + inVisual) / 1e6 * p.input
              + (textOutFree ? 0 : outText / 1e6 * p.output)
              + inAudio / 1e6 * (p.audio_input || p.input)
              + outAudio / 1e6 * (p.audio_output || p.output);
         addCost(cost);
     }
-    const tok = (text, audio) => {
+    const tok = (text, audio, visual) => {
         const s = [`${text} 文字`];
         if (audio) s.push(`${audio} 語音`);
+        if (visual) s.push(`${visual} 畫面`);
         return s.join('、');
     };
     document.getElementById('voiceRtUsage').textContent =
-        `輸入 ${tok(inText, inAudio)}　輸出 ${tok(outText, outAudio)}` +
+        `輸入 ${tok(inText, inAudio, inVisual)}　輸出 ${tok(outText, outAudio)}` +
         (cost != null ? `　約 $${formatUsd(Number(cost.toFixed(6)))}` : '');
 }
 

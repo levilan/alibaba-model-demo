@@ -6,7 +6,21 @@
 
 ---
 
+
 ## 2026-08-16
+
+
+
+- feat：**新增三個即時語音模型**（閘道 commit e87398614，對測試網關 192.168.0.245 實測後上架；正式環境尚未部署，公告與文檔通知待部署後補）：`qwen3.5-omni-flash-realtime`（全模態極速版）、`qwen-audio-3.0-realtime-plus`／`qwen-audio-3.0-realtime-flash`（純語音）。快照版 `qwen3.5-omni-flash-realtime-2026-03-15` 經使用者裁示**不上架**（渠道清單沒有它、查不到價）。實測重點（全部走 `scripts/probe_realtime.py`，事件形狀與前端一致）：
+  - **兩個家族不能互推，三處實測差異**：①音色——omni-flash 與 plus 同一組 56 個（逐一全掃）；audio-3.0 是**另一組 15 個**（官方文件只列 5 個，完整清單來自非法音色的錯誤訊息、再逐一驗證出聲），互不相通（Tina/Ethan/Serena/Cherry 在 audio-3.0 全被拒）。②`turn_detection`——omni 收 `semantic_vad`/`server_vad`；audio-3.0 送 `semantic_vad` 回 `Unsupported turn_detection.type`，收 `server_vad`/`smart_turn`。③畫面輸入——audio-3.0 對 `input_image_buffer.append` **靜默忽略**（不報錯、usage 無 video_tokens、模型口頭說看不到）。
+  - 對應的 MODELS 新欄位：`turn_modes`（前端據此重建「什麼時候算你說完」選單）、`audio_only`（藏附件鈕＋清殘留附件）。連線中切換模型會自動斷線並提示重新開始（先前單一模型不會遇到）。
+  - **三模型的文字→語音、語音→語音（macOS `say` 合成 16kHz 真人語音）、omni-flash 的三張對照圖**全部通過，答案跟著輸入變；usage 是複數欄位（`input_tokens_details`），前端本來就相容。
+  - **圖片計成 `video_tokens`**（480×480 一張約 225 個，官方費率與文字同檔）——前端 `rtApplyUsage` 先前只算 text+audio，帶畫面的輪次估價偏低（qwen3.5-omni-plus-realtime 既有問題一併修掉），現已把 `video_tokens`/`image_tokens` 併進文字檔計算並顯示「N 畫面」。
+  - **用量增幅對帳抓到兩個閘道計費落差**（已回報 nen-ai-platform，前端照官方規則估）：①三個新模型有語音輸出時**文字輸出仍被計費**（audio-3.0-flash 一輪增幅 $0.0003663＝文字照收的算式；官方規則與 `audioOnlyOutputBillingModels` 白名單應為免費）；②omni-flash 的 **`video_tokens` 完全沒計費**（圖片輪增幅 $0.0005951＝「不計 video、文字照收」的算式）。
+  - UI 驗證（Playwright 對本機服務 `NENAI_BASE=http://192.168.0.245` 實跑）：四模型下拉、音色與斷句選單依模型重建、audio-3.0 附件鈕隱藏且 semantic_vad 自動退到 server_vad、audio-3.0-plus 連線送文字（回答正確、估價 $0.000499 與費率吻合）、omni-flash 帶畫面提問（綠底黑方答對、用量列顯示「225 畫面」、VAD 自動關閉並還原）、截圖確認版面。`app.js?v=` 已 bump 到 80。
+  - 測試釘住：`test_realtime_voices_verified`（四模型、兩組音色、預設音色、audio_only）、`test_realtime_turn_modes_verified`。麥克風收音品質仍屬未驗證（headless 無實體麥克風，與 plus 上架時相同）。
+
+- feat：**新增 `scripts/probe_realtime.py`**——realtime（WebSocket）模型的標準探測工具，比照 `probe_model.py` 的慣例（`--gateway`／`--key-file`），五種測試：`basic`（文字→語音+文字）、`audio`（餵 16kHz wav）、`image`（靜音開門→圖片緩衝→提問）、`voices`（逐一驗音色，先用哨兵音色確認錯誤形狀）、`turn`（逐一試 turn_detection 詞彙）。送出的事件形狀刻意與 `static/js/app.js` 完全一致，探測通過＝前端那條路通。⚠️ 掃音色掃太快會把網關掃出 `thread pool exausted max_workers 100`——那是暫時性錯誤不是音色不支援，8 個被誤判的音色隔幾秒重測全過，判讀一定要看錯誤原文。
 
 - refactor(UX)：**即時對話改成聊天版型**。先前是把 ASR/TTS 的結果卡片直接拿來當對話用，於是有六個問題：
   1. **對話是倒序的**（最新插在最上面）——要由下往上讀

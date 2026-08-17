@@ -292,6 +292,31 @@ _QWEN35_OMNI_REALTIME_VOICES = [
     {"id": "Chloe", "name": "Chloe 思怡", "desc": "馬來西亞白領"},
 ]
 
+# qwen-audio-3.0-realtime 系列（plus / flash 同一組）的音色。**15 個都對測試網關
+# 逐一實測過**（2026-08-16，兩個型號各自全掃）：合法的會真的出聲；非法音色會回
+# 把完整合法清單列出來的錯誤（`Unsupported voice: 'X'. Supported voices: ...`），
+# 這次的 15 個就是從那則錯誤訊息拿到、再逐一驗證的——官方文件只列了前 5 個。
+# 與 qwen3.5-omni 系列的音色**完全不互通**（Tina/Ethan/Serena/Cherry 都被拒）。
+# 中文名與描述取自官方音色表（qwen-audio-tts-voice-list）；longanqian 不在官方
+# 音色表裡（只在 realtime 文件中作為預設音色出現），所以只標「預設音色」。
+_QWEN_AUDIO30_REALTIME_VOICES = [
+    {"id": "longanqian", "name": "Longanqian", "desc": "預設音色"},
+    {"id": "longanlingxin", "name": "龍安靈心", "desc": "知心溫暖"},
+    {"id": "longanlingxi", "name": "龍安靈希", "desc": "可愛甜美"},
+    {"id": "longanxiaoxin", "name": "龍安小昕", "desc": "親切活潑"},
+    {"id": "longanfengyue", "name": "龍安風悅", "desc": "自然親切"},
+    {"id": "longanyuanfei", "name": "龍安元妃", "desc": "高傲妃子"},
+    {"id": "longanhuan_v3.6", "name": "龍安歡", "desc": "歡脫元氣"},
+    {"id": "longanlufeng", "name": "龍安魯風", "desc": "明亮開朗"},
+    {"id": "longjielidou_v3.6", "name": "龍傑力豆", "desc": "天真男童"},
+    {"id": "longpaopao_v3.6", "name": "龍泡泡", "desc": "軟糯可愛"},
+    {"id": "longhuohuo_v3.6", "name": "龍火火", "desc": "頑皮少年"},
+    {"id": "longchuanshu_v3.6", "name": "龍川叔", "desc": "四川口音大叔"},
+    {"id": "loongmary", "name": "Mary", "desc": "溫暖英式女聲"},
+    {"id": "loongeva_v3.6", "name": "Eva", "desc": "知性美式女聲"},
+    {"id": "loongjohn", "name": "John", "desc": "沉穩美式男聲"},
+]
+
 # MAI Image 家族（2.5 / 2.5-Flash / 2.5-Pro）共用的尺寸清單。約束見 MODELS 裡的註解：
 # 每邊 ≥ 768 像素、總像素 ≤ 1,056,768。這五個都逐一對正式網關實測確認可用。
 # MAI 的尺寸有兩條**互相獨立**的限制，兩條都要滿足：每邊至少 768 px、總像素 ≤ 1,056,768。
@@ -932,10 +957,36 @@ MODELS = {
     "voice": {
         # 即時語音對話：WebSocket 雙向串流，與 ASR/TTS 的「送出→等結果」流程完全不同，
         # 所以獨立成一個任務類型。輸入 PCM 16kHz、輸出 PCM 24kHz（皆為 mono s16le）。
+        # turn_modes：這個模型的 turn_detection 合法值（前端據此重建「什麼時候算你
+        # 說完」的選單）。**兩個家族的詞彙不同**（2026-08-16 對測試網關逐一實測）：
+        # omni 系列收 semantic_vad / server_vad；audio-3.0 系列送 semantic_vad 會回
+        # `Unsupported turn_detection.type: 'semantic_vad'. Supported values:
+        # server_vad, smart_turn.`。null（手動送出）兩邊都收，前端以 "none" 表示。
+        # audio_only：純語音模型，前端據此隱藏畫面上傳——實測 audio-3.0 對
+        # input_image_buffer.append **靜默忽略**（不報錯、usage 也沒有 video_tokens，
+        # 模型口頭回「看不到圖片」），所以這個開關不能少。
         "realtime": [
             {"id": "qwen3.5-omni-plus-realtime", "name": "Qwen3.5 Omni Plus Realtime", "group": "即時語音",
              "desc": "全模態即時對話，可聽可說、看得懂圖片與影片，支援語意斷句與插話",
              "voices": _QWEN35_OMNI_REALTIME_VOICES, "default_voice": "Tina",
+             "turn_modes": ["semantic_vad", "server_vad", "none"],
+             "input_rate": 16000, "output_rate": 24000},
+            # 音色與 plus 同一組——56 個在 flash 上逐一實測全數有效（掃太快會遇到
+            # 測試網關 thread pool exhausted 的暫時性錯誤，別誤判成音色不支援）
+            {"id": "qwen3.5-omni-flash-realtime", "name": "Qwen3.5 Omni Flash Realtime", "group": "即時語音",
+             "desc": "全模態即時對話極速版，可聽可說、看得懂圖片與影片，支援語意斷句與插話",
+             "voices": _QWEN35_OMNI_REALTIME_VOICES, "default_voice": "Tina",
+             "turn_modes": ["semantic_vad", "server_vad", "none"],
+             "input_rate": 16000, "output_rate": 24000},
+            {"id": "qwen-audio-3.0-realtime-plus", "name": "Qwen Audio 3.0 Realtime Plus", "group": "即時語音",
+             "desc": "高品質即時語音對話，可聽可說，支援插話與手動送出",
+             "voices": _QWEN_AUDIO30_REALTIME_VOICES, "default_voice": "longanqian",
+             "turn_modes": ["server_vad", "smart_turn", "none"], "audio_only": True,
+             "input_rate": 16000, "output_rate": 24000},
+            {"id": "qwen-audio-3.0-realtime-flash", "name": "Qwen Audio 3.0 Realtime Flash", "group": "即時語音",
+             "desc": "極速即時語音對話，可聽可說，支援插話與手動送出",
+             "voices": _QWEN_AUDIO30_REALTIME_VOICES, "default_voice": "longanqian",
+             "turn_modes": ["server_vad", "smart_turn", "none"], "audio_only": True,
              "input_rate": 16000, "output_rate": 24000},
         ],
         "asr": [

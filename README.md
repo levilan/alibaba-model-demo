@@ -213,6 +213,22 @@ python app.py
 > **若日後要加「上傳音檔」這條輸入路徑**：音檔尾端必須有 1～2 秒靜音，否則 `semantic_vad` 不會斷句——逐字稿會正常出、`speech_started` 也會來，但 `speech_stopped` 永遠不來，一路等到逾時。閘道端實測：1.96 秒無尾靜音的檔案卡滿 60 秒，補 2 秒靜音後同一個檔案立刻正常（`ffmpeg -af "apad=pad_dur=2"`）。目前的即時麥克風輸入天然有靜音，走不到這條路徑，所以我們自己沒有複驗過。
 >
 > **音色 56 個都逐一實測過**（`app.py` 的 `_QWEN35_OMNI_REALTIME_VOICES`）：送 `session.update` 帶音色再 `response.create`，有效的會開始回傳音訊、無效的回 `Voice 'X' is not supported.`。舊清單裡的 `Chelsie` 實測不支援（那是 qwen2.5-omni 的音色）已移除。⚠️ **不要用 `session.update` 的回應來驗**——它對任何字串都回 `session.updated`，連亂編的名字都照收；也不要用音訊位元比對，同音色同輸入重跑兩次的位元並不相同。
+>
+> **realtime 探測一律用 `scripts/probe_realtime.py`**（basic／audio／image／voices／turn 五種測試，事件形狀刻意與前端完全一致），不要再寫一次性腳本。⚠️ 掃音色掃太快會把網關掃出 `thread pool exausted max_workers 100` 的暫時性錯誤——**那不是音色不支援**，隔幾秒重測就過；判讀時一定要看錯誤原文，只有 `Unsupported voice` / `is not supported` 才算數。
+>
+> **2026-08-16 新增三個 realtime 模型（對測試網關 192.168.0.245 實測後上架），兩個家族的差異都是實測出來的、不能互推**：
+>
+> | | qwen3.5-omni-\*-realtime（plus／flash） | qwen-audio-3.0-realtime-\*（plus／flash） |
+> |---|---|---|
+> | 輸入模態 | 文字＋語音＋圖片/影片 | **只有文字＋語音**（`input_image_buffer.append` 被**靜默忽略**：不報錯、usage 無 video_tokens、模型口頭說看不到，所以 MODELS 以 `audio_only` 標記、前端藏附件鈕） |
+> | 音色 | 同一組 56 個（flash 逐一全掃驗證與 plus 相同） | 另一組 **15 個**（官方文件只列 5 個；完整清單來自非法音色的錯誤訊息，再逐一驗證出聲）、預設 `longanqian`，與 omni 音色完全不互通 |
+> | `turn_detection` | `semantic_vad` / `server_vad` / `null` | `server_vad` / `smart_turn` / `null`（送 `semantic_vad` 回 `Unsupported turn_detection.type`），MODELS 以 `turn_modes` 標記、前端據此重建選單 |
+> | 取樣率 | 上行 16kHz／下行 24kHz | 相同 |
+> | usage | 複數欄位 `input_tokens_details`；圖片計成 `video_tokens`（480×480 一張約 225） | 複數欄位，只有 text/audio |
+>
+> 快照版 `qwen3.5-omni-flash-realtime-2026-03-15` **不上架**（使用者裁示；渠道模型清單沒有它、`/api/pricing` 也查不到價）。omni-flash 官方支援聯網搜尋（`search_strategy: agent`，$10/千次），**未實測、UI 未開放**——要開放前先驗 session.update 的欄位形狀與計費。
+>
+> ⚠️ 對測試網關用「用量增幅」對帳（前後各讀 `/v1/dashboard/billing/usage`）發現**兩個計費落差**，均已回報閘道端，前端估算照**官方規則**寫（文字輸出在有語音輸出時免費、畫面 tokens 按文字費率），所以在閘道修正前估算會與實收有出入：（1）三個新模型有語音輸出時**文字輸出仍被計費**（audio-3.0-flash 一輪增幅 $0.0003663 ＝文字照收的算式，官方規則應為 $0.0003393）；（2）omni-flash 的 **`video_tokens` 完全沒被計費**（圖片輪增幅 $0.0005951 ＝「不計 video、文字照收」的算式，官方規則應為 $0.000719）。
 
 > **`qwen3-vl-plus` / `qwen3-vl-flash` 是視覺語言模型**，可在對話中帶入圖片。用標準的 OpenAI `image_url` 格式（實測 data URI 可用），MODELS 以 `vision: True` 標記、前端據此顯示圖片上傳欄位。圖片只附在**當下這一輪**的提問上，不會進入對話歷史——上游對「歷史訊息裡的圖片」的行為未驗證，不主動送。切換到不支援視覺的模型時前端會清掉已選的圖，避免靜默夾帶造成 400。
 
@@ -530,7 +546,10 @@ python app.py
 
 | 模型 ID | 名稱 | 分類 | 功能 |
 |---|---|---|---|
-| qwen3.5-omni-plus-realtime | Qwen3.5 Omni Plus Realtime | 即時語音 | WebSocket 雙向串流，可聽可說、支援語意斷句與插話 |
+| qwen3.5-omni-plus-realtime | Qwen3.5 Omni Plus Realtime | 即時語音 | WebSocket 雙向串流，可聽可說、看得懂圖片與影片，支援語意斷句與插話 |
+| qwen3.5-omni-flash-realtime | Qwen3.5 Omni Flash Realtime | 即時語音 | 同上的極速版（音色同一組 56 個、事件序完全相同） |
+| qwen-audio-3.0-realtime-plus | Qwen Audio 3.0 Realtime Plus | 即時語音 | 純語音即時對話（無圖片/影片輸入），音色 15 個、斷句收 server_vad / smart_turn |
+| qwen-audio-3.0-realtime-flash | Qwen Audio 3.0 Realtime Flash | 即時語音 | 同上的極速版 |
 | qwen-audio-3.0-asr-flash | Qwen Audio 3.0 ASR Flash | 語音辨識 | 上傳完整音檔，一次回傳逐字稿 |
 | qwen-audio-3.0-asr-flash-streaming | Qwen Audio 3.0 ASR Flash（串流） | 語音辨識 | SSE 串流回傳中間辨識結果 |
 | qwen-audio-3.0-tts-plus | Qwen Audio 3.0 TTS Plus | 語音合成 | 高品質語音合成 |

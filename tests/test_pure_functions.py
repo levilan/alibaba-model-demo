@@ -326,18 +326,61 @@ def test_pricing_entry_without_audio_rates():
 
 
 def test_realtime_voices_verified():
-    """56 個音色都逐一對正式環境實測過；Chelsie 實測不支援，不可以再列回來。
+    """音色清單都是逐一實測過的；Chelsie 實測不支援，不可以再列回來。
 
     驗法：session.update 帶音色 + response.create，有效的會開始回傳音訊、無效的回
     `Voice 'X' is not supported.`。**不要用 session.update 的回應驗**——它對任何
     字串都回 session.updated，連亂編的名字都照收。也不要用音訊位元比對——同音色
     同輸入重跑兩次的位元並不相同。
+
+    2026-08-16 起共四個模型（scripts/probe_realtime.py 對測試網關實測）：
+    omni 兩個共用同一組 56 音色（plus 對正式環境、flash 對測試網關各全掃一次）；
+    audio-3.0 兩個共用另一組 15 音色（非法音色的錯誤訊息會列出完整合法清單，
+    再逐一驗證出聲），與 omni 的音色完全不互通。
     """
     rt = app.MODELS["voice"]["realtime"]
-    assert [m["id"] for m in rt] == ["qwen3.5-omni-plus-realtime"]
-    voices = rt[0]["voices"]
-    assert len(voices) == 56
-    ids = {v["id"] for v in voices}
-    assert "Chelsie" not in ids, "實測不支援（那是 qwen2.5-omni 的音色）"
-    assert rt[0]["default_voice"] in ids
-    assert (rt[0]["input_rate"], rt[0]["output_rate"]) == (16000, 24000)
+    assert [m["id"] for m in rt] == [
+        "qwen3.5-omni-plus-realtime",
+        "qwen3.5-omni-flash-realtime",
+        "qwen-audio-3.0-realtime-plus",
+        "qwen-audio-3.0-realtime-flash",
+    ]
+    by_id = {m["id"]: m for m in rt}
+    for m in rt:
+        ids = {v["id"] for v in m["voices"]}
+        assert m["default_voice"] in ids, m["id"]
+        assert (m["input_rate"], m["output_rate"]) == (16000, 24000), m["id"]
+
+    omni = [by_id["qwen3.5-omni-plus-realtime"], by_id["qwen3.5-omni-flash-realtime"]]
+    for m in omni:
+        ids = {v["id"] for v in m["voices"]}
+        assert len(ids) == 56, m["id"]
+        assert "Chelsie" not in ids, "實測不支援（那是 qwen2.5-omni 的音色）"
+    assert omni[0]["voices"] is omni[1]["voices"], "兩個 omni 型號實測同一組音色，共用同一份清單"
+
+    audio = [by_id["qwen-audio-3.0-realtime-plus"], by_id["qwen-audio-3.0-realtime-flash"]]
+    for m in audio:
+        ids = {v["id"] for v in m["voices"]}
+        assert len(ids) == 15, m["id"]
+        assert m["default_voice"] == "longanqian", "官方文件與實測的預設音色"
+        assert not ids & {"Tina", "Ethan", "Serena", "Cherry"}, "omni 音色在 audio-3.0 上實測全被拒"
+        assert m.get("audio_only") is True, "純語音模型；圖片會被上游靜默忽略，前端據此藏附件鈕"
+
+
+def test_realtime_turn_modes_verified():
+    """turn_detection 的合法值兩個家族不同，都是對測試網關實測的（2026-08-16）：
+
+    omni 收 semantic_vad / server_vad；audio-3.0 送 semantic_vad 會回
+    `Unsupported turn_detection.type: 'semantic_vad'. Supported values: server_vad,
+    smart_turn.`，null（前端以 "none" 表示）兩邊都收。前端會拿 turn_modes 重建
+    選單，所以這裡鎖住的是「不要把某家族不收的值放進另一家族」。
+    """
+    rt = {m["id"]: m for m in app.MODELS["voice"]["realtime"]}
+    for mid in ("qwen3.5-omni-plus-realtime", "qwen3.5-omni-flash-realtime"):
+        assert rt[mid]["turn_modes"] == ["semantic_vad", "server_vad", "none"], mid
+    for mid in ("qwen-audio-3.0-realtime-plus", "qwen-audio-3.0-realtime-flash"):
+        assert rt[mid]["turn_modes"] == ["server_vad", "smart_turn", "none"], mid
+
+
+
+
