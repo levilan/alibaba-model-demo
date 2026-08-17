@@ -1160,10 +1160,9 @@ async def login(data: LoginRequest, request: Request):
 # 這個閘門只負責「藏住還沒部署的」，不能當作可用性的證明——可用性以各模型
 # 上架時的實測為準。全部部署上正式環境之後，這個集合清空即可（不要拆機制，
 # 之後每一批「測試網關先上」的模型都會再用到）。
-_DEPLOY_GATED_MODELS = {
-    "qwen3.5-omni-flash-realtime", "qwen-audio-3.0-realtime-plus", "qwen-audio-3.0-realtime-flash",
-    "lyria-3-clip-preview", "lyria-3-pro-preview", "lyria-002",
-}
+# 目前是空的：上一批六個（realtime 三個＋Lyria 三個）在 2026-08-17 全部部署上正式
+# 環境並實測通過，依裁示把集合清空。下一批「測試網關先上」的模型直接把 id 加回來。
+_DEPLOY_GATED_MODELS: set = set()
 _UPSTREAM_IDS_CACHE: Dict[str, Any] = {"ids": None, "ts": 0.0}
 
 async def _upstream_model_ids(api_key: str) -> Optional[set]:
