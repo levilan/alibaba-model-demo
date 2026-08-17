@@ -6,6 +6,18 @@
 
 ---
 
+## 2026-08-17
+
+
+- feat：**新增三個 Lyria 音樂生成模型**（閘道端在測試機逐一實測生成與計費後轉知；本平台對 clip 文字版、clip 帶圖版、lyria-002 走完整 UI 複驗）：`lyria-3-clip-preview`（$0.04/次，30 秒 MP3）、`lyria-3-pro-preview`（$0.08/次，完整歌曲＋曲式說明）、`lyria-002`（$0.06/次，48kHz WAV）。
+  - 「語音模型」分頁改名「語音與音樂」，新增第四個任務類型「音樂生成」；後端新增 `POST /api/music/generate`（multipart，走 `/v1beta/interactions` 單輪同步，timeout 180s）。
+  - 回應兩種形態都認：lyria-3 音訊在 `steps[].content[]`、lyria-002 在 `outputs[]`；歌詞與曲式文字一併顯示在結果卡。**帶圖時 `input` 是 `[{type:"text"},{type:"image",...}]` 陣列**，與 Omni 影片在同一端點的 `user_input` 包法不同。
+  - 圖片生音樂僅 lyria-3 支援（`image_input` 旗標；實測畫夜空月亮圖，歌詞唱出「夜空中，一輪明月」）；lyria-002 帶圖會被上游拒絕，UI 不顯示上傳欄、切換模型時自動清掉已選的圖。安全過濾的 `content_blocked` 錯誤原樣呈現給使用者。
+  - 產出實測：clip 44.1kHz 立體聲 MP3 30.8s（afinfo 驗）、002 48kHz 立體聲 WAV 32.8s；花費累計 $0.04+$0.04+$0.06=$0.14 一分不差（固定價從 /api/pricing 讀）。
+  - 測試 +1（`test_lyria_music_models` 釘住 image_input 旗標），共 34 條全過。`app.js?v=81`、`style.css?v=40`。
+
+- fix：**語音結果區的卡片會「折欄」跑出畫面**（上架音樂模型時發現的既有問題，音樂卡較高所以特別明顯）：`#voiceResults` 行內把方向改成 column 但沿用了 `.results-area` 類別裡給圖片並排用的 `flex-wrap:wrap`，卡片一多就折到第二欄、出現橫向捲軸。修掉 wrap 之後又暴露第二層：`flex-shrink` 預設 1，高度不夠時卡片被**壓扁**（160px 內容被壓到 83px）而不是讓容器捲動。兩層都修（`flex-wrap:nowrap` + `.voice-result{flex-shrink:0}`），用 6 張高卡片驗證：自然高度、無橫向溢出、縱向捲動正常。
+
 
 ## 2026-08-16
 

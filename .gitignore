@@ -9,6 +9,7 @@ venv/
 # Generated outputs (large files)
 outputs/images/
 outputs/videos/
+outputs/audio/
 # 系統公告的寫入前備份（scripts/update_announcements.py 產生，不進版控）
 outputs/announcement-backups/
 static/uploads/

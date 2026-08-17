@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=39">
+    <link rel="stylesheet" href="/static/css/style.css?v=40">
     <link rel="icon" type="image/png" href="/static/img/logo.png">
     <script>
         // 在 CSS 套用前就先決定 light/dark，避免登入畫面先閃一下錯的主題再跳回來
@@ -145,7 +145,7 @@
             </button>
             <button class="tab-btn" data-tab="voice" onclick="switchTab('voice')">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
-                語音模型
+                語音與音樂
             </button>
             <button class="tab-btn" onclick="location.href='/canvas'">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.2 7.2L11 16M15.8 7.2L13 16"/></svg>
@@ -838,6 +838,7 @@
                         <option value="asr">語音辨識 (ASR)</option>
                         <option value="tts">語音合成 (TTS)</option>
                         <option value="realtime">即時語音對話 (Realtime)</option>
+                        <option value="music">音樂生成 (Music)</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -872,6 +873,19 @@
                         <option value="server_vad">自動判斷（聽停頓）</option>
                         <option value="none">我自己按按鈕</option>
                     </select>
+                </div>
+            </div>
+
+            <!-- 音樂生成（music 專用）：圖片欄只有支援圖片靈感的模型才顯示 -->
+            <div class="sidebar-section" id="voiceMusicSection" style="display:none">
+                <div class="sidebar-section-title">靈感圖片（選填）</div>
+                <div class="form-group" id="voiceMusicImageGroup" style="margin-bottom:0">
+                    <div class="upload-zone" id="voiceMusicUpZone" onclick="document.getElementById('voiceMusicFileInput').click()">
+                        <input type="file" id="voiceMusicFileInput" accept="image/*" style="display:none" onchange="onVoiceMusicFileChange(event)">
+                        <div class="upload-zone-icon" id="voiceMusicIcon">🎨</div>
+                        <p id="voiceMusicLabel">附一張圖片作為音樂靈感<br><span style="font-size:11px;color:var(--text-muted)">選填，模型會依畫面的氛圍作曲</span></p>
+                    </div>
+                    <button id="voiceMusicClearBtn" class="btn btn-ghost btn-sm" onclick="clearVoiceMusicFile()" style="display:none;margin-top:6px">移除圖片</button>
                 </div>
             </div>
 
@@ -984,6 +998,25 @@
                     <span style="font-size:0.75rem;color:var(--text-muted)">Ctrl+Enter 快速發送</span>
                 </div>
             </div>
+            <div class="prompt-panel" id="voiceMusicPromptPanel" style="display:none">
+                <div class="prompt-row">
+                    <div class="prompt-col">
+                        <div class="form-group" style="margin-bottom:0">
+                            <label class="form-label" data-tip="曲風、心情、配器、語言、歌詞都直接用文字描述，例如：溫暖的木吉他民謠，清晨的感覺，不要人聲">音樂描述</label>
+                            <textarea id="voiceMusicPrompt" class="textarea-input" rows="2" placeholder="描述你想要的音樂，例如：溫暖的木吉他民謠，清晨的感覺，不要人聲" onkeydown="if((event.ctrlKey || event.metaKey) && event.key==='Enter'){event.preventDefault();sendVoiceMusic();}"></textarea>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;justify-content:flex-end">
+                        <button id="voiceMusicSendBtn" class="btn btn-primary" onclick="sendVoiceMusic()" style="height:40px">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                            生成音樂
+                        </button>
+                    </div>
+                </div>
+                <div class="chat-actions-row" style="padding-top:8px;">
+                    <span style="font-size:0.75rem;color:var(--text-muted)">Ctrl+Enter 快速發送</span>
+                </div>
+            </div>
             <!-- 即時對話：走聊天版型（訊息由上而下、最新在底、輸入列在底部），
                  不沿用 ASR/TTS 的結果卡片——那是倒序的，用在對話上要由下往上讀 -->
             <div class="rt-shell" id="voiceRealtimePromptPanel" style="display:none">
@@ -1032,7 +1065,10 @@
                     </div>
                 </div>
             </div>
-            <div id="voiceResults" class="results-area" style="flex:1;flex-direction:column;align-items:stretch">
+            <!-- flex-wrap:nowrap 不能省：.results-area 類別裡的 wrap 是給圖片卡並排用的，
+                 配上這裡的 column 方向會變成「高度不夠就折到第二欄」——卡片一多（音樂卡
+                 特別高）舊結果就橫向跑出畫面、還多出一條橫向捲軸 -->
+            <div id="voiceResults" class="results-area" style="flex:1;flex-direction:column;flex-wrap:nowrap;align-items:stretch">
                 <div class="empty-state" style="width:100%">
                     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
                     <p>辨識/合成結果將顯示在此處</p>

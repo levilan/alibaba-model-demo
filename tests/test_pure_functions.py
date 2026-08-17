@@ -382,6 +382,17 @@ def test_realtime_turn_modes_verified():
         assert rt[mid]["turn_modes"] == ["server_vad", "smart_turn", "none"], mid
 
 
+def test_lyria_music_models():
+    """Lyria 三個模型的能力旗標（2026-08-17，閘道端逐一實測轉知＋本平台對 clip 與
+    圖片輸入複驗）：圖片生音樂只有 lyria-3 兩個支援，lyria-002 帶圖上游會明確報錯
+    ——image_input 旗標決定前端顯不顯示靈感圖片上傳欄，把 002 打開等於做出一個
+    必定失敗的選項。"""
+    music = app.MODELS["voice"]["music"]
+    assert [m["id"] for m in music] == ["lyria-3-clip-preview", "lyria-3-pro-preview", "lyria-002"]
+    by_id = {m["id"]: m for m in music}
+    assert by_id["lyria-3-clip-preview"].get("image_input") is True
+    assert by_id["lyria-3-pro-preview"].get("image_input") is True
+    assert not by_id["lyria-002"].get("image_input")
 
 
 def test_mai_image_n_locked_to_one():

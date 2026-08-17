@@ -1105,6 +1105,9 @@ input[type="range"]::-webkit-slider-thumb {
     border-radius: var(--radius);
     overflow: hidden;
     width: 100%;
+    /* #voiceResults 是 column + nowrap 的 flex 容器，flex-shrink 預設 1 會在高度
+       不夠時把卡片壓扁（實測 160px 的內容被壓到 83px）而不是讓容器出現縱向捲軸 */
+    flex-shrink: 0;
 }
 .voice-result-header {
     display: flex;

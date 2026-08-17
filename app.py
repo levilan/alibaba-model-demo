@@ -1015,6 +1015,21 @@ MODELS = {
             {"id": "gemini-3.1-flash-tts-preview", "name": "Gemini 3.1 Flash TTS Preview", "group": "Gemini",
              "desc": "Google 新一代極速語音合成（預覽版）", "vendor": "gemini", "voices": _GEMINI_TTS_VOICES},
         ],
+        # 音樂生成（Lyria）。三個都走 /v1beta/interactions 單輪同步（2026-08-17 由
+        # 閘道端逐一實測生成與計費後轉知，本平台端對 clip 版與圖片輸入複驗過）。
+        # 時長、曲風、語言、歌詞全靠提示詞，沒有其他參數。
+        # image_input：可另附一張圖片當靈感（僅 lyria-3 兩個；lyria-002 帶圖上游會
+        # 明確報錯，所以不顯示上傳欄）。duration_hint 是給 UI 等待訊息用的。
+        "music": [
+            {"id": "lyria-3-clip-preview", "name": "Lyria 3 Clip Preview", "group": "音樂生成",
+             "desc": "30 秒音樂片段，曲風、語言與歌詞都用文字描述，可附一張圖片作為靈感",
+             "image_input": True, "duration_hint": "約 15 秒"},
+            {"id": "lyria-3-pro-preview", "name": "Lyria 3 Pro Preview", "group": "音樂生成",
+             "desc": "完整歌曲（約三分鐘）並附曲式說明，可附一張圖片作為靈感",
+             "image_input": True, "duration_hint": "約 1 分鐘"},
+            {"id": "lyria-002", "name": "Lyria 002", "group": "音樂生成",
+             "desc": "30 秒高音質音樂（WAV 無損），以文字描述曲風與配器"},
+        ],
     },
 }
 
@@ -3224,6 +3239,79 @@ async def voice_tts(data: VoiceTtsRequest, api_key: str = Depends(get_api_key)):
                 fp.write_bytes(audio_bytes)
                 audio_url = f"/outputs/audio/{fp.name}"
             return {"success": True, "audio_url": audio_url, "model": data.model}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── API: Music（Lyria）────────────────────────────────────────────
+# 走 /v1beta/interactions（與 Gemini Omni 影片同一個端點），單輪、同步回傳。
+# 回應兩種形態都要認（lyria-3 實測 + lyria-002 由閘道端實測轉知）：
+#   lyria-3-*  音訊在 steps[].content[]（type:"audio"，base64 data + mime_type；
+#              另有 type:"text" 的歌詞標記與曲式說明，一併帶回前端顯示）
+#   lyria-002  音訊在 outputs[]（同樣的 type/mime_type/data 欄位）
+# 帶圖片時 input 從字串改成 [{type:"text"},{type:"image",mime_type,data}] 陣列
+# ——注意這與 Omni 影片的 [{type:"user_input",content:[...]}] 包法**不同**，兩個
+# 模型家族在同一個端點上吃不同的形狀，不要互相類推。
+# pro 版生成約一分鐘（閘道端實測 59s），timeout 給 180s。
+# 提示詞觸發安全過濾時上游回 400 content_blocked——錯誤訊息原樣回給前端呈現，
+# 使用者換個寫法通常就過，訊息吞掉的話他只會看到「失敗」兩個字。
+@app.post("/api/music/generate")
+async def music_generate(request: Request, api_key: str = Depends(get_api_key)):
+    form = await request.form()
+    model = form.get("model", "lyria-3-clip-preview")
+    prompt = (form.get("prompt") or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+    image = form.get("image")
+    img_bytes = await image.read() if image is not None and hasattr(image, "read") else None
+    if img_bytes:
+        input_payload: Any = [
+            {"type": "text", "text": prompt},
+            {"type": "image", "mime_type": getattr(image, "content_type", None) or "image/jpeg",
+             "data": base64.b64encode(img_bytes).decode()},
+        ]
+    else:
+        input_payload = prompt
+    try:
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            resp = await client.post(
+                f"{NENAI_BASE}/v1beta/interactions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": model, "input": input_payload},
+            )
+            try:
+                rj = resp.json()
+            except Exception:
+                return JSONResponse(status_code=502, content={"error": resp.text[:300]})
+            if resp.status_code != 200:
+                err = rj.get("error", {})
+                msg = err.get("message") if isinstance(err, dict) else str(err)
+                return JSONResponse(status_code=resp.status_code, content={"error": msg or resp.text[:300]})
+            items: list = []
+            for step in rj.get("steps", []):
+                items.extend(step.get("content") or [])
+            items.extend(rj.get("outputs") or [])
+            texts: list = []
+            audio_b64 = mime = None
+            for c in items:
+                if c.get("type") == "audio" and c.get("data") and not audio_b64:
+                    audio_b64, mime = c["data"], c.get("mime_type") or "audio/mpeg"
+                elif c.get("type") == "text" and c.get("text"):
+                    texts.append(c["text"])
+            if not audio_b64:
+                return JSONResponse(status_code=500, content={"error": f"模型未回傳音訊：{str(rj)[:300]}"})
+            audio_bytes = base64.b64decode(audio_b64)
+            ext = "wav" if "wav" in (mime or "") else "mp3"
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            name = f"music_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
+            cloud_url = _cloud_put(audio_bytes, f"audio/{name}")
+            if cloud_url:
+                audio_url = cloud_url
+            else:
+                fp = OUTPUT_AUD_DIR / name
+                fp.write_bytes(audio_bytes)
+                audio_url = f"/outputs/audio/{fp.name}"
+            return {"success": True, "audio_url": audio_url, "mime": mime, "texts": texts, "model": model}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

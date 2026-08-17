@@ -2345,7 +2345,9 @@ function onVoiceTaskChange() {
     document.getElementById('voiceTtsPromptPanel').style.display = t === 'tts' ? '' : 'none';
     document.getElementById('voiceRealtimeSection').style.display = t === 'realtime' ? '' : 'none';
     document.getElementById('voiceRealtimePromptPanel').style.display = t === 'realtime' ? 'flex' : 'none';
-    // 即時對話有自己的訊息區，ASR/TTS 的結果區在這個模式下要收起來
+    document.getElementById('voiceMusicSection').style.display = t === 'music' ? '' : 'none';
+    document.getElementById('voiceMusicPromptPanel').style.display = t === 'music' ? '' : 'none';
+    // 即時對話有自己的訊息區，ASR/TTS/音樂 的結果區在這個模式下要收起來
     document.getElementById('voiceResults').style.display = t === 'realtime' ? 'none' : '';
     // 離開即時對話頁面就把連線收掉——WebSocket 連著不會自己斷，而使用者切走之後
     // 看不到任何狀態，麥克風卻還開著
@@ -2380,6 +2382,14 @@ function onVoiceModelChange() {
         // 看不到），所以附件鈕直接藏起來，殘留的附件也一併清掉
         document.getElementById('voiceRtAttachBtn').style.display = info?.audio_only ? 'none' : '';
         if (info?.audio_only && rtPendingFrames.length) clearRealtimeFile();
+        return;
+    }
+    if (t === 'music') {
+        // 靈感圖片欄只有支援圖片輸入的模型才顯示（lyria-002 帶圖上游會直接報錯）；
+        // 切到不支援的模型就把已選的圖清掉，避免靜默夾帶造成 400
+        const info = (models.voice?.music || []).find(m => m.id === document.getElementById('voiceModel').value);
+        document.getElementById('voiceMusicImageGroup').style.display = info?.image_input ? '' : 'none';
+        if (!info?.image_input) clearVoiceMusicFile();
         return;
     }
     if (t !== 'tts') return;
@@ -2995,6 +3005,75 @@ async function sendVoiceAsr() {
     } catch (e) {
         card.querySelector('.voice-result-header span').textContent = `${model}（失敗）`;
         textEl.textContent = `錯誤：${e.message}`;
+        toast(`錯誤：${e.message}`, 'error');
+    }
+    hideLoading();
+    btn.disabled = false;
+}
+
+// ── 音樂生成（Lyria）──────────────────────────────────────────
+let voiceMusicFile = null;
+
+function onVoiceMusicFileChange(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    voiceMusicFile = file;
+    document.getElementById('voiceMusicLabel').innerHTML = `已選擇：${file.name}`;
+    document.getElementById('voiceMusicIcon').textContent = '✅';
+    document.getElementById('voiceMusicClearBtn').style.display = '';
+}
+
+function clearVoiceMusicFile() {
+    voiceMusicFile = null;
+    const input = document.getElementById('voiceMusicFileInput');
+    if (input) input.value = '';
+    const label = document.getElementById('voiceMusicLabel');
+    if (label) label.innerHTML = '附一張圖片作為音樂靈感<br><span style="font-size:11px;color:var(--text-muted)">選填，模型會依畫面的氛圍作曲</span>';
+    const icon = document.getElementById('voiceMusicIcon');
+    if (icon) icon.textContent = '🎨';
+    const btn = document.getElementById('voiceMusicClearBtn');
+    if (btn) btn.style.display = 'none';
+}
+
+async function sendVoiceMusic() {
+    const model = document.getElementById('voiceModel').value;
+    const prompt = document.getElementById('voiceMusicPrompt').value.trim();
+    if (!prompt) { toast('請描述你想要的音樂', 'error'); return; }
+
+    const info = (models.voice?.music || []).find(m => m.id === model);
+    const btn = document.getElementById('voiceMusicSendBtn');
+    btn.disabled = true;
+    showLoading(`音樂生成中（${info?.duration_hint || '約 30 秒'}），請稍候...`);
+    const startTime = Date.now();
+
+    try {
+        const fd = new FormData();
+        fd.append('model', model);
+        fd.append('prompt', prompt);
+        if (voiceMusicFile && info?.image_input) fd.append('image', voiceMusicFile);
+        const res = await apiPostForm('/api/music/generate', fd);
+        if (res.success && res.audio_url) {
+            const card = addVoiceResultCard(`${model}（耗時 ${fmtElapsed(Date.now() - startTime)}）`);
+            const audioEl = el('audio', { controls: true });
+            audioEl.src = res.audio_url;
+            card.appendChild(audioEl);
+            // lyria-3 會附曲式/歌詞說明文字，一併呈現
+            for (const t of res.texts || []) {
+                const p = el('div', { className: 'voice-result-text', textContent: t });
+                card.appendChild(p);
+            }
+            const meta = el('div', { className: 'voice-result-meta' });
+            meta.innerHTML = `<a href="${res.audio_url}" download>下載音檔</a>`;
+            card.appendChild(meta);
+            const p = pricingMap[model];
+            if (p && p.type === 'fixed' && p.price) addCost(p.price);
+            toast('音樂生成完成！', 'success');
+        } else {
+            // 錯誤訊息原樣呈現——安全過濾（content_blocked）之類的錯誤，使用者要看到
+            // 原文才知道換個寫法就好，吞掉只會剩下「失敗」兩個字
+            toast(res.error || '生成失敗', 'error');
+        }
+    } catch (e) {
         toast(`錯誤：${e.message}`, 'error');
     }
     hideLoading();

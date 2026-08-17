@@ -559,6 +559,16 @@ python app.py
 | gemini-2.5-pro-tts | Gemini 2.5 Pro TTS | 語音合成 (Gemini) | Google 旗艦語音合成 |
 | gemini-2.5-flash-tts | Gemini 2.5 Flash TTS | 語音合成 (Gemini) | Google 極速語音合成 |
 | gemini-3.1-flash-tts-preview | Gemini 3.1 Flash TTS Preview | 語音合成 (Gemini) | Google 新一代極速語音合成（預覽版）|
+| lyria-3-clip-preview | Lyria 3 Clip Preview | 音樂生成 | 30 秒音樂片段（MP3），可附一張圖片作為靈感 |
+| lyria-3-pro-preview | Lyria 3 Pro Preview | 音樂生成 | 完整歌曲約三分鐘（MP3）＋曲式說明，可附圖片靈感 |
+| lyria-002 | Lyria 002 | 音樂生成 | 30 秒高音質音樂（48kHz WAV） |
+
+> **音樂生成（Lyria，2026-08-17 上架）**：三個模型都走 `/v1beta/interactions` 單輪同步（與 Gemini Omni 影片同一個端點），`{"model": ..., "input": "提示詞"}`。時長、曲風、語言、歌詞**全靠提示詞**，沒有其他參數；不支援多輪編輯。閘道端逐一實測生成與計費（clip $0.04／pro $0.08／002 $0.06，每次呼叫），本平台對 clip（文字與帶圖）與 002 走完整 UI 複驗。
+>
+> - 回應兩種形態：lyria-3 的音訊在 `steps[].content[]`（`type:"audio"`、base64、`mime_type`；另有 `type:"text"` 的歌詞標記與曲式說明），**lyria-002 在 `outputs[]`**（同樣欄位）。
+> - **帶圖時 `input` 改成 `[{type:"text"},{type:"image",mime_type,data}]` 陣列**——注意與 Omni 影片的 `[{type:"user_input",content:[...]}]` 包法不同，同一個端點、兩種形狀，不要互推。圖片生音樂僅 lyria-3 兩個支援（實測畫一張夜空月亮圖，歌詞直接唱「夜空中，一輪明月」）；lyria-002 帶圖上游會明確報錯（📄 轉述自閘道端），所以 UI 不顯示上傳欄。
+> - 產出實測：clip 為 44.1kHz 立體聲 MP3 約 30.8 秒；002 為 48kHz 立體聲 WAV 約 32.8 秒；pro 完整歌曲（📄 閘道端實測 179.7 秒、生成約 1 分鐘，我們的 timeout 給 180s）。lyria-3-pro 另可帶 `response_format:{"type":"audio"}` 改出 WAV（📄 轉述，未在 UI 開放）。
+> - **安全過濾較敏感**：提示詞被擋會回 400 `content_blocked`（📄 閘道端一個 lo-fi hip hop 提示詞就中過），錯誤訊息會原樣呈現給使用者——換個寫法通常就過。
 
 TTS 的音色 (`voice`) 在主測試台與 AI Canvas 都是下拉選單、依選到的模型動態重建（`app.py` 的 `MODELS["voice"]["tts"][*].voices`）：
 `qwen-audio-3.0-tts-plus`／`qwen-audio-3.0-tts-flash` 各自只支援自己專屬的官方音色（詳見 [Qwen-Audio-TTS 音色列表](https://www.alibabacloud.com/help/en/model-studio/qwen-audio-tts-voice-list)），不可混用；3 個 `gemini-*-tts` 模型則共用 [Gemini 官方 30 個音色](https://ai.google.dev/gemini-api/docs/speech-generation)。全部選單都可留空使用上游預設音色。
