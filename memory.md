@@ -45,6 +45,7 @@
 ## 二、職責邊界（不要越界）
 
 - **本專案不改閘道的程式碼。** 發現閘道有問題，是回報給 `nen-ai-platform` 的 session，由他們判斷與修改。
+- **本專案不操作任何伺服器。** 正式機／測試機的 SSH、docker、nginx、DB 操作一律整理好指令交給 Levi 本人執行（2026-08-17 Levi 明確劃界：「你不是只負責 playground 為什麼要 ssh?」——共用 .env 裡的伺服器憑證不是給 playground session 用的）。
 - **本專案不改文檔站的檔案。** 新增模型後把資訊送過去，由文檔站的 session 撰寫。
 - 三個 repo 各有自己的 Claude session。跨專案溝通用 `ListAgents` 找對象、`SendMessage` 送訊息，**不要直接跑到別人的目錄改檔案**。
 
