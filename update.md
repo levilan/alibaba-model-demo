@@ -10,8 +10,15 @@
 
 - feat：**Lyria 三個模型上正式環境，部署閘門清空**（使用者指示逐站複驗）。測試網關（`192.168.0.245`）三個全通並確認規格：clip MP3 44.1kHz 立體聲 30.8s／13.7s、002 WAV pcm_s16le **48kHz** 32.8s／30.3s、pro MP3 177.3s／66.9s（`bpm 120 / duration_secs 180 / good_crop` 曲式標記），回應形態照舊（lyria-3 在 `steps[].content[]`、002 在 `outputs[]`）。正式站在同一輪裡**分三段陸續到位**：18:30 UTC 三個全滅（`/v1/models` 130 個無 lyria、直呼 500 `model_price_error`），18:53 只有 clip 通（131 個），19:0x 三個齊全（133 個）並逐一實測成功——002 25.2s WAV 48kHz、pro 66.9s MP3 158.4s。閘門集合（`_DEPLOY_GATED_MODELS`）依 8/17 裁示清空、機制保留給下一批。
   - **`/api/pricing` 有價 ≠ 叫得動**：三個模型在正式站 `/api/pricing` 早就有價（0.04／0.06／0.08、四個 group 全開），relay 前置卻回「倍率或价格未配置」——兩份設定不是同一本帳，之前「pricing 有就差渠道綁定」的推斷不完整。判斷可用性一律以實呼為準。
-  - pro 版第一個提示詞（`a calm acoustic guitar melody about a quiet morning`）被上游安全過濾擋成 `content_blocked`，換成 pop 主題即通——無害提示詞也會誤傷，印證當初決定把該錯誤原樣呈現給使用者的做法。
+  - pro 版第一個提示詞（`a calm acoustic guitar melody about a quiet morning`）被上游安全過濾擋成 `content_blocked`，換成 pop 主題即通——無害提示詞也會誤傷，印證當初決定把該錯誤原樣呈現給使用者的做法。**同一句在 clip 上是正常通過的**（同一分鐘、同一網關），所以過濾結果會因型號而異；1 次觀察，不足以當規律。
   - 正式站與測試站的 API key 是分開的兩套（正式那把對 `192.168.0.245` 回 401 `无效的令牌`），共用 env 只有正式站的 `model_apikey`。
+
+- docs：**帶圖路徑補測與官方 schema 查證**（承上，使用者指示補測）。①**clip 帶圖在正式站實測通過**（200／11.6s／MP3 30.720s）——測試設計上刻意讓提示詞不描述場景（全文只有 `write a song inspired by this image`），輸入圖是圖書館走道，回來的歌詞唱出 `Golden light through arched windows`／`Two friends between the endless rows`，證明圖確實被讀進去而不只是「不報錯」。②**002 帶圖被拒**：`convert_request_failed` — `lyria-002 only accepts text input, got input item of type "image"`，2 秒內回、無上游往返，是閘道轉換層擋的；**但回的是 HTTP 500，語意上應為 4xx**（尚未回報閘道）。③查證官方文件，根因比「上游拒絕」更根本：**Lyria 2 走 Vertex 傳統 `predict`（`instances[].prompt/negative_prompt/seed` + `parameters.sample_count`，schema 無影像欄位），Lyria 3 才走 `/v1beta/interactions` 並支援最多 10 張圖**——兩者不是同一套 API。
+  - **官方支援但我們沒用到的參數（皆未實測閘道是否透傳，勿當事實引用）**：002 的 `negative_prompt`／`seed`／`sample_count`（seed 與 sample_count 互斥）、lyria-3 的多圖（官方稱上限 10，我們只收 1 張）、pro 的 `response_format:{"type":"audio"}` 取 WAV。
+  - **更正：曲式標記（`Mosic` / `BPM`）是 lyria-3 兩個共有，不是 pro 獨有**——由文檔站複驗時指出，先前寫成 pro 特徵是漏看 clip 的 Caption 尾端。BPM 與提示詞情緒吻合：clip「quiet morning」→ 90、pro「upbeat pop」→ 120。
+  - `mime_type` 實際值：clip／pro 是 `audio/mpeg`、002 是 `audio/wav`。
+  - 文檔站（`Nen-AI-Docs-V1`）已完成 Lyria 頁（繁＋簡，`content/docs/zh-TW/api/gemini/music/`），採用本輪素材與結論；單價、耗時、精確秒數、未驗參數依該站規範不寫入客戶文檔。
+  - ⚠️ **測試網關金鑰一度寫在 scratchpad**（`test.key`），而其他 session 讀得到該目錄（文檔站即由此看到音檔）。已刪除並要求對方不得留存；**該把 key 建議更換**。往後臨時金鑰不要落地成檔案。
 
 - docs：**正式環境驗證輪**（使用者反映正式站沒有 Lyria 而觸發）。查證：正式 playground 已跑最新版（v=83）；正式閘道已部署三個 realtime 模型（閘門自動放行、pricing 四檔正確）；**Lyria 在正式站 `/api/pricing` 有、`/v1/models` 沒有**——渠道模型清單／分組綁定未開，已回報閘道 session，綁好會自動出現。realtime 對正式站對帳三輪：`video_tokens` 修正已生效（image 輪 0.0810＝畫面計入的算式）；**文字輸出仍被計費**（audio-flash 0.0366、audio-plus 0.0610，都吻合「文字照收」）——兩本帳修正未進正式 build，正式站客戶現在被系統性多收文字輸出的錢（單輪零點幾毫）、前端估算低於實收，已回報並提醒優先部署。公告與文檔通知續壓。
 
