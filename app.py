@@ -589,19 +589,27 @@ MODELS = {
         #   Invalid dimensions WxH: total pixel count (N) exceeds the maximum of 1056768
         # 先前這裡列的 1536x1024 / 1024x1536 都是 1,572,864 像素，超過上限、**一定會被
         # 拒**——三個尺寸裡有兩個從來就不能用。_MAI_IMAGE_SIZES 那組是逐一實測確認可用的。
+        #
+        # ⚠️ max_n 鎖 1，**長期維持、不要解鎖**（2026-08-16，使用者回報後對測試網關
+        # 重現）：MAI 送 n>1 時閘道曾**照 n 張計費、data[] 卻只回 1 張**（n=3 實測：
+        # 回應只有 1 筆 b64_json、usage.num_output_tokens 只報 1024，但用量增幅
+        # $0.3257 與 3 張×1024 tokens×2.5×21.2 完全吻合），也沒有 metadata 可補圖。
+        # 閘道端已把多收錢的部分修掉（計費改以上游回報的 token 為準），但（📄 轉述自
+        # 閘道端 2026-08-16）**Azure 上游本來就靜默忽略 n，n=3 永遠只會回 1 張**——
+        # 所以這裡不是等修好解鎖，而是 n>1 這個選項對 MAI 從來就不存在。
         {
             "id": "MAI-Image-2.5-Pro", "name": "MAI-Image-2.5-Pro", "group": "MAI Image",
-            "desc": "旗艦圖像生成 Pro", "type": "t2i", "max_n": 4,
+            "desc": "旗艦圖像生成 Pro", "type": "t2i", "max_n": 1,
             "sizes": _MAI_IMAGE_SIZES, "custom_size": _MAI_CUSTOM_SIZE,
         },
         {
             "id": "MAI-Image-2.5", "name": "MAI-Image-2.5", "group": "MAI Image",
-            "desc": "旗艦圖像生成", "type": "t2i", "max_n": 4,
+            "desc": "旗艦圖像生成", "type": "t2i", "max_n": 1,
             "sizes": _MAI_IMAGE_SIZES, "custom_size": _MAI_CUSTOM_SIZE,
         },
         {
             "id": "MAI-Image-2.5-Flash", "name": "MAI-Image-2.5-Flash", "group": "MAI Image",
-            "desc": "極速圖像生成", "type": "t2i", "max_n": 4,
+            "desc": "極速圖像生成", "type": "t2i", "max_n": 1,
             "sizes": _MAI_IMAGE_SIZES, "custom_size": _MAI_CUSTOM_SIZE,
         },
         # ── 萬相圖像編輯 ──────────────────────────────────────────
@@ -2138,6 +2146,11 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
             raise HTTPException(status_code=500, detail=str(e))
 
     payload: dict = {"model": data.model, "prompt": data.prompt, "n": data.n, "size": data.size}
+    # MAI 的 n>1 沒有意義：Azure 上游靜默忽略 n、永遠只回 1 張（見 MODELS 裡 MAI
+    # 的註解；閘道曾因此照 n 張計費，已修）。UI 已把張數選單鎖成 1 張，這裡再擋
+    # 一層是為了 Canvas 與其他直接打這支 API 的呼叫方。長期維持，不是暫時措施。
+    if data.model.startswith("MAI-Image"):
+        payload["n"] = 1
     # 自訂尺寸選了「width / height」那條路時，改送這兩個欄位、並把 size 拿掉。
     # 上游本來就以 width/height 為準（實測會蓋過 size），拿掉 size 只是讓送出的
     # 請求跟使用者選的機制一致，看日誌時不會誤以為兩個都在生效。

@@ -384,3 +384,14 @@ def test_realtime_turn_modes_verified():
 
 
 
+def test_mai_image_n_locked_to_one():
+    """MAI 三個 t2i 的 max_n 鎖 1，**長期維持**（2026-08-16）：n=3 實測 data[] 只回
+    1 筆 b64_json、無 metadata 可補，且閘道曾照 3 張計費（增幅 $0.3257 與 3 張的
+    算式完全吻合，多收錢的部分閘道端已修）。（📄 轉述自閘道端）Azure 上游本來就
+    靜默忽略 n、永遠只回 1 張——所以「n=3 回 3 張」這個解鎖條件永遠不會發生，
+    把這裡改回去只會做出一個沒有作用的選項。"""
+    mai = [m for m in app.MODELS["image"]
+           if m["id"].startswith("MAI-Image") and m.get("type") == "t2i"]
+    assert len(mai) == 3
+    for m in mai:
+        assert m["max_n"] == 1, m["id"]

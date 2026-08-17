@@ -9,7 +9,9 @@
 
 ## 2026-08-16
 
+- docs：**MAI 的 `max_n=1` 從「暫時止血」改成「長期維持」**（下一筆的後續；結論 📄 轉述自閘道端）。閘道端查出根因並修掉多收錢的部分（MAI 的 `num_output_tokens` 本來就按實際產出回報，是閘道的兜底把請求的 n 當乘數再乘一遍；現改以上游回報為準），但 **Azure 上游本來就靜默忽略 `n`、n=3 永遠只回 1 張**——原本寫的解鎖條件「實測 n=3 回 3 張」永遠不會發生。`app.py`／`README.md`／`memory.md`／測試註解已同步改寫。另外兩個 realtime 計費落差的結論：文字輸出照收是**部署落差**（白名單 commit 還沒進測試機的 build），video_tokens 沒計費是**真 bug 已修未部署**；部署後要對三個新模型重跑 basic＋image 對帳。
 
+- fix：**MAI 三個 t2i 的張數鎖成 1**（使用者回報：MAI-Image-2.5-Pro 選 3 張只顯示 1 張、nen ai 平台實際計費 3 張）。對測試網關重現：送 `n=3` 閘道回應的 `data[]` 只有 1 筆 `b64_json`、`usage.num_output_tokens` 只報 1024（一張的量）、無 metadata 可補圖，但用量增幅 $0.3257 與「3 張 × 1024 tokens × model_ratio 2.5 × completion_ratio 21.2」完全吻合——**閘道收 3 張的錢、只回 1 張**，playground 端無從補救。已回報 nen-ai-platform 附完整重現；修好並實測 n=3 回 3 張之前，`MODELS` 的 `max_n` 與後端 `/api/image/generate`（保護 Canvas 與直接呼叫方）都鎖 1，並加測試釘住（`test_mai_image_n_locked_to_one`）。
 
 - feat：**新增三個即時語音模型**（閘道 commit e87398614，對測試網關 192.168.0.245 實測後上架；正式環境尚未部署，公告與文檔通知待部署後補）：`qwen3.5-omni-flash-realtime`（全模態極速版）、`qwen-audio-3.0-realtime-plus`／`qwen-audio-3.0-realtime-flash`（純語音）。快照版 `qwen3.5-omni-flash-realtime-2026-03-15` 經使用者裁示**不上架**（渠道清單沒有它、查不到價）。實測重點（全部走 `scripts/probe_realtime.py`，事件形狀與前端一致）：
   - **兩個家族不能互推，三處實測差異**：①音色——omni-flash 與 plus 同一組 56 個（逐一全掃）；audio-3.0 是**另一組 15 個**（官方文件只列 5 個，完整清單來自非法音色的錯誤訊息、再逐一驗證出聲），互不相通（Tina/Ethan/Serena/Cherry 在 audio-3.0 全被拒）。②`turn_detection`——omni 收 `semantic_vad`/`server_vad`；audio-3.0 送 `semantic_vad` 回 `Unsupported turn_detection.type`，收 `server_vad`/`smart_turn`。③畫面輸入——audio-3.0 對 `input_image_buffer.append` **靜默忽略**（不報錯、usage 無 video_tokens、模型口頭說看不到）。
