@@ -8,6 +8,10 @@
 
 ## 2026-08-18
 
+- fix：**AI Canvas 影片節點接首/尾幀就報錯**（由另一個 session 在線上版追到並回報）。症狀：`nenai/video` 節點只要 `first_frame` 或 `last_frame` 有接線，按生成就噴「Cannot read properties of undefined (reading 'link')」，請求根本沒送出；純文字生影正常。根因：`VIDEO_EXTEND_ENABLED=false` 時 `clipSlot = -1`（沒有那個輸入孔），而 **LiteGraph 的 `getInputData` 只擋 `slot >= inputs.length`、不擋負數**，`getInputData(-1)` 走到 `this.inputs[-1].link` 直接拋 TypeError；t2v 分支不讀 clip 所以只有 i2v 會炸。修法：新增 `_clipInput()` 一律先判 `clipSlot >= 0`，`_hasClip()` 同樣加判。`canvas.js?v=38`。
+  - Playwright 對本機服務實測：`getInputData(-1)` 重現出**與回報者一字不差**的錯誤訊息；修正後 `_clipInput()` 回 `null` 不拋錯；接上 `load_image → first_frame` 後 `_detectMode()` 正確回 `i2v`、讀 clip 回 `null`。
+  - 連帶效果：先前「first_frame 接線會爆、改接參考圖 1 就好」的傳聞 workaround 繞的是同一顆，修掉後 `first_last_frame`（首尾同幀無縫循環）模式可正常使用。
+
 - feat：**Lyria 三個模型上正式環境，部署閘門清空**（使用者指示逐站複驗）。測試網關（`192.168.0.245`）三個全通並確認規格：clip MP3 44.1kHz 立體聲 30.8s／13.7s、002 WAV pcm_s16le **48kHz** 32.8s／30.3s、pro MP3 177.3s／66.9s（`bpm 120 / duration_secs 180 / good_crop` 曲式標記），回應形態照舊（lyria-3 在 `steps[].content[]`、002 在 `outputs[]`）。正式站在同一輪裡**分三段陸續到位**：18:30 UTC 三個全滅（`/v1/models` 130 個無 lyria、直呼 500 `model_price_error`），18:53 只有 clip 通（131 個），19:0x 三個齊全（133 個）並逐一實測成功——002 25.2s WAV 48kHz、pro 66.9s MP3 158.4s。閘門集合（`_DEPLOY_GATED_MODELS`）依 8/17 裁示清空、機制保留給下一批。
   - **`/api/pricing` 有價 ≠ 叫得動**：三個模型在正式站 `/api/pricing` 早就有價（0.04／0.06／0.08、四個 group 全開），relay 前置卻回「倍率或价格未配置」——兩份設定不是同一本帳，之前「pricing 有就差渠道綁定」的推斷不完整。判斷可用性一律以實呼為準。
   - pro 版第一個提示詞（`a calm acoustic guitar melody about a quiet morning`）被上游安全過濾擋成 `content_blocked`，換成 pop 主題即通——無害提示詞也會誤傷，印證當初決定把該錯誤原樣呈現給使用者的做法。**同一句在 clip 上是正常通過的**（同一分鐘、同一網關），所以過濾結果會因型號而異；1 次觀察，不足以當規律。

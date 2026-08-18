@@ -1480,8 +1480,17 @@
     // 模式判定要用「有沒有連線」（結構性、graph topology），不能用「有沒有資料」
     // （getInputData 要等上游節點生成完畢並執行過 onExecute 才會有值）——否則
     // 剛接上參考圖但還沒按生成時，會誤判成沒有參考圖而退回 i2v/first_frame。
+    // ⚠️ clipSlot 在 VIDEO_EXTEND_ENABLED=false 時是 -1（沒有這個輸入孔）。
+    // LiteGraph 的 getInputData 只擋 slot >= inputs.length、**不擋負數**，
+    // getInputData(-1) 會走到 this.inputs[-1].link 直接拋 TypeError，把整個
+    // generate() 打進錯誤狀態（症狀：接了首/尾幀就噴
+    // 「Cannot read properties of undefined (reading 'link')」，純文字生影反而正常，
+    // 因為 t2v 分支根本不讀 clip）。所以讀 clip 前一律先判 clipSlot >= 0。
+    VideoGenNode.prototype._clipInput = function (force) {
+        return this.clipSlot >= 0 ? this.getInputData(this.clipSlot, force) : null;
+    };
     VideoGenNode.prototype._hasClip = function () {
-        return !!this.getInputNode(this.clipSlot) || !!this.localClipUrl;
+        return (this.clipSlot >= 0 && !!this.getInputNode(this.clipSlot)) || !!this.localClipUrl;
     };
     VideoGenNode.prototype._detectMode = function () {
         const hasRef = this.refSlots.some(i => !!this.getInputNode(i));
@@ -1558,7 +1567,7 @@
             } else if (mode === 'i2v') {
                 endpoint = '/api/video/i2v';
                 const lastFrameUrl = this.getInputData(2, true);
-                const clipUrl = this.getInputData(this.clipSlot, true) || this.localClipUrl;
+                const clipUrl = this._clipInput(true) || this.localClipUrl;
                 if (clipUrl) {
                     // 影片延伸：接續上游一段既有影片繼續生成，不需要首幀圖片
                     fd.append('i2v_mode', lastFrameUrl ? 'first_clip_last_frame' : 'first_clip');
