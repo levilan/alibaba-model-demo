@@ -8,6 +8,11 @@
 
 ## 2026-08-18
 
+- docs：**pro 帶圖補測通過，成果總表送交文檔站**（使用者裁示）。`lyria-3-pro-preview` 帶圖在正式站實測 200／46.5s／MP3 3582453 bytes，**歌詞命中圖中元素**（`in the library of us`、`Dusty covers`、`Light is filtering through the glass`、`Wooden floors begin to creak`，Caption 寫 `a grand, sun-drenched library`），提示詞刻意只寫 `write a song inspired by this image`、零場景描述——**圖片輸入自此確認 lyria-3 兩個都支援**。pro 的段落標記 `[[A0]][[B1]][[C2]]` 比 clip 明顯（clip 單段）。
+  - ⚠️ 第一次補測時探測函式只印音訊不印文字，拿不到判斷依據，多花一次呼叫（$0.08）重跑。**探測工具的輸出要涵蓋『判斷結論所需的欄位』，不是只有主產物。**
+  - 音色正式站全掃**刻意不做**：文檔站已決定只列音色 id、不宣稱可用性，掃了不會被採用。
+  - 送交內容：pro 帶圖實測、Lyria 參數三組最終定案（seed／negative_prompt／sample_count／response_format／多圖）、三模型完整規格表、realtime 狀態、今日全部成果一覽，以及「ffprobe 讀得到 ≠ 瀏覽器放得出來」這條給他們複驗時參考。
+
 - fix：**AI Canvas 影片節點接首/尾幀就報錯**（由另一個 session 在線上版追到並回報）。症狀：`nenai/video` 節點只要 `first_frame` 或 `last_frame` 有接線，按生成就噴「Cannot read properties of undefined (reading 'link')」，請求根本沒送出；純文字生影正常。根因：`VIDEO_EXTEND_ENABLED=false` 時 `clipSlot = -1`（沒有那個輸入孔），而 **LiteGraph 的 `getInputData` 只擋 `slot >= inputs.length`、不擋負數**，`getInputData(-1)` 走到 `this.inputs[-1].link` 直接拋 TypeError；t2v 分支不讀 clip 所以只有 i2v 會炸。修法：新增 `_clipInput()` 一律先判 `clipSlot >= 0`，`_hasClip()` 同樣加判。`canvas.js?v=38`。
   - Playwright 對本機服務實測：`getInputData(-1)` 重現出**與回報者一字不差**的錯誤訊息；修正後 `_clipInput()` 回 `null` 不拋錯；接上 `load_image → first_frame` 後 `_detectMode()` 正確回 `i2v`、讀 clip 回 `null`。
   - 連帶效果：先前「first_frame 接線會爆、改接參考圖 1 就好」的傳聞 workaround 繞的是同一顆，修掉後 `first_last_frame`（首尾同幀無縫循環）模式可正常使用。
