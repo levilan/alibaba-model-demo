@@ -13,6 +13,13 @@
   - pro 版第一個提示詞（`a calm acoustic guitar melody about a quiet morning`）被上游安全過濾擋成 `content_blocked`，換成 pop 主題即通——無害提示詞也會誤傷，印證當初決定把該錯誤原樣呈現給使用者的做法。**同一句在 clip 上是正常通過的**（同一分鐘、同一網關），所以過濾結果會因型號而異；1 次觀察，不足以當規律。
   - 正式站與測試站的 API key 是分開的兩套（正式那把對 `192.168.0.245` 回 401 `无效的令牌`），共用 env 只有正式站的 `model_apikey`。
 
+- docs：**Lyria 參數缺口驗證（E）與 realtime 正式站複驗（G）**（使用者裁示做 A/E/G；A＝回報閘道 WAV bug）。**三組官方參數全部不可用，原因各不相同**：
+  - `lyria-002` 的 `negative_prompt`／`seed`／`sample_count`：**閘道沒映射，靜默丟棄**。同 `seed=12345` 兩次產出 md5 不同（`514da92b…` vs `229d3959…`），再送三個欄位全錯誤型別（`seed:"not-a-number"` 等）仍回 200 照常生成——**錯誤型別毫無反應＝根本沒解析**，不是解析後忽略。對照組：同路徑的 `response_format` **有**透傳（拿得到上游錯誤），證明路徑本身能帶頂層欄位，缺的是 `interactions → :predict` 的欄位映射。已回報閘道 session。
+  - Lyria 3 多圖：clip 帶 2 個 image 元素 → 200 正常生成，但**送的是同一張圖兩次，分辨不出第二張有沒有被讀**，維持「一張」的說法不變。手上沒有第二張有語意的圖（`outputs/images` 其餘都是純色測試圖）。
+  - Pro 的 `response_format`：**透傳到上游但無可用組合**。7 種形狀全 400 且錯誤來自上游：`{"type":"audio"}` → `bit_rate must be positive`，補上 `bit_rate` → `Audio bit_rate is not supported`，`format`／`encoding`／`audio` 巢狀 → `Unknown parameter`，`{"type":"wav"}` → 上游列出合法值 `number/string/image/text/boolean/integer/video/object/array/audio`（那是 interactions 的**通用輸出 schema**，不是音訊格式選項）。**官方說的「Pro 可用 response_format 取 WAV」複現不出來。**
+  - **realtime 四個對正式站複驗全通**（各 1 樣本，文字輸入 → 語音+文字輸出）：事件序四個完全一致且與 OpenAI realtime 相容；音訊輸出一律 PCM16 24kHz、輸入 16kHz。usage 差異明顯——omni 兩個 in 494 tokens、audio-3.0 兩個只有 54。⚠️ `qwen-audio-3.0-realtime-plus` 與 `-flash` 同句同音色回傳的音訊 **bytes 與 RMS 完全相同**（75640／3142），可能是確定性輸出、也可能兩個 id 指向同一上游模型，1 樣本未追查，已問閘道端。
+  - 探測結果已送文檔站（含各項的驗證環境與樣本數分層）。**未做**：pro 帶圖（不在裁示內）、同題 clip 重跑（文檔站已放棄同題對照）。
+
 - docs：**帶圖路徑補測與官方 schema 查證**（承上，使用者指示補測）。①**clip 帶圖在正式站實測通過**（200／11.6s／MP3 30.720s）——測試設計上刻意讓提示詞不描述場景（全文只有 `write a song inspired by this image`），輸入圖是圖書館走道，回來的歌詞唱出 `Golden light through arched windows`／`Two friends between the endless rows`，證明圖確實被讀進去而不只是「不報錯」。②**002 帶圖被拒**：`convert_request_failed` — `lyria-002 only accepts text input, got input item of type "image"`，2 秒內回、無上游往返，是閘道轉換層擋的；**但回的是 HTTP 500，語意上應為 4xx**（尚未回報閘道）。③查證官方文件，根因比「上游拒絕」更根本：**Lyria 2 走 Vertex 傳統 `predict`（`instances[].prompt/negative_prompt/seed` + `parameters.sample_count`，schema 無影像欄位），Lyria 3 才走 `/v1beta/interactions` 並支援最多 10 張圖**——兩者不是同一套 API。
   - **官方支援但我們沒用到的參數（皆未實測閘道是否透傳，勿當事實引用）**：002 的 `negative_prompt`／`seed`／`sample_count`（seed 與 sample_count 互斥）、lyria-3 的多圖（官方稱上限 10，我們只收 1 張）、pro 的 `response_format:{"type":"audio"}` 取 WAV。
   - **更正：曲式標記（`Mosic` / `BPM`）是 lyria-3 兩個共有，不是 pro 獨有**——由文檔站複驗時指出，先前寫成 pro 特徵是漏看 clip 的 Caption 尾端。BPM 與提示詞情緒吻合：clip「quiet morning」→ 90、pro「upbeat pop」→ 120。
