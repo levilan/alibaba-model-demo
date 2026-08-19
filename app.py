@@ -801,18 +801,25 @@ MODELS = {
         #    要把正確清單回報給閘道端校正。
         #
         # 費率（官方每秒單價）：480P $0.05 / 720P $0.10 / 1080P $0.20
+        # 音訊：官方 `audio` 參數控制輸出有無聲音，**開關聲音價格相同**（官方 API
+        # 參考頁原文「开关声音价格相同」，2026-08-20 雙方各自查證）。上游預設是
+        # 有聲；閘道原本不讀 metadata.audio（只有 wan2.6-i2v-flash 會讀），
+        # 2026-08-20 的閘道修正讓 wan3.0 也開始讀——**在那之前這個開關是無效的**。
+        # 這四筆的 audio 旗標改成 True 是為了在閘道部署前先讓 UI 有開關，否則我方
+        # 一直送的 metadata.audio=false 會在閘道部署當下把所有影片變成無聲。
+        # 預設值依 Levi 裁示為「無聲」（HTML checkbox 無 checked 屬性即預設不勾）。
         {"id": "wan3.0-video", "name": "萬相 3.0（文生影片）", "group": "萬相 3.0",
          "desc": "All-in-One 影片生成，最長 30 秒，音畫真實", "type": "t2v",
-         "audio": False, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
+         "audio": True, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
         {"id": "wan3.0-video", "name": "萬相 3.0（圖生影片）", "group": "萬相 3.0",
          "desc": "首幀／首尾幀／驅動音訊／影片延伸", "type": "i2v",
-         "audio": False, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
+         "audio": True, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
         {"id": "wan3.0-video", "name": "萬相 3.0（參考生影片）", "group": "萬相 3.0",
          "desc": "多圖參考生影片，生產級角色一致性", "type": "r2v",
-         "audio": False, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
+         "audio": True, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
         {"id": "wan3.0-video", "name": "萬相 3.0（視頻編輯）", "group": "萬相 3.0",
          "desc": "統一支援參考／編輯／複刻／驅動", "type": "vedit",
-         "audio": False, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
+         "audio": True, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
         # ── 文生影片 ──────────────────────────────────────────────
         {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭，自動配音", "type": "t2v",   "audio": False,  "min_dur": 2, "max_dur": 15},
         {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片（配音由模型自動決定）",     "type": "t2v",   "audio": False, "min_dur": 2, "max_dur": 15},
