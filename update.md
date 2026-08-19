@@ -13,7 +13,11 @@
   - base64（上傳的圖／影片／音訊）換成 `<N chars>` 長度摘要——塞爆畫面且無參考價值，但**欄位名與結構保留**，那才是使用者要照抄的部分。同樣有測試釘住。
   - 樣式踩到一個坑：結果區是 grid，面板不設 `grid-column: 1 / -1` 會被擠成一欄、JSON 全被裁掉；另外初版誤用深色系 fallback，本專案是淺色主題（`--bg #F5F6F8`），已改用專案既有變數。Playwright 實測渲染、遮罩與版面三項。
   - **影片分頁補上（使用者回報看不到）**：影片是 task 制，面板改在**送出當下**就掛到任務卡上，不等輪詢完成——影片動輒兩三分鐘，想照抄參數沒理由等它跑完。`savePendingTask` 一併存下摘要，重整頁面恢復任務時也還原得回來。`app.js?v=85`。
-  - **尚未涵蓋**：文字生成（SSE 串流，回應結構不同）、NenAI Spicy、語音 ASR／TTS／realtime。
+  - **補完其餘分頁（`app.js?v=86`）**：文字生成（串流與非串流兩條路都接）、NenAI Spicy、語音 TTS 與 ASR。
+    - **文字串流的做法**：SSE 沒有「最後回一包 JSON」的機會，所以請求摘要當成**第一個**事件送出（`data: {"request": ...}`），前端收到先存著、生成結束後掛到訊息尾巴。放最前面而不是最後，是因為使用者可能在生成到一半就想看參數。
+    - **task 制的兩處（影片、Spicy）面板在送出當下就掛上**，不等輪詢完成；`savePendingTask` 一併存下摘要，重整頁面恢復任務時也還原。
+    - TTS 有兩條上游路徑（OpenAI 相容的 `/v1/audio/speech`、DashScope 風格的 `/v1/services/audio/tts/SpeechSynthesizer`），各自記下自己的端點，後者附註說明為什麼不走前者。
+  - **仍未涵蓋：realtime（即時語音）**。那是 WebSocket 事件序列、沒有單一「請求 body」可顯示，要做得另設計（例如顯示 `session.update` 的內容），本輪不做。
   - `app.js?v=84`、`style.css?v=42`，測試 +2（共 37 條全過）。
 
 - fix：**wan3.0 音訊開關補上（擋在閘道部署前的迴歸）**（Levi 裁示預設無聲）。閘道 2026-08-20 的修正會讓 `metadata.audio` 對 wan3.0 生效，而**我方一直在送 `false`**——鏈路是 `MODELS.audio=False` → 前端隱藏開關並強制 `checked=false`（`app.js:1206`）→ 送出 `audio=false` → `_apply_audio_flag` 寫成 `meta["audio"]=False`。閘道以前不讀所以沒事，一開始讀就會把**所有 wan3.0 影片變成無聲**。四筆 `audio` 改成 `True` 讓 UI 有開關；HTML checkbox 無 `checked` 屬性，預設即不勾＝無聲，符合裁示。

@@ -1693,11 +1693,15 @@ async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_ap
                 result["reasoning_content"] = reasoning
             if resp.usage:
                 result["usage"] = _openai_usage(resp.usage)
+            result["request"] = _debug_req("/v1/chat/completions", create_kwargs)
             return result
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
     async def generate() -> AsyncGenerator[str, None]:
+        # 串流沒有「最後回傳一包 JSON」的機會，所以請求摘要當成**第一個**事件送出。
+        # 放最前面而不是最後，是因為使用者可能在生成到一半就想看參數。
+        yield f"data: {json.dumps({'request': _debug_req('/v1/chat/completions', create_kwargs)})}\n\n"
         try:
             user_client = AsyncOpenAI(api_key=api_key, base_url=BASE_URL_COMPATIBLE)
             stream = await user_client.chat.completions.create(**create_kwargs)
@@ -1865,7 +1869,8 @@ async def muleai_generate(
                 task_id = data.get("task_info", {}).get("id") or data.get("id")
                 if not task_id:
                     return JSONResponse(status_code=500, content={"success": False, "error": f"No task_id in response: {data}"})
-                return {"success": True, "task_id": task_id, "status": "pending", "model": model}
+                return {"success": True, "task_id": task_id, "status": "pending", "model": model,
+                        "request": _debug_req(MULEAI_URL, payload)}
             else:
                 return JSONResponse(status_code=resp.status_code, content={"success": False, "error": resp.text})
     except Exception as e:
@@ -3216,7 +3221,9 @@ async def voice_asr(request: Request, api_key: str = Depends(get_api_key)):
             if resp.status_code != 200:
                 return JSONResponse(status_code=resp.status_code,
                                     content={"error": rj.get("error", {}).get("message", resp.text)})
-            return {"success": True, "text": rj.get("text", ""), "model": model}
+            return {"success": True, "text": rj.get("text", ""), "model": model,
+                    "request": _debug_req("/v1/audio/transcriptions", form={"model": model},
+                                          note="multipart/form-data，另附 file 欄位（音檔）")}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -3297,6 +3304,7 @@ async def voice_tts(data: VoiceTtsRequest, api_key: str = Depends(get_api_key)):
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     json=payload,
                 )
+                req_dbg = _debug_req("/v1/audio/speech", payload)
                 if resp.status_code != 200:
                     try:
                         rj = resp.json()
@@ -3334,6 +3342,9 @@ async def voice_tts(data: VoiceTtsRequest, api_key: str = Depends(get_api_key)):
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                     json=payload,
                 )
+                req_dbg = _debug_req("/v1/services/audio/tts/SpeechSynthesizer", payload,
+                                     note="qwen-audio-3.0-tts 系列走 DashScope 風格端點，"
+                                          "不是 OpenAI 相容的 /v1/audio/speech")
                 rj = resp.json()
                 if resp.status_code != 200 or "error" in rj:
                     err = rj.get("error", {}).get("message", resp.text) if isinstance(rj.get("error"), dict) else rj.get("error", resp.text)
@@ -3360,7 +3371,8 @@ async def voice_tts(data: VoiceTtsRequest, api_key: str = Depends(get_api_key)):
                 fp = OUTPUT_AUD_DIR / name
                 fp.write_bytes(audio_bytes)
                 audio_url = f"/outputs/audio/{fp.name}"
-            return {"success": True, "audio_url": audio_url, "model": data.model}
+            return {"success": True, "audio_url": audio_url, "model": data.model,
+                    "request": req_dbg}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

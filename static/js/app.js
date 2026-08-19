@@ -1738,11 +1738,13 @@ async function sendText() {
                 textChatHistory.push({ role: 'user', content: prompt });
                 textChatHistory.push({ role: 'assistant', content: data.content || '' });
                 addTokenTextCost(model, data.usage);
+                const reqPanel = buildRequestPanel(data.request);
+                if (reqPanel) aDiv.appendChild(reqPanel);
             }
         } else {
             const reader  = res.body.getReader();
             const decoder = new TextDecoder();
-            let full = '', buf = '', usage = null;
+            let full = '', buf = '', usage = null, reqSummary = null;
             aDiv.classList.add('streaming-cursor');
 
             while (true) {
@@ -1756,7 +1758,9 @@ async function sendText() {
                     if (!line.startsWith('data: ')) continue;
                     try {
                         const d = JSON.parse(line.slice(6));
-                        if (d.reasoning) {
+                        if (d.request) {
+                            reqSummary = d.request;   // 串流的第一個事件，最後掛到訊息尾巴
+                        } else if (d.reasoning) {
                             ensureReasoningEl();
                             reasoningFull += d.reasoning;
                             reasoningBodyEl.textContent = reasoningFull;
@@ -1780,6 +1784,8 @@ async function sendText() {
             const meta = el('div', { className: 'msg-meta' });
             meta.innerHTML = '<span>' + model + ' (耗時 ' + elapsed + 's)</span><span>' + new Date().toLocaleTimeString() + '</span>';
             aDiv.appendChild(meta);
+            const reqPanel = buildRequestPanel(reqSummary);
+            if (reqPanel) aDiv.appendChild(reqPanel);
             if (full) {
                 textChatHistory.push({ role: 'user', content: prompt });
                 textChatHistory.push({ role: 'assistant', content: full });
@@ -2199,7 +2205,7 @@ function resumePendingTasks() {
     alive.forEach(t => {
         try {
             if (t.kind === 'muleai') {
-                addMuleAIVideoTask(t.taskId, t.model, t.prompt || '', '恢復中', true);
+                addMuleAIVideoTask(t.taskId, t.model, t.prompt || '', '恢復中', true, t.req);
             } else {
                 addVideoTask(t.taskId, t.model, t.prompt || '', '恢復中', t.costInfo, true, t.req);
             }
@@ -3071,6 +3077,8 @@ async function sendVoiceAsr() {
             if (res.success) {
                 textEl.textContent = res.text || '（無辨識結果）';
                 card.querySelector('.voice-result-header span').textContent = `${model}（耗時 ${fmtElapsed(Date.now() - startTime)}）`;
+                const reqPanel = buildRequestPanel(res.request);
+                if (reqPanel) card.appendChild(reqPanel);
                 toast('語音辨識完成！', 'success');
                 addFixedCost(model);
             } else {
@@ -3189,6 +3197,8 @@ async function sendVoiceTts() {
             const meta = el('div', { className: 'voice-result-meta' });
             meta.innerHTML = `<a href="${res.audio_url}" download>下載音檔</a>`;
             card.appendChild(meta);
+            const reqPanel = buildRequestPanel(res.request);
+            if (reqPanel) card.appendChild(reqPanel);
             toast('語音合成完成！', 'success');
         } else {
             toast(res.error || '合成失敗', 'error');
@@ -3487,7 +3497,7 @@ async function sendMuleAIVideo() {
         const res = await apiPostForm('/api/muleai/generate', fd);
         if (res.success && res.task_id) {
             const displayPrompt = isFaceSwap ? '換臉任務' : prompt;
-            addMuleAIVideoTask(res.task_id, model, displayPrompt, res.status);
+            addMuleAIVideoTask(res.task_id, model, displayPrompt, res.status, false, res.request);
             toast('任務已提交，輪詢中...', 'info');
         } else {
             toast(res.error || '提交失敗', 'error');
@@ -3500,14 +3510,16 @@ async function sendMuleAIVideo() {
     btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg> ' + label;
 }
 
-function addMuleAIVideoTask(taskId, model, prompt, status, isResume = false) {
+function addMuleAIVideoTask(taskId, model, prompt, status, isResume = false, req = null) {
     const cont = document.getElementById('muleaiVideoResults');
     const empty = cont.querySelector('.empty-state');
     if (empty) empty.remove();
     const startTime = Date.now();
-    if (!isResume) savePendingTask({ kind: 'muleai', taskId, model, prompt });
+    if (!isResume) savePendingTask({ kind: 'muleai', taskId, model, prompt, req });
     const card = el('div', { className: 'video-task-card', id: 'mtask-' + taskId });
     card.innerHTML = '<div class="vtc-header"><span class="vtc-model">' + model + '</span><span class="vtc-timer" id="mtm-' + taskId + '">(耗時 0s)</span><span class="vtc-status ' + (status ? status.toLowerCase() : 'pending') + '" id="mst-' + taskId + '">' + (status || 'PENDING') + '</span></div><div class="vtc-prompt">' + prompt.substring(0, 120) + '</div><div class="vtc-progress"><div class="vtc-progress-bar" id="mpb-' + taskId + '" style="width:5%"></div></div><div id="mrv-' + taskId + '"></div>';
+    const reqPanel = buildRequestPanel(req);
+    if (reqPanel) card.appendChild(reqPanel);
     cont.insertBefore(card, cont.firstChild);
     pollMuleAIVideo(taskId, startTime, model, prompt);
 }
