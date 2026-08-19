@@ -2,7 +2,7 @@
 NenAI Testing Platform
 FastAPI Backend - NenAI API Key per-user authentication
 """
-import os, sys, json, time, uuid, mimetypes, base64, subprocess, re
+import os, sys, json, time, uuid, mimetypes, base64, subprocess, re, hashlib
 from io import BytesIO
 from PIL import Image as PILImage
 from datetime import datetime
@@ -156,6 +156,81 @@ def _cloud_put(data: bytes, key: str) -> Optional[str]:
             return url
     return None
 
+
+# ─── 使用者統計 ───────────────────────────────────────────────────
+# 目的：知道「有哪些人在用、用得多頻繁、用哪些模型」。
+#
+# 三個刻意的設計，都是為了讓這份資料就算外流也不會造成傷害：
+#   1. **不存明文 API key。** 識別碼是 SHA256(key + STATS_SALT) 的前 16 碼。
+#      同一把 key 在同一個環境會得到同一個 uid，可以追蹤「同一個人」，但反推不回 key。
+#   2. **不存 prompt、不存生成結果、不存 IP。** prompt 是客戶的商業內容，記了就變成
+#      我們要負責保管的東西；統計不需要它。
+#   3. **沒有任何對外查詢入口。** 資料寫進私有雲端儲存，看報表要用本機腳本
+#      （scripts/usage_stats.py）產生 HTML 再用瀏覽器開。平台本身沒有後台頁面、
+#      沒有管理密碼，也就沒有「路徑被猜到」或「密碼外洩」這種風險。
+#
+# 寫入策略：記憶體累積，滿 50 筆或超過 60 秒才落地。每次呼叫都打一次雲端儲存會拖慢
+# 回應，而統計不需要即時。代價是實例被回收時最後不到一分鐘的資料可能遺失，可接受。
+#
+# ⚠️ **每個實例寫自己的檔**（檔名帶 _INSTANCE_ID）。Cloud Run 會同時跑多個實例，而
+# 物件儲存沒有原子 append——多個實例寫同一個檔會互相覆蓋，資料會憑空消失。分檔寫、
+# 查詢時合併是唯一不掉資料的做法。
+_STATS_ENABLED   = str(os.environ.get("STATS_ENABLED", "true")).lower() in ("true", "1", "yes")
+_STATS_SALT      = os.environ.get("STATS_SALT", "")   # 空字串可接受（Levi 裁示）
+_STATS_PREFIX    = os.environ.get("STATS_PREFIX", "stats")
+_STATS_MAX_BUF   = 50
+_STATS_MAX_AGE   = 60.0
+_INSTANCE_ID     = uuid.uuid4().hex[:8]
+_stats_buf: List[dict] = []
+_stats_last_flush = time.time()
+_stats_lock = asyncio.Lock()
+
+def _stats_uid(api_key: Optional[str]) -> str:
+    """把 API key 換成不可反推的識別碼。沒有 key（未登入）時歸到 anonymous。"""
+    if not api_key:
+        return "anonymous"
+    return hashlib.sha256((api_key + _STATS_SALT).encode()).hexdigest()[:16]
+
+def _stats_flush_locked() -> None:
+    """把緩衝寫進雲端儲存。呼叫端必須已持有 _stats_lock。"""
+    global _stats_buf, _stats_last_flush
+    if not _stats_buf:
+        return
+    lines = "\n".join(json.dumps(r, ensure_ascii=False) for r in _stats_buf) + "\n"
+    now = datetime.now()
+    # ⚠️ 檔名必須每次都不同。原本用 int(time.time())（秒級），同一個實例在同一秒內
+    # flush 兩次就會撞名、後者蓋掉前者——實測灌 66 筆只留下 13 筆才發現。
+    # 多實例覆蓋靠 _INSTANCE_ID 防住，同實例連續 flush 要靠這段隨機碼。
+    key = (f"{_STATS_PREFIX}/{now:%Y-%m-%d}/{now:%H}"
+           f"_{_INSTANCE_ID}_{uuid.uuid4().hex[:8]}.jsonl")
+    try:
+        url = _cloud_put(lines.encode(), key)
+        if not url:
+            # 沒有雲端後端（本機開發、憑證未設）就寫本機，跟 outputs/ 的降級一致。
+            # 不要靜默丟掉——本機開發時看不到統計會以為功能沒作用。
+            fp = OUTPUT_STATS_DIR / key.replace("/", "_")
+            fp.parent.mkdir(parents=True, exist_ok=True)
+            fp.write_text(lines, encoding="utf-8")
+    except Exception as e:
+        # 統計失敗絕不能影響使用者的請求，吞掉並留一行日誌就好
+        print(f"[stats] flush 失敗（{type(e).__name__}: {e}），這批 {len(_stats_buf)} 筆丟棄")
+    _stats_buf = []
+    _stats_last_flush = time.time()
+
+async def _stats_record(uid: str, endpoint: str, ok: bool, status: int,
+                        model: Optional[str] = None, ms: Optional[int] = None) -> None:
+    if not _STATS_ENABLED:
+        return
+    rec = {"ts": datetime.now().isoformat(timespec="seconds"), "uid": uid,
+           "endpoint": endpoint, "ok": ok, "status": status}
+    if model: rec["model"] = model
+    if ms is not None: rec["ms"] = ms
+    async with _stats_lock:
+        _stats_buf.append(rec)
+        if len(_stats_buf) >= _STATS_MAX_BUF or (time.time() - _stats_last_flush) > _STATS_MAX_AGE:
+            _stats_flush_locked()
+
+
 # ─── App Setup ────────────────────────────────────────────────
 app = FastAPI(title="NenAI Testing Platform")
 
@@ -167,6 +242,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 統計用的 middleware：涵蓋所有 /api/* 與 /login，端點程式碼一行都不用改，
+# 之後新增端點也自動被納入（不會有人忘記加）。
+#
+# ⚠️ **這裡不記 model。** 想記的話得從請求 body 拿，但 BaseHTTPMiddleware 讀了 body
+# 之後端點就讀不到了（要自己重包 receive），而 ContextVar 由端點回傳也不可靠——
+# BaseHTTPMiddleware 在另一個 task 執行端點，set 的值傳不回這裡。為了「知道有哪些人
+# 在用」這個目標，endpoint 已經夠用；真要 model 維度再單獨針對幾個端點補。
+@app.middleware("http")
+async def _stats_middleware(request: Request, call_next):
+    path = request.url.path
+    if not _STATS_ENABLED or not (path.startswith("/api/") or path == "/login"):
+        return await call_next(request)
+    t0 = time.monotonic()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        # 統計絕不能影響請求本身：整段包在 try 裡，出錯就算了
+        try:
+            auth = request.headers.get("authorization", "")
+            key = auth[7:] if auth.lower().startswith("bearer ") else request.query_params.get("api_key")
+            await _stats_record(_stats_uid(key), path, 200 <= status < 400, status,
+                                ms=int((time.monotonic() - t0) * 1000))
+        except Exception:
+            pass
+
+
+@app.on_event("shutdown")
+async def _stats_flush_on_shutdown():
+    """服務關閉前把緩衝寫出去，減少（但不能完全避免）尾端資料遺失。"""
+    async with _stats_lock:
+        _stats_flush_locked()
+
+
 NENAI_BASE          = os.environ.get("NENAI_BASE", "https://nen.com.tw")
 BASE_URL_COMPATIBLE = f"{NENAI_BASE}/v1"
 NENAI_V1            = f"{NENAI_BASE}/v1"
@@ -174,6 +285,7 @@ NENAI_V1            = f"{NENAI_BASE}/v1"
 UPLOAD_DIR      = Path(__file__).parent / "static" / "uploads"
 OUTPUT_IMG_DIR  = Path(__file__).parent / "outputs" / "images"
 OUTPUT_VID_DIR  = Path(__file__).parent / "outputs" / "videos"
+OUTPUT_STATS_DIR = Path(__file__).parent / "outputs" / "stats"
 OUTPUT_AUD_DIR  = Path(__file__).parent / "outputs" / "audio"
 for d in (UPLOAD_DIR, OUTPUT_IMG_DIR, OUTPUT_VID_DIR, OUTPUT_AUD_DIR):
     d.mkdir(parents=True, exist_ok=True)

@@ -53,6 +53,7 @@ python app.py
 | NenAI Spicy | Wan 2.7 I2V Spicy、Z-Image Spicy、圖像編輯 Spicy、圖像換臉 |
 | 語音與音樂 | 語音辨識 (ASR，含串流)、語音合成 (TTS)、即時語音對話 (Realtime)、音樂生成 (Lyria) |
 | 查看實際請求 | 圖片／影片／音樂生成完成後可展開「查看實際請求」，顯示送給網關的端點與 body，一鍵複製 cURL。**不顯示金鑰**（`Authorization` 固定呈現為 `Bearer $NENAI_API_KEY`），base64 內容換成長度摘要 |
+| 使用者統計 | 每次 API 呼叫記一行（時間、使用者雜湊、端點、成功與否、耗時）到雲端物件儲存；**沒有任何網頁後台**，看報表用 `venv/bin/python scripts/usage_stats.py` 產生本機 HTML。不記 prompt、生成結果與 IP |
 | AI Canvas | 節點式視覺化畫布（`/canvas`），可拖拉連線組合文字／圖片／影片／圖像編輯／語音／MuleAI 節點，串接多個模型呼叫；支援一鍵依順序執行整張圖 |
 
 每個分頁的「模型」選單旁邊都會顯示該模型的參考單價（例如 `模型 ($2→$6/1M)`），資料來自 `GET /api/pricing`（後端代理並快取網關自己的 `/api/pricing` 計費表 1 小時）。文字/語音等 token 計費模型顯示「輸入→輸出每百萬 token 美金」，圖片/影片/NenAI Spicy 等按次計費模型顯示「每次呼叫美金」。這只是換算後的參考價格（假設帳號分組倍率為 1），不是精確帳單金額，正式扣款請以 NenAI 後台實際扣款為準。
