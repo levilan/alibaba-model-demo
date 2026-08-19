@@ -2137,7 +2137,8 @@ async function sendVideo() {
         if (res.success && res.task_id) {
             addVideoTask(res.task_id, model, prompt, res.status,
                          { resolution, seconds: duration, audio,
-                           mode: document.getElementById('videoAnimateMode')?.value });
+                           mode: document.getElementById('videoAnimateMode')?.value },
+                         false, res.request);
             toast('任務已提交，輪詢中...', 'info');
         } else if (res.success && res.video_url) {
             addVideoResult(model, prompt, res.local_path || res.video_url, false, fmtElapsed(Date.now() - startTime));
@@ -2200,18 +2201,18 @@ function resumePendingTasks() {
             if (t.kind === 'muleai') {
                 addMuleAIVideoTask(t.taskId, t.model, t.prompt || '', '恢復中', true);
             } else {
-                addVideoTask(t.taskId, t.model, t.prompt || '', '恢復中', t.costInfo, true);
+                addVideoTask(t.taskId, t.model, t.prompt || '', '恢復中', t.costInfo, true, t.req);
             }
         } catch (e) { console.warn('恢復任務失敗', t.taskId, e); }
     });
     toast(`已恢復 ${alive.length} 個進行中的任務`, 'info');
 }
 
-function addVideoTask(taskId, model, prompt, status, costInfo, isResume = false) {
+function addVideoTask(taskId, model, prompt, status, costInfo, isResume = false, req = null) {
     const cont = document.getElementById('videoResults');
     cont.querySelector('.empty-state')?.remove();
     const startTime = Date.now();
-    if (!isResume) savePendingTask({ kind: 'video', taskId, model, prompt, costInfo });
+    if (!isResume) savePendingTask({ kind: 'video', taskId, model, prompt, costInfo, req });
     const card = el('div', { className: 'video-task-card', id: `task-${taskId}` });
     card.innerHTML = `
         <div class="vtc-header">
@@ -2222,6 +2223,10 @@ function addVideoTask(taskId, model, prompt, status, costInfo, isResume = false)
         <div class="vtc-prompt">${prompt.substring(0, 120)}${prompt.length > 120 ? '...' : ''}</div>
         <div class="vtc-progress"><div class="vtc-progress-bar" id="pb-${taskId}" style="width:5%"></div></div>
         <div id="rv-${taskId}"></div>`;
+    // 請求面板在「送出當下」就掛上去，不必等輪詢完成——影片動輒兩三分鐘，
+    // 使用者想照抄參數時沒理由等它跑完。
+    const reqPanel = buildRequestPanel(req);
+    if (reqPanel) card.appendChild(reqPanel);
     cont.insertBefore(card, cont.firstChild);
     pollVideo(taskId, startTime, model, costInfo);
 }
