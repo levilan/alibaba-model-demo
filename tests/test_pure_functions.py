@@ -7,6 +7,7 @@
 
 （pytest 不在 requirements.txt 裡，需要時 `venv/bin/pip install pytest`。）
 """
+import json
 import sys
 from pathlib import Path
 
@@ -421,3 +422,25 @@ def test_mai_image_n_locked_to_one():
     assert len(mai) == 3
     for m in mai:
         assert m["max_n"] == 1, m["id"]
+
+
+def test_debug_req_never_leaks_api_key():
+    """「查看實際請求」的摘要永遠不能帶出真實金鑰。
+
+    這個面板會出現在使用者畫面上、會被截圖與螢幕分享，所以 auth 欄位固定是佔位字串，
+    而且整個結構裡不應該出現任何 sk- 開頭的東西。
+    """
+    from app import _debug_req
+    out = _debug_req("/v1/images/generations", {"model": "x", "prompt": "hi"})
+    assert out["auth"] == "Bearer $NENAI_API_KEY"
+    assert "sk-" not in json.dumps(out)
+
+
+def test_debug_req_summarizes_base64():
+    """base64 內容換成長度摘要——塞爆畫面而且沒有參考價值，但欄位結構要留著。"""
+    from app import _debug_req
+    big = "data:image/png;base64," + ("A" * 5000)
+    out = _debug_req("/v1/images/edits", {"image": big, "prompt": "keep me"})
+    assert out["body"]["prompt"] == "keep me"
+    assert "5000 chars" in out["body"]["image"]
+    assert "A" * 100 not in json.dumps(out)

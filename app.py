@@ -2275,6 +2275,7 @@ async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_
             out = {"success": True, "images": images, "model": data.model}
             usage = _image_usage(rj)
             if usage: out["usage"] = usage
+            out["request"] = _debug_req("/v1/images/generations", payload)
             return out
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2391,6 +2392,10 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
             out = {"success": True, "images": images, "model": model}
             usage = _image_usage(rj)
             if usage: out["usage"] = usage
+            out["request"] = _debug_req(
+                "/v1/images/edits", form=form_data, method="POST",
+                note=f"multipart/form-data，另附 {len(files)} 個 image 檔案欄位"
+                     f"（重複同名 image，不是 image[]）")
             return out
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -2494,6 +2499,43 @@ def _apply_audio_flag(payload: dict, meta: dict, audio: bool) -> None:
     # 「只在為真時才帶」，那會讓使用者關掉開關卻照樣付有聲的錢。
     meta["generateAudio"] = audio
     meta["generate_audio"] = audio  # doubao（影響計費 audio_presence）
+
+
+# ─── 「查看實際請求」（給前端顯示，讓使用者知道怎麼自己接 API）─────────
+# ⚠️ **絕對不放 Authorization。** 使用者的 key 是他自己的，平台再顯示一次只會多
+# 一條外洩管道（截圖、螢幕分享、錄影、貼給別人問問題）。cURL 範例固定寫成
+# $NENAI_API_KEY，讓人自己代入環境變數。
+# base64（上傳的圖片／影片／音訊）會塞爆畫面也沒有參考價值，一律換成長度摘要——
+# 但要保留欄位名與結構，因為那正是使用者要照抄的部分。
+_B64_PREFIX = "data:"
+
+def _summarize_value(v: Any) -> Any:
+    """把長 base64／data URI 換成摘要，其餘原樣保留。"""
+    if isinstance(v, str):
+        if v.startswith(_B64_PREFIX) and ";base64," in v:
+            head, b64 = v.split(";base64,", 1)
+            return f"{head};base64,<{len(b64)} chars>"
+        if len(v) > 512:
+            return f"<{len(v)} chars>"
+        return v
+    if isinstance(v, list):
+        return [_summarize_value(i) for i in v]
+    if isinstance(v, dict):
+        return {k: _summarize_value(val) for k, val in v.items()}
+    return v
+
+def _debug_req(endpoint: str, body: Optional[dict] = None, *, method: str = "POST",
+               form: Optional[dict] = None, note: Optional[str] = None) -> dict:
+    """整理出可安全顯示的請求摘要。endpoint 是相對路徑（不含 NENAI_BASE）。"""
+    out: dict = {"method": method, "endpoint": endpoint,
+                 "base_url": NENAI_BASE, "auth": "Bearer $NENAI_API_KEY"}
+    if body is not None:
+        out["body"] = _summarize_value(body)
+    if form is not None:
+        out["form"] = _summarize_value(form)
+    if note:
+        out["note"] = note
+    return out
 
 
 def _public_base_url(request: Optional[Request]) -> Optional[str]:
@@ -2693,7 +2735,8 @@ async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
                                      headers={"Authorization": f"Bearer {api_key}",
                                               "Content-Type": "application/json"},
                                      json=payload)
-            return _handle_video_create_response(resp, model)
+            return _handle_video_create_response(
+                resp, model, _debug_req("/v1/video/generations", payload))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -2833,7 +2876,8 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
                                      headers={"Authorization": f"Bearer {api_key}",
                                               "Content-Type": "application/json"},
                                      json=payload)
-            return _handle_video_create_response(resp, model)
+            return _handle_video_create_response(
+                resp, model, _debug_req("/v1/video/generations", payload))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -2895,7 +2939,8 @@ async def video_vedit(request: Request, api_key: str = Depends(get_api_key)):
                                      headers={"Authorization": f"Bearer {api_key}",
                                               "Content-Type": "application/json"},
                                      json=payload)
-            return _handle_video_create_response(resp, model)
+            return _handle_video_create_response(
+                resp, model, _debug_req("/v1/video/generations", payload))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -2992,7 +3037,8 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
                                      headers={"Authorization": f"Bearer {api_key}",
                                               "Content-Type": "application/json"},
                                      json=payload)
-            return _handle_video_create_response(resp, model)
+            return _handle_video_create_response(
+                resp, model, _debug_req("/v1/video/generations", payload))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -3039,7 +3085,8 @@ async def video_animate(request: Request, api_key: str = Depends(get_api_key)):
                                      headers={"Authorization": f"Bearer {api_key}",
                                               "Content-Type": "application/json"},
                                      json=payload)
-            return _handle_video_create_response(resp, model)
+            return _handle_video_create_response(
+                resp, model, _debug_req("/v1/video/generations", payload))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -3386,12 +3433,16 @@ async def music_generate(request: Request, api_key: str = Depends(get_api_key)):
                 fp = OUTPUT_AUD_DIR / name
                 fp.write_bytes(audio_bytes)
                 audio_url = f"/outputs/audio/{fp.name}"
-            return {"success": True, "audio_url": audio_url, "mime": mime, "texts": texts, "model": model}
+            return {"success": True, "audio_url": audio_url, "mime": mime, "texts": texts,
+                    "model": model,
+                    "request": _debug_req("/v1beta/interactions",
+                                          {"model": model, "input": input_payload})}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # ─── Helpers ──────────────────────────────────────────────────────
-def _handle_video_create_response(resp: httpx.Response, model: str) -> dict:
+def _handle_video_create_response(resp: httpx.Response, model: str,
+                                  req: Optional[dict] = None) -> dict:
     rj = resp.json()
     if resp.status_code not in (200, 202):
         return JSONResponse(status_code=resp.status_code,
@@ -3399,7 +3450,9 @@ def _handle_video_create_response(resp: httpx.Response, model: str) -> dict:
     task_id = rj.get("id")
     if not task_id:
         return JSONResponse(status_code=500, content={"success": False, "error": f"No task id: {rj}"})
-    return {"success": True, "task_id": task_id, "status": rj.get("status", "pending").upper(), "model": model}
+    out = {"success": True, "task_id": task_id, "status": rj.get("status", "pending").upper(), "model": model}
+    if req: out["request"] = req
+    return out
 
 async def _async_download_image(url: str) -> Optional[str]:
     try:

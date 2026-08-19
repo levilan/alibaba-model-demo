@@ -1918,6 +1918,62 @@ function _stopPendingTimer(card) {
     if (card && card._timer) { clearInterval(card._timer); card._timer = null; }
 }
 
+
+// ── 「查看實際請求」面板 ──────────────────────────────────────────────
+// 讓使用者在 playground 試好參數之後，能直接照抄去接 API——這是這個平台最常被
+// 問到的事（文檔站每次寫新模型都要我們手動整理一次呼叫方式）。
+// ⚠️ **永遠不顯示 Authorization 的實際內容。** 後端回傳的 auth 欄位固定是
+// `Bearer $NENAI_API_KEY`，複製出來的 cURL 也是。使用者知道自己的 key，平台再顯示
+// 一次只會多一條外洩管道（截圖、螢幕分享、貼給別人問問題）。
+function buildRequestPanel(req) {
+    if (!req) return null;
+    const url = (req.base_url || '') + (req.endpoint || '');
+    const bodyObj = req.body || req.form || null;
+    const bodyStr = bodyObj ? JSON.stringify(bodyObj, null, 2) : '';
+    const wrap = el('details', { className: 'req-panel' });
+    const sum = el('summary');
+    sum.textContent = '查看實際請求';
+    wrap.appendChild(sum);
+    const body = el('div', { className: 'req-body' });
+    const meta = el('div', { className: 'req-line' });
+    meta.textContent = `${req.method || 'POST'} ${url}`;
+    body.appendChild(meta);
+    const auth = el('div', { className: 'req-line req-auth' });
+    auth.textContent = `Authorization: ${req.auth || 'Bearer $NENAI_API_KEY'}`;
+    body.appendChild(auth);
+    if (req.note) {
+        const note = el('div', { className: 'req-note' });
+        note.textContent = req.note;
+        body.appendChild(note);
+    }
+    if (bodyStr) {
+        const pre = el('pre', { className: 'req-json' });
+        pre.textContent = bodyStr;
+        body.appendChild(pre);
+    }
+    const btn = el('button', { className: 'btn btn-ghost btn-sm' });
+    btn.textContent = '複製 cURL';
+    btn.onclick = () => {
+        const lines = [`curl -X ${req.method || 'POST'} ${url} \\`,
+                       `  -H "Authorization: Bearer $NENAI_API_KEY" \\`];
+        if (req.form) {
+            lines.push('  -H "Content-Type: multipart/form-data" \\');
+            Object.entries(req.form).forEach(([k, v]) =>
+                lines.push(`  -F ${JSON.stringify(k + '=' + v)} \\`));
+            lines.push('  # 檔案欄位請自行加上 -F "image=@your-file.png"');
+        } else {
+            lines.push('  -H "Content-Type: application/json" \\');
+            lines.push(`  -d ${JSON.stringify(bodyStr)}`);
+        }
+        navigator.clipboard.writeText(lines.join('\n'))
+            .then(() => toast('已複製 cURL（金鑰請自行代入 $NENAI_API_KEY）', 'success'))
+            .catch(() => toast('複製失敗', 'error'));
+    };
+    body.appendChild(btn);
+    wrap.appendChild(body);
+    return wrap;
+}
+
 function finishImagePendingCard(card, res, elapsed) {
     _stopPendingTimer(card);
     const gallery = document.getElementById('imageResults');
@@ -1938,6 +1994,8 @@ function finishImagePendingCard(card, res, elapsed) {
         }
         frag.appendChild(c);
     });
+    const reqPanel = buildRequestPanel(res.request);
+    if (reqPanel) frag.appendChild(reqPanel);
     // 就地換掉佔位卡，結果才會留在當初送出的位置，不會插到後來完成的任務前面
     gallery.replaceChild(frag, card);
 }
@@ -3077,6 +3135,8 @@ async function sendVoiceMusic() {
             const meta = el('div', { className: 'voice-result-meta' });
             meta.innerHTML = `<a href="${res.audio_url}" download>下載音檔</a>`;
             card.appendChild(meta);
+            const reqPanel = buildRequestPanel(res.request);
+            if (reqPanel) card.appendChild(reqPanel);
             const p = pricingMap[model];
             if (p && p.type === 'fixed' && p.price) addCost(p.price);
             toast('音樂生成完成！', 'success');

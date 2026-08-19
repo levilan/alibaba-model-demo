@@ -1476,3 +1476,22 @@ input[type="range"]::-webkit-slider-thumb {
     font-size: 0.8rem;
 }
 .rt-attach-x:hover { color: var(--red); }
+
+/* ── 「查看實際請求」面板 ─────────────────────────────────────────── */
+/* 結果區是 grid，面板要橫跨整列，否則會被擠成一欄、JSON 全被裁掉 */
+.req-panel { grid-column: 1 / -1; margin-top: 10px; border: 1px solid var(--border);
+             border-radius: 8px; background: var(--bg-aside); font-size: 12.5px; }
+.req-panel > summary { cursor: pointer; padding: 8px 12px; color: var(--text-sub);
+                       user-select: none; }
+.req-panel > summary:hover { color: var(--text-body); }
+.req-body { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 6px; }
+.req-line { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            word-break: break-all; color: var(--text-body); }
+.req-auth { color: var(--text-sub); }
+.req-note { color: var(--text-sub); font-style: italic; }
+.req-json { margin: 0; padding: 10px; border-radius: 6px; background: var(--bg);
+            border: 1px solid var(--border); max-height: 320px; overflow-y: auto;
+            font-size: 12px; line-height: 1.5; color: var(--text-body);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            white-space: pre-wrap; word-break: break-word; }
+.req-panel .btn { align-self: flex-start; }
