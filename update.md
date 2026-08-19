@@ -6,6 +6,16 @@
 
 ---
 
+## 2026-08-20
+
+- docs：**`wan3.0-video` 首次成功產出，並查出平台計價設定錯誤**（文檔站 session 委託跑一支效果展示片，使用者裁示同意計費）。t2v 對正式站實測：`{model,prompt,duration:10,size:"720P",metadata:{audio:true}}` → 產出 1280×720／30fps／10.03s／21.7MB，**含 AAC 44.1kHz 立體聲且非靜音**（mean −14.9 dB）；排隊 314s＋生成 456s＝12分50秒（1 樣本）。先前 `memory.md` 記載的「從未成功呼叫過、一直 AccessDenied」已過時，權限現已開通。
+  - **⚠️ 我把自己程式正規化後的輸出當成回應原文回報，差點害文檔站改錯六個頁面。** 輪詢程式寫了 `d = rj.get("data", rj)` 相容兩種結構、只印 `d` 的欄位，我據此告訴文檔站「查詢回應是扁平的、沒有 `data` 包一層」並要他們改文檔。對方堅持要 `curl` 直出才肯改——原文確實是 `code`/`message`/`data` 三層，我的結論作廢。**回報「回應長什麼樣」一律貼未加工輸出。**（教訓已寫進 `memory.md`。）
+  - 兩個端點的回應形狀確實不同（這條是原文比對過的）：`POST` 回**扁平**、`status` 小寫 `queued`、`progress` 數字 `0`；`GET` 回**三層**、`status` 大寫、`progress` 字串 `"100%"`，另有 `data.data.output.task_status`（上游的 `SUCCEEDED`，與外層平台的 `SUCCESS` 不同字）。`result_url` 簽名約 24 小時過期。
+  - **平台計價設定錯誤（已回報並由平台端定位）**：官方是按秒三檔（480P $0.05／720P $0.10／1080P $0.20，國內站 0.3／0.6／1.2 元/秒），平台後台卻把 `0.05` 填進「模型倍率」而非「模型固定價格」欄位。平台端算出 `0.05/2 × 500000 × seconds(10) × resolution-720P(2) = 250000` 與回應中的 `quota` 完全吻合＝**$0.50，官方價 $1.00 的一半**。三檔倍率程式碼本來就在且正確，壞的是後台設定。**第二個後果更嚴重**：`model_price` 未設時 `PriceData.ModelPrice = -1`，使 `AdjustBillingOnComplete` 整段跳過——**完成後依實際秒數的結算永遠不執行**，`duration=0`（保留原長）的 videoedit 會用 1 秒保證金預扣後永不補收。
+  - **音訊無差價**：官方 API 參考頁的 `audio` 參數說明寫「开关声音价格相同」，三檔價即含音訊；官方計費規則為「输入不计费，输出按成功生成的视频秒数计费」——後者正是平台那條被跳過的完成後結算該做的事。
+  - **我方前端估價是對的**（`_VIDEO_SEC_PRICE` 走自己維護的官方每秒價表，不讀 `/api/pricing` 的 ratio），估 $1.00 而實收 $0.50，方向是**少收**；後台修好前拿前端估算對帳會差一倍，不是前端算錯。修好後我方要再跑一支驗證完整鏈路（預扣→三檔倍率→依實際秒數結算），並可加驗 `duration=0` 路徑。
+  - 我方 `MODELS` 的 `audio: False` **不是缺口**：萬相家族一律 False（配音由模型自動決定、UI 不給開關），與這次實測「產出自動含音軌」相符。
+
 ## 2026-08-18
 
 - docs：**pro 帶圖補測通過，成果總表送交文檔站**（使用者裁示）。`lyria-3-pro-preview` 帶圖在正式站實測 200／46.5s／MP3 3582453 bytes，**歌詞命中圖中元素**（`in the library of us`、`Dusty covers`、`Light is filtering through the glass`、`Wooden floors begin to creak`，Caption 寫 `a grand, sun-drenched library`），提示詞刻意只寫 `write a song inspired by this image`、零場景描述——**圖片輸入自此確認 lyria-3 兩個都支援**。pro 的段落標記 `[[A0]][[B1]][[C2]]` 比 clip 明顯（clip 單段）。
