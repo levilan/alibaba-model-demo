@@ -58,7 +58,7 @@ PREFIX_ZH = "模型上線："
 # 憑證放在 nen_ai_project 那層的 .env（三個 repo 共用）。
 # ⚠️ 那份 env 有重複的鍵（`ip`/`user`/`passwd` 是不同伺服器的區塊），
 # **不能用 shell 的 `source` 讀**，這裡自己解析。
-NEN_ENV_PATH = Path("/Users/levi/claude_code/nen_ai_project/.env")
+NEN_ENV_PATH = Path("/Users/levi/nen_ai_project/.env")
 
 
 def _load_env() -> dict:

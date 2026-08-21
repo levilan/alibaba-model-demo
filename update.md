@@ -8,6 +8,7 @@
 
 ## 2026-08-21
 
+- fix：`scripts/update_announcements.py` 憑證路徑修正——寫死的 `NEN_ENV_PATH` 還指向搬家前的 `/Users/levi/claude_code/nen_ai_project/.env`（已不存在），改成實際位置 `/Users/levi/nen_ai_project/.env`。
 - feat：新增文字模型 `dola-seed-2.1-turbo`（Seed 2.1 Turbo，正式環境 `nen.com.tw` 實測）。按 token 計價（輸入 ratio 0.25、completion_ratio 5、cache_ratio 0.2）。實測重點：
   - `enable_thinking` 開關**無效**（true/false 各 3 次全部回 `reasoning_content`），跟 seed-2.0 系列同樣關不掉，`thinking` 維持 False 不顯示開關。
   - 但它支援 `reasoning_effort`，七個枚舉（none/minimal/low/medium/high/xhigh/max）閘道全收，且 **`none` 真的能完全關閉思考**（3 次 reasoning 全 0）——是 seed 家族唯一能控制思考的型號。各檔實測（同一數學題各 3 次、reasoning 字元數中位數）：none/minimal 0、low 167、medium 128、high 349、xhigh 202、max 230，實際分三段：關（none/minimal）、輕（low/medium）、深（high/xhigh/max）。比照 GLM 的做法給 `reasoning_efforts` 選單。
