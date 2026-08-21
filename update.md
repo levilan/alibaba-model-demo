@@ -6,6 +6,17 @@
 
 ---
 
+## 2026-08-21
+
+- policy/feat：**客戶內容不上雲**（使用者裁示「使用者生成內容先不做儲存，保持不儲存客戶資料」）。新增 `_output_put()` 包裝：生成的圖片/影片/音訊與上傳的參考素材預設不再走 `_cloud_put` 上傳雲端，退回本機 `outputs/` 暫存（Cloud Run 實例回收即消失——這是政策要的效果）；雲端儲存憑證只供統計 jsonl 使用。設 `STORE_OUTPUTS=true` 可恢復上雲行為。共改 8 個呼叫點（`images/`、`videos/`、`audio/`、`uploads/` 前綴），`stats/` 不受影響。已確認 bucket 裡沒有任何已上傳的客戶內容需要清除。README「雲端物件儲存」一節同步改寫。（commit 待補）
+
+- infra：**修正正式環境統計寫入——Cloud Run 服務上原本一個環境變數都沒有**，統計 middleware 一直走降級路徑寫進容器暫存磁碟（`min-instances=0`，實例回收即消失），GCS 三個既有 bucket 的 `stats/` 前綴下均為零筆，等於 8/20 上線的統計功能在正式環境從未留下資料。修正內容（經使用者確認後執行）：
+  - 新建 bucket `gs://nenai-playground-prod`（us-east5，uniform bucket-level access + public access prevention）。
+  - 新建專用服務帳戶 `nenai-playground-storage@ai-model-hub-newapi.iam.gserviceaccount.com`，僅授予該 bucket 的 `roles/storage.objectAdmin`；金鑰檔放在 repo 外（`/Users/levi/nen_ai_project/nenai-playground-storage-key.json`，chmod 600）。原想走 README 的方式二（`GCS_USE_ADC` + SignBlob），但部署用的 levi-601（editor）沒有 `iam.serviceAccounts.setIamPolicy`，無法設自我模擬綁定，改走方式一（金鑰直接簽章）。
+  - Cloud Run 設定 `GCS_BUCKET_NAME` / `GCS_CREDENTIALS_JSON` / `STORAGE_BACKEND=gcs`（revision `nenai-testing-platform-00125-65j`）。⚠️ 這同時讓 `outputs/`（圖片／影片產出）改上傳 GCS 簽名網址——這本來就是 `_cloud_put` 的設計，且 `storage.googleapis.com` 已在 proxy 白名單內。
+  - 部署後實測：透過 `playground.nen.com.tw` 打請求（`*.run.app` 因 ingress 限制回 GFE 404，不會進到 app），等 60 秒 flush 窗口後 bucket 出現 `stats/` jsonl，`scripts/usage_stats.py` 成功產出報表。首批資料就抓到外部掃描器在探測 `/api/config`、`/api/aws` 等不存在端點（全 404、anonymous）。
+  - 順手修好本機開發環境：venv 是專案還在舊路徑 `claude_code/` 時建的，搬家後所有 script shebang 失效——就地改寫 `venv/bin/` 路徑、補回執行權限、`ensurepip` 裝回 pip；另裝了 gcloud CLI（brew）並以 levi-601 金鑰啟用。
+
 ## 2026-08-20
 
 - feat：**使用者統計**（使用者要求「統計網站有哪些使用者連上來使用過」）。每次 `/api/*` 與 `/login` 記一行 `{ts, uid, endpoint, ok, status, ms}`，滿 50 筆或超過 60 秒寫成 jsonl 進雲端物件儲存（沿用 `_cloud_put`，無憑證時降級寫本機 `outputs/stats/`）。報表用 `scripts/usage_stats.py` 產生本機 HTML。

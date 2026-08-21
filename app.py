@@ -156,6 +156,16 @@ def _cloud_put(data: bytes, key: str) -> Optional[str]:
             return url
     return None
 
+# 客戶內容（生成的圖片／影片／音訊、上傳的參考素材）預設**不**上傳雲端——政策是
+# 「不儲存客戶資料」。雲端儲存憑證只給統計 jsonl 用（那裡面沒有任何客戶內容）。
+# 設 STORE_OUTPUTS=true 才恢復「產出上雲、回 7 天簽名網址」；關閉時各呼叫端自動
+# 退回本機 outputs/ 的降級路徑（Cloud Run 上是實例暫存磁碟，回收即消失——這正是
+# 政策要的效果，不是缺陷）。
+_STORE_OUTPUTS = str(os.environ.get("STORE_OUTPUTS", "false")).lower() in ("true", "1", "yes")
+
+def _output_put(data: bytes, key: str) -> Optional[str]:
+    return _cloud_put(data, key) if _STORE_OUTPUTS else None
+
 
 # ─── 使用者統計 ───────────────────────────────────────────────────
 # 目的：知道「有哪些人在用、用得多頻繁、用哪些模型」。
@@ -2074,7 +2084,7 @@ async def _save_image_bytes(data: bytes, ext: str) -> Optional[str]:
     try:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         name = f"img_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
-        cloud_url = _cloud_put(data, f"images/{name}")
+        cloud_url = _output_put(data, f"images/{name}")
         if cloud_url:
             return cloud_url
         fp = OUTPUT_IMG_DIR / name
@@ -2705,7 +2715,7 @@ async def _upload_video_for_url(raw: bytes, filename: str = "clip.mp4",
     if suffix not in (".mp4", ".mov", ".avi"):
         suffix = ".mp4"
     name = f"vid_in_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{suffix}"
-    url = _cloud_put(raw, f"uploads/{name}")
+    url = _output_put(raw, f"uploads/{name}")
     if url:
         return url, None
     base = _public_base_url(request)
@@ -2736,7 +2746,7 @@ async def _upload_audio_for_url(file_obj, request: Optional[Request] = None) -> 
         return None, None
     suffix = Path(file_obj.filename).suffix.lower() or ".mp3"
     name = f"aud_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}{suffix}"
-    url = _cloud_put(raw, f"audio/{name}")
+    url = _output_put(raw, f"audio/{name}")
     if url:
         return url, None
     # 與影片同一套 fallback：退回本站的公開靜態路徑（限制見 _upload_video_for_url）
@@ -2756,7 +2766,7 @@ async def _save_video_bytes(data: bytes) -> Optional[str]:
     try:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         name = f"vid_{ts}_{uuid.uuid4().hex[:6]}.mp4"
-        cloud_url = _cloud_put(data, f"videos/{name}")
+        cloud_url = _output_put(data, f"videos/{name}")
         if cloud_url:
             return cloud_url
         fp = OUTPUT_VID_DIR / name
@@ -3476,7 +3486,7 @@ async def voice_tts(data: VoiceTtsRequest, api_key: str = Depends(get_api_key)):
 
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             name = f"tts_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
-            cloud_url = _cloud_put(audio_bytes, f"audio/{name}")
+            cloud_url = _output_put(audio_bytes, f"audio/{name}")
             if cloud_url:
                 audio_url = cloud_url
             else:
@@ -3550,7 +3560,7 @@ async def music_generate(request: Request, api_key: str = Depends(get_api_key)):
             ext = "wav" if "wav" in (mime or "") else "mp3"
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             name = f"music_{ts}_{uuid.uuid4().hex[:6]}.{ext}"
-            cloud_url = _cloud_put(audio_bytes, f"audio/{name}")
+            cloud_url = _output_put(audio_bytes, f"audio/{name}")
             if cloud_url:
                 audio_url = cloud_url
             else:
@@ -3585,7 +3595,7 @@ async def _async_download_image(url: str) -> Optional[str]:
         async with httpx.AsyncClient() as client:
             r = await client.get(url, timeout=30)
             if r.status_code == 200:
-                cloud_url = _cloud_put(r.content, f"images/{name}")
+                cloud_url = _output_put(r.content, f"images/{name}")
                 if cloud_url:
                     return cloud_url
                 fp = OUTPUT_IMG_DIR / name
@@ -3603,7 +3613,7 @@ async def _async_download_video(url: str) -> Optional[str]:
             async with client.stream('GET', url, timeout=120) as r:
                 if r.status_code == 200:
                     data = b"".join([chunk async for chunk in r.aiter_bytes(8192)])
-                    cloud_url = _cloud_put(data, f"videos/{name}")
+                    cloud_url = _output_put(data, f"videos/{name}")
                     if cloud_url:
                         return cloud_url
                     fp = OUTPUT_VID_DIR / name
