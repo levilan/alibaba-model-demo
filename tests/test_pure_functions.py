@@ -198,6 +198,23 @@ def test_gemini_37_flash_thinking_toggle_is_effective():
         "kimi 的 data URI 圖片輸入正式環境實測 9/9 可用（三種尺寸各 3 次）"
 
 
+def test_dola_seed_21_turbo_flags():
+    """Seed 2.1 Turbo 的旗標鎖住 2026-08-21 的實測結論（正式環境）。
+
+    enable_thinking true/false 各 3 次全部回 reasoning_content——開關無效，
+    所以 thinking 必須是 False（不顯示沒作用的開關）。但 reasoning_effort:none
+    實測 3 次 reasoning 全 0、能真正關閉思考，是 seed 家族唯一能控制思考的
+    型號，所以 reasoning_effort 選單必須開、且清單必須含 none。
+    vision：data URI 圖片輸入實測可用。
+    """
+    meta = {m["id"]: m for m in app.MODELS["text"]}
+    m = meta["dola-seed-2.1-turbo"]
+    assert m["thinking"] is False, "enable_thinking 實測無效，不給誤導性開關"
+    assert m.get("reasoning_effort") is True, "reasoning_effort 是它唯一有效的思考控制"
+    assert "none" in m.get("reasoning_efforts", []), "none 是唯一能關思考的值，不能拿掉"
+    assert m.get("vision") is True, "data URI 圖片輸入實測可用"
+
+
 def test_proxy_whitelist_covers_upstream_output_hosts():
     """白名單要涵蓋上游直接回傳產出網址的網域，否則 Canvas 接續會被擋。"""
     def allowed(host):

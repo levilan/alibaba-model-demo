@@ -520,6 +520,15 @@ MODELS = {
         {"id": "dola-seed-sc",       "name": "Seed SC",          "group": "ByteDance", "desc": "字節跳動豆包，一般對話", "thinking": False},
         {"id": "dola-seed-2.0-lite", "name": "Seed 2.0 Lite",    "group": "ByteDance", "desc": "字節跳動豆包，輕量推理", "thinking": False},
         {"id": "dola-seed-2.0-pro",  "name": "Seed 2.0 Pro",     "group": "ByteDance", "desc": "字節跳動豆包，旗艦推理", "thinking": False},
+        # ── seed-2.1-turbo：enable_thinking 同樣無效（true/false 各 3 次全都有
+        #    reasoning_content），thinking 維持 False；但它吃 reasoning_effort，而且
+        #    none 真的能關思考（3 次 reasoning 全 0）——是 seed 家族唯一能控制思考的
+        #    型號，所以改給 reasoning_effort 選單。七個枚舉閘道全收，各檔實測
+        #    （水管數學題各 3 次、reasoning 字元數中位數）：none/minimal 0、low 167、
+        #    medium 128、high 349、xhigh 202、max 230——實際分三段：關（none/minimal）、
+        #    輕（low/medium）、深（high/xhigh/max）。圖片輸入 data URI 實測可用。──
+        {"id": "dola-seed-2.1-turbo", "name": "Seed 2.1 Turbo",  "group": "ByteDance", "desc": "字節跳動豆包新一代，支援看圖，推理深度可調", "thinking": False, "vision": True,
+         "reasoning_effort": True, "reasoning_efforts": ["none", "minimal", "low", "medium", "high", "xhigh", "max"]},
         # ── 月之暗面 Kimi（走阿里百煉直供，僅華北2/北京地域）──────────────────
         # 純思考模型，**思考關不掉**：送 enable_thinking:false 或 reasoning_effort:none
         # 都會 400。而且錯誤訊息會誤導——它回的是

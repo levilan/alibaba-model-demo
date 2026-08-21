@@ -89,6 +89,7 @@ python app.py
 | dola-seed-sc | Seed SC | ByteDance | — |
 | dola-seed-2.0-lite | Seed 2.0 Lite | ByteDance | — （無條件思考，關不掉） |
 | dola-seed-2.0-pro | Seed 2.0 Pro | ByteDance | — （無條件思考，關不掉） |
+| dola-seed-2.1-turbo | Seed 2.1 Turbo | ByteDance | reasoning_effort（7 段，none 可關思考；enable_thinking 無效）＋看圖 |
 | claude-opus-5 | Claude Opus 5 | Claude | — |
 | claude-opus-4-8 / 4-7 / 4-6 / 4-5 / 4-1 | Claude Opus 系列 | Claude | — |
 | claude-sonnet-5 / 4-6 / 4-5 | Claude Sonnet 系列 | Claude | — |

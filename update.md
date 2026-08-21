@@ -8,6 +8,13 @@
 
 ## 2026-08-21
 
+- feat：新增文字模型 `dola-seed-2.1-turbo`（Seed 2.1 Turbo，正式環境 `nen.com.tw` 實測）。按 token 計價（輸入 ratio 0.25、completion_ratio 5、cache_ratio 0.2）。實測重點：
+  - `enable_thinking` 開關**無效**（true/false 各 3 次全部回 `reasoning_content`），跟 seed-2.0 系列同樣關不掉，`thinking` 維持 False 不顯示開關。
+  - 但它支援 `reasoning_effort`，七個枚舉（none/minimal/low/medium/high/xhigh/max）閘道全收，且 **`none` 真的能完全關閉思考**（3 次 reasoning 全 0）——是 seed 家族唯一能控制思考的型號。各檔實測（同一數學題各 3 次、reasoning 字元數中位數）：none/minimal 0、low 167、medium 128、high 349、xhigh 202、max 230，實際分三段：關（none/minimal）、輕（low/medium）、深（high/xhigh/max）。比照 GLM 的做法給 `reasoning_efforts` 選單。
+  - 與後端固定會送的 `enable_thinking:false` 並存實測不衝突（`none` 照樣關、`high` 照樣思考）。
+  - 圖片輸入（OpenAI `image_url` + data URI，跟 app.py 現行形狀相同）實測可用，正確認出測試圖顏色，標 `vision: True`。
+  - Streaming 帶 `stream_options.include_usage` 實測會回 usage，前端「本次花費」計算正常。
+  - 疑似閘道缺口（已另行回報）：上游 Ark 的 `thinking.type` 可關思考，但閘道的 `enable_thinking` 對此模型沒有映射效果；對照組是 `reasoning_effort:none` 能關，證明模型本身做得到。
 - policy/feat：**客戶內容不上雲**（使用者裁示「使用者生成內容先不做儲存，保持不儲存客戶資料」）。新增 `_output_put()` 包裝：生成的圖片/影片/音訊與上傳的參考素材預設不再走 `_cloud_put` 上傳雲端，退回本機 `outputs/` 暫存（Cloud Run 實例回收即消失——這是政策要的效果）；雲端儲存憑證只供統計 jsonl 使用。設 `STORE_OUTPUTS=true` 可恢復上雲行為。共改 8 個呼叫點（`images/`、`videos/`、`audio/`、`uploads/` 前綴），`stats/` 不受影響。已確認 bucket 裡沒有任何已上傳的客戶內容需要清除。README「雲端物件儲存」一節同步改寫。（commit 待補）
 
 - infra：**修正正式環境統計寫入——Cloud Run 服務上原本一個環境變數都沒有**，統計 middleware 一直走降級路徑寫進容器暫存磁碟（`min-instances=0`，實例回收即消失），GCS 三個既有 bucket 的 `stats/` 前綴下均為零筆，等於 8/20 上線的統計功能在正式環境從未留下資料。修正內容（經使用者確認後執行）：
