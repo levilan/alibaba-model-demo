@@ -346,6 +346,118 @@
         return sel;
     }
 
+    // ── 模型介紹小視窗 ─────────────────────────────────────────────────────────
+    // 節點下拉選到模型時，在下拉旁彈出該模型的介紹：家族特色（model_intros.js 的
+    // 手寫文案）＋型號規格。規格一律從 /api/models 回傳的欄位動態產生，這裡不寫死
+    // 任何模型知識——清單變了介紹自動跟著變。純介紹用途，不觸發任何生成。
+    const INTRO_TYPE_LABELS = {
+        t2i: '文生圖', i2i: '圖像編輯', t2v: '文生影片', i2v: '圖生影片',
+        r2v: '參考生影片', vedit: '影片編輯', animate: '動作動畫',
+    };
+
+    let introPopupEl = null;
+    function hideModelIntro() {
+        if (introPopupEl) { introPopupEl.remove(); introPopupEl = null; }
+    }
+
+    function findIntroMetas(category, id) {
+        let list;
+        if (category === 'voice.tts') list = getVoiceTtsModels();
+        else if (category === 'voice.asr') list = getVoiceAsrModels();
+        else list = MODELS[category] || [];
+        return list.filter(m => m.id === id);
+    }
+
+    function introSpecChips(metas) {
+        // 同一個 id 可能有多筆（t2i/i2i 各一筆），欄位取第一筆有值的
+        const first = (k) => { for (const m of metas) if (m[k] != null) return m[k]; return null; };
+        const chips = [];
+        [...new Set(metas.map(m => m.type).filter(Boolean))]
+            .forEach(t => chips.push(INTRO_TYPE_LABELS[t] || t));
+        if (first('vision')) chips.push('支援看圖');
+        if (first('reasoning_efforts')) chips.push('推理深度可調');
+        else if (first('thinking')) chips.push('思考模式');
+        const sizes = first('sizes');
+        if (sizes && sizes.length) chips.push(`尺寸 ${sizes.length} 種`);
+        const ar = first('aspect_ratios');
+        if (ar && ar.length) chips.push(`比例 ${ar.length} 種`);
+        const maxN = Math.max(0, ...metas.map(m => m.max_n || 0));
+        if (maxN > 1) chips.push(`一次最多 ${maxN} 張`);
+        const maxRef = Math.max(0, ...metas.map(m => m.max_ref || 0));
+        if (maxRef) chips.push(`參考圖最多 ${maxRef} 張`);
+        const res = first('resolutions');
+        if (res && res.length) chips.push(res.join(' / '));
+        const minD = first('min_dur'), maxD = first('max_dur');
+        if (!metas.every(m => m.no_duration) && minD != null && maxD != null) {
+            chips.push(`時長 ${minD}–${maxD} 秒`);
+        }
+        if (first('audio')) chips.push('含配音');
+        const voices = first('voices');
+        if (voices && voices.length) chips.push(`${voices.length} 種音色`);
+        if (first('ref_images_only')) chips.push('參考素材僅接受圖片');
+        return chips;
+    }
+
+    function showModelIntro(anchorEl, category, id) {
+        hideModelIntro();
+        const metas = findIntroMetas(category, id);
+        if (!metas.length) return;
+        const fam = window.NENAI_MODEL_FAMILY ? window.NENAI_MODEL_FAMILY(id) : null;
+        // 名稱優先取沒有「（編輯）」這類後綴的那筆
+        const name = (metas.find(m => !/（[^）]*）$/.test(m.name)) || metas[0]).name.replace(/（[^）]*）$/, '');
+        const descs = [...new Set(metas.map(m => {
+            const t = INTRO_TYPE_LABELS[m.type];
+            return (metas.length > 1 && t ? `〔${t}〕` : '') + (m.desc || '');
+        }))].filter(Boolean);
+        const chips = introSpecChips(metas);
+
+        const pop = el('div');
+        pop.className = 'cv-model-intro';
+        pop.innerHTML = `
+            <div class="cv-intro-head"><span class="cv-intro-name"></span><button class="cv-intro-close" title="關閉">×</button></div>
+            <div class="cv-intro-id"></div>
+            ${fam ? `<div class="cv-intro-fam"></div><ul class="cv-intro-points">${fam.points.map(() => '<li></li>').join('')}</ul>` : ''}
+            <div class="cv-intro-descs"></div>
+            <div class="cv-intro-chips"></div>`;
+        // 文案一律用 textContent 塞，不進 innerHTML 拼接
+        pop.querySelector('.cv-intro-name').textContent = name;
+        pop.querySelector('.cv-intro-id').textContent = id;
+        if (fam) {
+            pop.querySelector('.cv-intro-fam').textContent = fam.name;
+            pop.querySelectorAll('.cv-intro-points li').forEach((li, i) => { li.textContent = fam.points[i]; });
+        }
+        const descsBox = pop.querySelector('.cv-intro-descs');
+        descs.forEach(d => { const p = el('div'); p.textContent = d; descsBox.appendChild(p); });
+        const chipsBox = pop.querySelector('.cv-intro-chips');
+        chips.forEach(c => { const s = el('span'); s.textContent = c; chipsBox.appendChild(s); });
+        pop.querySelector('.cv-intro-close').addEventListener('click', hideModelIntro);
+        document.body.appendChild(pop);
+
+        // 貼著下拉右側顯示；右邊放不下就換左邊，並夾回視窗可見範圍內
+        const r = anchorEl.getBoundingClientRect();
+        const pw = pop.offsetWidth, ph = pop.offsetHeight;
+        let x = r.right + 10;
+        if (x + pw > window.innerWidth - 8) x = r.left - pw - 10;
+        x = Math.max(8, Math.min(x, window.innerWidth - pw - 8));
+        const y = Math.max(8, Math.min(r.top, window.innerHeight - ph - 8));
+        pop.style.left = x + 'px';
+        pop.style.top = y + 'px';
+        introPopupEl = pop;
+    }
+
+    function wireModelIntro(node, category) {
+        const sel = node.modelSelect;
+        if (!sel) return;
+        sel.addEventListener('change', () => showModelIntro(sel, category, sel.value));
+    }
+
+    // 點視窗外任何地方、或按 Esc，就關掉介紹視窗。用 capture 是因為節點面板的
+    // mousedown 都 stopPropagation，冒泡階段的 document 監聽永遠收不到。
+    document.addEventListener('mousedown', (e) => {
+        if (introPopupEl && !introPopupEl.contains(e.target)) hideModelIntro();
+    }, true);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideModelIntro(); });
+
     // 這個版本的 LiteGraph 選取狀態存在 lgCanvas.selected_nodes 這個字典裡（用
     // node.id 當 key），不是 node.selected 這個布林屬性——實測過才發現的，直接
     // 讀 node.selected 永遠是 undefined。
@@ -758,6 +870,7 @@
 
         this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => { this.properties.model = v; });
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+        wireModelIntro(this, 'text');
         attachNodeChrome(this);
     }
     TextPromptNode.title = '文字 Text';
@@ -1174,6 +1287,7 @@
             this._syncMaxN();
         });
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+        wireModelIntro(this, 'image');
         this._rebuildSizeSelect(sizesForModel('image', this.properties.model));
         this._syncMaxN();
 
@@ -1444,6 +1558,7 @@
             applyVideoLimits(this, this._detectMode());
         });
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+        wireModelIntro(this, 'video');
 
         this.resSelect = buildSelect([], this.properties.resolution, (v) => { this.properties.resolution = v; });
         panel.querySelector('.cv-res-slot').appendChild(this.resSelect);
@@ -1678,6 +1793,7 @@
             this._applyLimits();
         });
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+        wireModelIntro(this, 'video');
 
         // 解析度先前寫死成 1080P、連選單都沒有；時長雖然在 properties 裡卻從來沒送出。
         // 兩者都依模型的限制動態產生（萬相 3.0 的視頻編輯支援 480P，那是它的基準價位）
@@ -1847,6 +1963,7 @@
 
         this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => { this.properties.model = v; });
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+        wireModelIntro(this, 'video');
 
         this.modeSelect = buildSelect(['wan-std', 'wan-pro'], this.properties.mode, (v) => { this.properties.mode = v; });
         panel.querySelector('.cv-mode-slot').appendChild(this.modeSelect);
@@ -1948,6 +2065,7 @@
             this._syncModelExtras();
         });
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+        wireModelIntro(this, 'image');
 
         panel.appendChild(buildPreview(this));
         wireConfigOverlay(this, panel);
@@ -2127,6 +2245,7 @@
             this._syncUiForModel();
         });
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+        wireModelIntro(this, 'muleai');
 
         this.resSelect = buildSelect(['1080P', '720P'], this.properties.resolution, (v) => { this.properties.resolution = v; });
         panel.querySelector('.cv-res-slot').appendChild(this.resSelect);
@@ -2314,6 +2433,7 @@
             this._syncUiForModel();
         });
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+        wireModelIntro(this, 'voice.tts');
 
         this.formatSelect = buildSelect(['mp3', 'wav', 'opus', 'flac'], this.properties.format, (v) => { this.properties.format = v; });
         panel.querySelector('.cv-format-slot').appendChild(this.formatSelect);
@@ -2442,6 +2562,7 @@
 
         this.modelSelect = buildSelect(models.map(m => m.id), this.properties.model, (v) => { this.properties.model = v; });
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
+        wireModelIntro(this, 'voice.asr');
 
         attachNodeChrome(this);
     }

@@ -8,6 +8,7 @@
 
 ## 2026-08-21
 
+- feat(canvas)：**模型介紹小視窗**——AI Canvas 任一節點（9 種）的模型下拉選到模型時，在下拉旁彈出該模型的介紹，點視窗外或按 Esc 關閉，純介紹不觸發生成。內容三部分：①家族特色文案（新檔 `static/js/model_intros.js`，以模型家族為單位手寫、約 25 個家族全涵蓋，遵守客戶文案規範）；②型號說明與規格 chips（尺寸種數／時長範圍／張數與參考圖上限／含配音／支援看圖／推理深度可調…），從 `/api/models` 資料動態產生、不寫死任何模型知識；③同一 id 多型態（t2i/i2i 等）分列說明。依使用者裁示不放官方連結、只留文字。家族歸類以 id 前綴規則比對（特定前綴排前面），已用腳本驗證全部模型 id 歸類正確；Playwright 實測圖片／影片／文字節點彈窗與 Esc／點外關閉行為。
 - fix：`scripts/update_announcements.py` 憑證路徑修正——寫死的 `NEN_ENV_PATH` 還指向搬家前的 `/Users/levi/claude_code/nen_ai_project/.env`（已不存在），改成實際位置 `/Users/levi/nen_ai_project/.env`。
 - feat：新增文字模型 `dola-seed-2.1-turbo`（Seed 2.1 Turbo，正式環境 `nen.com.tw` 實測）。按 token 計價（輸入 ratio 0.25、completion_ratio 5、cache_ratio 0.2）。實測重點：
   - `enable_thinking` 開關**無效**（true/false 各 3 次全部回 `reasoning_content`），跟 seed-2.0 系列同樣關不掉，`thinking` 維持 False 不顯示開關。
