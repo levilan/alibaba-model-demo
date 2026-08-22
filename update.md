@@ -8,6 +8,7 @@
 
 ## 2026-08-22
 
+- docs：CLAUDE.md 新增「前端美學風格」一節——Playground 前端對齊 NEN 官網設計系統（暖白紙面、髮絲線分區、唯一彩度汝窯天青、明體標題層、單一 10px 圓角；完整規範以官網 repo 的 DESIGN.md 為準）。主測試台亮色主題覆寫（theme-nen.css）目前為本地實驗未進版控；tooltip 深底／登入插畫／深色切換／Canvas 深色四題待裁決。
 - fix(canvas)：縮放列「重置」按鈕跑版——三顆按鈕共用固定 26px 寬，兩個中文字被擠成直排；給 `#zoomReset` 依內容撐開＋`white-space: nowrap`。
 
 ## 2026-08-21
