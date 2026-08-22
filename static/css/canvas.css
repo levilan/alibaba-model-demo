@@ -103,6 +103,8 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
     background: transparent; color: var(--cv-text-sub); cursor: pointer; font-size: 0.95rem;
 }
 .canvas-zoom-controls button:hover { background: var(--cv-panel-2); color: var(--cv-text); }
+/* 「重置」是兩個字，固定 26px 會被擠成直排，改成依內容撐開 */
+#zoomReset { width: auto; padding: 0 8px; white-space: nowrap; font-size: 0.78rem; }
 #zoomLabel { color: var(--cv-text-sub); width: 44px; text-align: center; }
 
 /* ── Login gate ──────────────────────────────────────────── */
