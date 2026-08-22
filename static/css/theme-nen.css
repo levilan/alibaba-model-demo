@@ -1,0 +1,230 @@
+/* ══════════════════════════════════════════════════════════════
+   theme-nen.css — Playground 主測試台的官網風格覆寫
+   載入順序：style.css 之後（index.html 最後一個 stylesheet）。
+   範圍：只動亮色主題；深色模式與 AI Canvas 這版不碰（等 Levi 裁決）。
+   設計來源：website/DESIGN.md 的色料表與鐵律。
+   ══════════════════════════════════════════════════════════════ */
+
+/* 標題層字型（本地實驗直接抓 Google Fonts；正式化再議 self-host） */
+@import url('https://fonts.googleapis.com/css2?family=Spectral:wght@400&family=Noto+Serif+TC:wght@400&display=swap');
+
+:root {
+  /* ── 唯一彩度：亮青 → 汝窯天青 ─────────────────────────── */
+  --ali-orange:      #7FA39E;   /* 天青，只給「有事發生」處 */
+  --ali-orange-dark: #3F625F;   /* 天青的文字階（hover、連結） */
+  --ali-orange-soft: #F6F2E9;   /* soft 底 → 第二層紙 */
+  --ali-orange-mid:  #B8CCC9;   /* 淡階（邊框 hover） */
+  --ali-blue:        #3F625F;   /* 第二色相收掉：藍一律走天青文字階 */
+  --ali-blue-soft:   #F6F2E9;
+
+  /* ── 紙面與墨色 ────────────────────────────────────────── */
+  --bg:           #FBFAF8;      /* 暖白紙面 */
+  --bg-white:     #FBFAF8;      /* 面板不另起白底 —— 紙只有一種，分區靠髮絲線 */
+  --bg-aside:     #FBFAF8;
+  --border:       #E6E2DB;      /* 髮絲線 */
+  --border-focus: #7FA39E;
+  --text-h:       #2B2724;
+  --text-body:    #5C564F;
+  --text-sub:     #787168;
+  --text-muted:   #8A837A;
+
+  /* ── 狀態色：語意保留，飽和度收斂到與紙面同溫 ─────────── */
+  --green:  #4E7D5B;
+  --red:    #B3574F;
+  --yellow: #A9853F;
+  --status-pending-bg:     #F6F2E9;
+  --status-success-bg:     #EFF4EC;
+  --status-success-border: #D5E2D0;
+  --status-error-bg:       #F7EDEA;
+  --status-error-border:   #E5CFC9;
+
+  /* ── 主題敏感雜項 ─────────────────────────────────────── */
+  --overlay-bg:         rgba(251, 250, 248, 0.78);
+  --toggle-off-bg:      #D9D4CC;
+  --ghost-hover-border: #C9C2B8;
+  --scrollbar-hover:    #C9C2B8;
+
+  /* ── 幾何：唯一的圓角 ─────────────────────────────────── */
+  --radius-sm: 10px;
+  --radius:    10px;
+  --radius-lg: 10px;
+
+  /* ── 陰影收斂成髮絲線 ─────────────────────────────────── */
+  --shadow-card: 0 0 0 1px var(--border);
+  --shadow-btn:  none;
+
+  /* ── 字型：正文交給系統（官網規則：中文正文不下載字體） ── */
+  --font: -apple-system, BlinkMacSystemFont, 'PingFang TC',
+          'Microsoft JhengHei', sans-serif;
+  /* --font-mono 不動：JetBrains Mono 與官網一致 */
+
+  /* 標題層（明體＋襯線），下面元件級規則使用 */
+  --nen-display: 'Spectral', 'Noto Serif TC', Georgia, serif;
+}
+
+/* ══ 元件級收斂（變數蓋不到的部分）══════════════════════════ */
+
+/* 品牌與標題進明體、單一字重 —— 層級靠字級與留白，不靠字重 */
+.brand-name,
+h1, h2, h3 {
+  font-family: var(--nen-display);
+  font-weight: 400;
+}
+
+/* 膠囊（20px 圓角）收斂到唯一圓角 */
+.brand-badge,
+.api-key-indicator,
+.session-cost-indicator,
+.login-card { border-radius: var(--radius); }
+
+/* 主要按鈕：實心色塊 → 髮絲線＋天青文字階；hover 才鋪第二層紙 */
+.btn-primary {
+  background: transparent;
+  color: var(--ali-orange-dark);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+.btn-primary:hover {
+  background: var(--ali-orange-soft);
+  border-color: var(--ali-orange-mid);
+  color: var(--ali-orange-dark);
+}
+
+/* 天青仍然屬於「有事發生」的小元件：toggle、送出鍵、進度 —— 保留實心，
+   但那是點狀的訊號，不是面狀的色塊，符合官網「天青＝這裡有事發生」語彙 */
+
+/* 選中分頁已經是「字色＋底線」語彙（.tab-btn.active），變數換色即對齊，不用另改 */
+
+/* 深色切換選單的選中底（--ali-orange-soft）會自動變成第二層紙，可接受 */
+
+/* 登入卡片的陰影與白底 → 紙面＋髮絲線 */
+.login-card {
+  background: var(--bg);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+/* 下載／燈箱按鈕 hover 的實心天青：改為文字階＋描邊 */
+.img-dl:hover,
+.img-lb-btn:hover {
+  background: var(--ali-orange-soft);
+  color: var(--ali-orange-dark);
+}
+
+/* ══ v2：硬編碼色值的覆寫（2026-08-22，依對版清單）════════════ */
+
+/* 1. 登入卡頭：亮青漸層 → 第二層紙＋髮絲線，字回墨色 */
+.login-header {
+  background: var(--ali-orange-soft);
+  background-image: none;
+  border-bottom: 1px solid var(--border);
+}
+.login-header * { color: var(--text-h); }
+/* 上一行特定度 (0,1,0) 蓋不過原檔的 .login-header-text h1/p（寫死 white）——
+   同形選擇器重寫（對版時抓到的） */
+.login-header-text h1 { color: var(--text-h); }
+.login-header-text p  { color: var(--text-sub); }
+.login-logo-box {
+  background: var(--bg);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+/* 2. 任務進度條：漸層尾端寫死亮青 → 平塗天青 */
+.vtc-progress-bar { background: var(--ali-orange); }
+
+/* 3. succeeded 卡的舊綠光暈 → 狀態邊框色的髮絲線 */
+.video-task-card:has(.vtc-status.succeeded) {
+  box-shadow: 0 0 0 1px var(--status-success-border);
+}
+
+/* 4. focus ring：舊亮青 rgba → 天青 rgba（rgba 字面值 var 蓋不到，整條重寫） */
+input[type="number"].number-input:focus,
+input:focus,
+select.select-input:focus,
+textarea.textarea-input:focus,
+.chat-textarea:focus {
+  box-shadow: 0 0 0 2px rgba(127, 163, 158, 0.22);
+}
+
+/* 5. 滑桿把手的亮青陰影 → 拿掉（把手本身已是天青，夠了） */
+input[type="range"]::-webkit-slider-thumb { box-shadow: none; }
+
+/* 6. 圖片卡 hover 的亮青光暈 → 天青淡階髮絲線（上浮動畫保留） */
+.img-card:hover { box-shadow: 0 0 0 1px var(--ali-orange-mid); }
+
+/* 7. 語音即時狀態點的光暈 → 對齊收斂後的狀態色 */
+.rt-dot.on   { box-shadow: 0 0 0 3px rgba(78, 125, 91, 0.18); }
+.rt-dot.busy { box-shadow: 0 0 0 3px rgba(169, 133, 63, 0.18); }
+
+/* 8. 錄音鍵 pulse 的舊紅 → 收斂紅（同名 keyframes 後定義者勝） */
+@keyframes rtPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(179, 87, 79, 0.4); }
+  50%      { box-shadow: 0 0 0 6px rgba(179, 87, 79, 0); }
+}
+
+/* 9（tooltip 深底）與 10（登入頁天空／檯燈插畫）進 Levi 裁決清單，這版不動 */
+
+/* ══ v3：夜間紙面（2026-08-22，Levi 裁決：深色保留、依同一套邏輯設計）══
+   色值直接取自官網 site.css 的墨面色料表（:root[data-theme="dark"]）——
+   不是把亮色調暗，是官網已經校過的第二色料表：暖墨 #191715（不是藍灰）、
+   夜間天青 #9CC0BA、天青文字階往亮調 #A9CCC6。
+   載入順序在 style.css 之後，同特定度後者勝，整塊接手 dark 的變數。 */
+:root[data-theme="dark"] {
+  /* 夜間天青（亮調，深底上才有對比） */
+  --ali-orange:      #9CC0BA;
+  --ali-orange-dark: #A9CCC6;
+  --ali-orange-soft: #1E1B18;   /* 第二層墨 */
+  --ali-orange-mid:  #3E4F4C;
+  --ali-blue:        #A9CCC6;
+  --ali-blue-soft:   #1E1B18;
+
+  /* 墨面與夜間墨色 */
+  --bg:           #191715;
+  --bg-white:     #191715;      /* 同亮色邏輯：面板不另起底，分區靠髮絲線 */
+  --bg-aside:     #191715;
+  --border:       #302C28;
+  --border-focus: #9CC0BA;
+  --text-h:       #EDEAE4;
+  --text-body:    #B8B1A8;
+  --text-sub:     #8F8880;
+  --text-muted:   #7A736B;
+
+  /* 狀態色夜間版：同樣收斂，明度抬高保對比 */
+  --green:  #7FA98B;
+  --red:    #C98A82;
+  --yellow: #C2A369;
+  --status-pending-bg:     #1E1B18;
+  --status-success-bg:     #1C221E;
+  --status-success-border: #33443A;
+  --status-error-bg:       #241C1B;
+  --status-error-border:   #46332F;
+
+  /* 主題敏感雜項 */
+  --overlay-bg:         rgba(25, 23, 21, 0.78);
+  --toggle-off-bg:      #3A352F;
+  --ghost-hover-border: #4A443D;
+  --scrollbar-hover:    #4A443D;
+
+  /* 夜間同樣不用陰影，髮絲線分區 */
+  --shadow-card: 0 0 0 1px var(--border);
+}
+
+/* v2 寫死的 rgba 字面值，夜間 scope 重蓋一次 */
+:root[data-theme="dark"] input[type="number"].number-input:focus,
+:root[data-theme="dark"] input:focus,
+:root[data-theme="dark"] select.select-input:focus,
+:root[data-theme="dark"] textarea.textarea-input:focus,
+:root[data-theme="dark"] .chat-textarea:focus {
+  box-shadow: 0 0 0 2px rgba(156, 192, 186, 0.25);
+}
+:root[data-theme="dark"] .rt-dot.on   { box-shadow: 0 0 0 3px rgba(127, 169, 139, 0.22); }
+:root[data-theme="dark"] .rt-dot.busy { box-shadow: 0 0 0 3px rgba(194, 163, 105, 0.22); }
+/* rtPulse 的收斂紅在墨底上對比足夠，keyframes 不分模式共用 */
+
+
+/* ══ 插畫裁決記錄（2026-08-22）══════════════════════════════════
+   登入頁插畫（天空／太陽／月亮／雲／星／檯燈）維持原本的彩色版 ——
+   曾嘗試照官網插圖語言整組重畫（high-key 紙面、暖灰＋天青兩色，
+   即 v4），Levi 看過實際效果後否決：「太陽和月亮顏色都沒了，
+   回上一版比較好看」。插畫是 Playground 的身分識別，不套兩色鐵律。
+   請勿再提案重畫。登入卡本身的紙面語彙（v2 的第二層紙卡頭、明體
+   標題、髮絲線按鈕）與插畫無關，維持。 */

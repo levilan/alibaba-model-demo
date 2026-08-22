@@ -1,0 +1,52 @@
+/* ══════════════════════════════════════════════════════════════
+   theme-nen-canvas.css — AI Canvas 的官網風格收斂（範圍受限版）
+   載入：canvas.html 在 canvas.css 之後。
+   Levi 裁決：只動「字型」與「低飽和」，底色／佈局／圓角一律不碰。
+   litegraph 畫在 <canvas> 上的節點框、連線、格線吃不到 CSS —— 本檔
+   只及於 DOM 層（頂欄、面板、下拉、彈窗），這在裁決範圍內。
+   ══════════════════════════════════════════════════════════════ */
+
+/* 標題層字型（Canvas 是獨立頁、無打包器，@import 在本檔首行有效） */
+@import url('https://fonts.googleapis.com/css2?family=Spectral:wght@400&family=Noto+Serif+TC:wght@400&display=swap');
+
+:root {
+  /* 高飽和四色收斂。彩度收斂到與官網同一套邏輯：
+     · 兩個 accent 併回天青一個色相（官網鐵律：不引入第二色相），
+       生成鈕用夜間天青、選中／連結用更亮的文字階 —— 靠明度與形態
+       （填色 vs 框線）區分，不靠色相
+     · 狀態紅綠取夜間紙面同一組收斂值 */
+  --cv-accent:   #8FB7B1;   /* 橘 #ff6a00 → 夜間天青（生成鈕、主要動作） */
+  --cv-accent-2: #A9CCC6;   /* 藍 #4f8cff → 天青亮階（選中、連結、focus） */
+  --cv-danger:   #C98A82;   /* 紅 #ff5555 → 收斂紅 */
+  --cv-ok:       #7FA98B;   /* 綠 #4ade80 → 收斂綠 */
+}
+
+/* 字型：正文交給系統（官網規則：中文不下載正文字體；Inter 對中文也無效） */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC',
+               'Microsoft JhengHei', sans-serif;
+}
+
+/* 標題層進明體：只給「標題性」的 DOM —— 選單標題與模型介紹彈窗的名稱。
+   .canvas-title-input 是輸入框，維持無襯線（可編輯的東西不該像刻好的字）。 */
+.add-node-menu-title,
+.cv-model-intro .cv-intro-name {
+  font-family: 'Spectral', 'Noto Serif TC', Georgia, serif;
+  font-weight: 400;
+}
+
+/* ── 硬編碼補丁（對版清單）───────────────────────────────── */
+
+/* 生成鈕：漸層尾端寫死亮橘 → 平塗天青（同主測試台進度條的處理） */
+.cv-node-panel button.cv-generate,
+.cv-config-overlay button.cv-generate {
+  background: var(--cv-accent);
+}
+
+/* 輸出插槽旁的「+」快速鈕：舊藍 rgba 光暈 → 天青 */
+.cv-add-link-btn {
+  box-shadow: 0 0 0 3px rgba(143, 183, 177, 0.14);
+}
+
+/* accent 併回單一色相後，選中埠與生成鈕靠明度＋形態區分 ——
+   實際拉線驗證分得出來（2026-08-22），暫不退低飽和藍 */

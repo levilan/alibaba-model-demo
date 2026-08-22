@@ -8,6 +8,11 @@
 
 ## 2026-08-22
 
+- feat(ui)：**前端對齊 NEN 官網設計系統**（Levi 驗收通過後正式化）。與官網 session（website repo）跨 session 協作完成，設計出自官網 DESIGN.md 的色料表與鐵律，四輪對版逐版截圖驗證：
+  - 新增 `static/css/theme-nen.css`（index.html 於 style.css 之後載入）：亮色＝暖白紙面 #FBFAF8、髮絲線 #E6E2DB 分區、唯一彩度汝窯天青 #7FA39E、明體標題層（Spectral + Noto Serif TC）、單一 10px 圓角、陰影收斂成髮絲線、實心主按鈕改髮絲線＋天青文字階；狀態色收斂到與紙面同溫。含 v2 硬編碼覆寫（登入卡頭漸層、進度條、succeeded 光暈、focus ring、滑桿、rt 狀態點、rtPulse 共 8 處）與 v3 夜間紙面（`:root[data-theme="dark"]` 整塊接手：暖墨 #191715、夜間天青 #9CC0BA、狀態色明度抬高——取官網墨面色料表，非調暗亮色）。
+  - 新增 `static/css/theme-nen-canvas.css`（canvas.html 於 canvas.css 之後載入）：依裁決僅動字型（正文系統字、選單標題與模型介紹彈窗名稱進明體）與高飽和收斂（--cv-accent 橘→夜間天青、--cv-accent-2 藍→天青亮階、danger/ok 對齊夜間組；生成鈕漸層改平塗、+ 鈕光暈換天青）；底色、佈局、litegraph 畫布繪製層一律未動。
+  - 裁決記錄：登入頁彩色插畫（太陽/月亮/雲/檯燈）**維持原版**——曾整組重畫成暖灰 high-key（v4），Levi 看過否決，已移除並在檔內註記請勿再提案；tooltip 深色底一題尚未裁決，維持現狀。
+  - 修掉原檔一個特定度問題：`.login-header-text h1/p` 寫死 white，須同形選擇器覆寫（詳見 theme-nen.css 註解）。
 - docs：CLAUDE.md 新增「前端美學風格」一節——Playground 前端對齊 NEN 官網設計系統（暖白紙面、髮絲線分區、唯一彩度汝窯天青、明體標題層、單一 10px 圓角；完整規範以官網 repo 的 DESIGN.md 為準）。主測試台亮色主題覆寫（theme-nen.css）目前為本地實驗未進版控；tooltip 深底／登入插畫／深色切換／Canvas 深色四題待裁決。
 - fix(canvas)：縮放列「重置」按鈕跑版——三顆按鈕共用固定 26px 寬，兩個中文字被擠成直排；給 `#zoomReset` 依內容撐開＋`white-space: nowrap`。
 
