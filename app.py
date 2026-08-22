@@ -252,13 +252,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 統計用的 middleware：涵蓋所有 /api/* 與 /login，端點程式碼一行都不用改，
-# 之後新增端點也自動被納入（不會有人忘記加）。
+# 統計用的 middleware：涵蓋所有 /api/* 與 /login，之後新增端點也自動被納入。
 #
-# ⚠️ **這裡不記 model。** 想記的話得從請求 body 拿，但 BaseHTTPMiddleware 讀了 body
-# 之後端點就讀不到了（要自己重包 receive），而 ContextVar 由端點回傳也不可靠——
-# BaseHTTPMiddleware 在另一個 task 執行端點，set 的值傳不回這裡。為了「知道有哪些人
-# 在用」這個目標，endpoint 已經夠用；真要 model 維度再單獨針對幾個端點補。
+# model 維度的取得方式是 **`request.state.model`**：各生成端點解析出 model 後設一行
+# `request.state.model = ...`，middleware 在 finally 讀回來。這能跨 task 傳遞是因為
+# Request.state 存在 ASGI scope dict 裡，middleware 與端點拿到的 Request 物件雖不同、
+# scope 是同一個。先前註解記過的兩條死路仍然成立，不要走回去：
+#   · middleware 直接讀 body——BaseHTTPMiddleware 讀了 body 端點就讀不到（要重包
+#     receive），且 multipart 大檔上傳會被整包吸進記憶體；
+#   · ContextVar——BaseHTTPMiddleware 在另一個 task 執行端點，set 的值傳不回這裡。
+# 端點忘記設 state 的話該筆只是沒有 model 欄位，統計本身照常。
 @app.middleware("http")
 async def _stats_middleware(request: Request, call_next):
     path = request.url.path
@@ -275,8 +278,13 @@ async def _stats_middleware(request: Request, call_next):
         try:
             auth = request.headers.get("authorization", "")
             key = auth[7:] if auth.lower().startswith("bearer ") else request.query_params.get("api_key")
+            model = getattr(request.state, "model", None)
+            if not model and path.startswith("/api/muleai/status/"):
+                # muleai 的輪詢把 model 放在路徑上，不用端點配合就拿得到
+                seg = path.split("/")
+                model = seg[4] if len(seg) > 4 else None
             await _stats_record(_stats_uid(key), path, 200 <= status < 400, status,
-                                ms=int((time.monotonic() - t0) * 1000))
+                                model=model, ms=int((time.monotonic() - t0) * 1000))
         except Exception:
             pass
 
@@ -1456,7 +1464,8 @@ class OmniChatRequest(BaseModel):
     instructions: Optional[str] = None
 
 @app.post("/api/omni/chat")
-async def omni_chat(data: OmniChatRequest, api_key: str = Depends(get_api_key)):
+async def omni_chat(request: Request, data: OmniChatRequest, api_key: str = Depends(get_api_key)):
+    request.state.model = data.model
     msgs = []
     if data.instructions:
         msgs.append({"role": "system", "content": data.instructions})
@@ -1735,7 +1744,8 @@ def _openai_usage(usage) -> dict:
 
 
 @app.post("/api/text/generate")
-async def text_generate(data: TextGenerateRequest, api_key: str = Depends(get_api_key)):
+async def text_generate(request: Request, data: TextGenerateRequest, api_key: str = Depends(get_api_key)):
+    request.state.model = data.model
     if not data.prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
 
@@ -1871,7 +1881,8 @@ class AnalyzeImageRequest(BaseModel):
     image_data_uri: str
 
 @app.post("/api/text/analyze_image")
-async def analyze_image(data: AnalyzeImageRequest, api_key: str = Depends(get_api_key)):
+async def analyze_image(request: Request, data: AnalyzeImageRequest, api_key: str = Depends(get_api_key)):
+    request.state.model = data.model
     if not data.image_data_uri:
         raise HTTPException(status_code=400, detail="image_data_uri is required")
     try:
@@ -1908,6 +1919,7 @@ async def muleai_generate(
     audio: Optional[UploadFile] = File(None),
     api_key: str = Depends(get_api_key)
 ):
+    request.state.model = model
     is_face_swap    = model == "face-swap"
     is_img_edit     = model == "qwen-image-edit-spicy"
     is_image_model  = "z-image" in model or is_img_edit or is_face_swap
@@ -2348,7 +2360,8 @@ class ImageGenerateRequest(BaseModel):
     height: Optional[int] = None
 
 @app.post("/api/image/generate")
-async def image_generate(data: ImageGenerateRequest, api_key: str = Depends(get_api_key)):
+async def image_generate(request: Request, data: ImageGenerateRequest, api_key: str = Depends(get_api_key)):
+    request.state.model = data.model
     if not data.prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")
 
@@ -2425,6 +2438,7 @@ _NO_REF_STRENGTH_EDIT_MODELS = _QWEN_FUSION_EDIT_MODELS | {"gpt-image-2", "gpt-i
 async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
     form = await request.form()
     model       = form.get("model", "wan2.6-image")
+    request.state.model = model
     is_fusion_edit = model in _QWEN_FUSION_EDIT_MODELS
     prompt      = form.get("prompt", "")
     neg_prompt  = form.get("negative_prompt", "")
@@ -2824,6 +2838,7 @@ async def _generate_omni_video(model: str, prompt: str, api_key: str,
 async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
     form = await request.form()
     model           = form.get("model", "wan2.6-t2v")
+    request.state.model = model
     prompt          = form.get("prompt", "")
     negative_prompt = form.get("negative_prompt", "")
     resolution      = form.get("resolution", "720P")
@@ -2881,6 +2896,7 @@ async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
 async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
     form = await request.form()
     model         = form.get("model", "wan2.7-i2v")
+    request.state.model = model
     prompt        = form.get("prompt", "")
     neg_prompt    = form.get("negative_prompt", "")
     resolution    = form.get("resolution", "720P")
@@ -3022,6 +3038,7 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
 async def video_vedit(request: Request, api_key: str = Depends(get_api_key)):
     form = await request.form()
     model         = form.get("model", "wan2.7-videoedit")
+    request.state.model = model
     prompt        = form.get("prompt", "")
     neg_prompt    = form.get("negative_prompt", "")
     resolution    = form.get("resolution", "1080P")
@@ -3085,6 +3102,7 @@ async def video_vedit(request: Request, api_key: str = Depends(get_api_key)):
 async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
     form = await request.form()
     model         = form.get("model", "wan2.6-r2v")
+    request.state.model = model
     prompt        = form.get("prompt", "")
     resolution    = form.get("resolution", "720P")
     ratio         = form.get("ratio") or _default_ratio(model)
@@ -3183,6 +3201,7 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
 async def video_animate(request: Request, api_key: str = Depends(get_api_key)):
     form = await request.form()
     model       = form.get("model", "wan2.2-animate-mix")
+    request.state.model = model
     mode        = form.get("mode", "wan-std")
     watermark   = str(form.get("watermark", "false")).lower() in ("true", "1", "yes")
     check_image = str(form.get("check_image", "true")).lower() in ("true", "1", "yes")
@@ -3333,6 +3352,7 @@ async def video_status_debug(task_id: str, api_key: str = Depends(get_api_key)):
 async def voice_asr(request: Request, api_key: str = Depends(get_api_key)):
     form = await request.form()
     model = str(form.get("model", "qwen-audio-3.0-asr-flash"))
+    request.state.model = model
     audio_file = form.get("audio")
     if not audio_file or not hasattr(audio_file, "read"):
         raise HTTPException(status_code=400, detail="缺少音檔")
@@ -3363,6 +3383,7 @@ async def voice_asr_stream(request: Request, api_key: str = Depends(get_api_key)
     """串流語音辨識——上游以 SSE 逐步回傳中間辨識結果，這裡原封不動轉發給前端。"""
     form = await request.form()
     model = str(form.get("model", "qwen-audio-3.0-asr-flash-streaming"))
+    request.state.model = model
     audio_file = form.get("audio")
     if not audio_file or not hasattr(audio_file, "read"):
         raise HTTPException(status_code=400, detail="缺少音檔")
@@ -3417,7 +3438,8 @@ class VoiceTtsRequest(BaseModel):
     language_hints: List[str] = []
 
 @app.post("/api/voice/tts")
-async def voice_tts(data: VoiceTtsRequest, api_key: str = Depends(get_api_key)):
+async def voice_tts(request: Request, data: VoiceTtsRequest, api_key: str = Depends(get_api_key)):
+    request.state.model = data.model
     if not data.text:
         raise HTTPException(status_code=400, detail="Text is required")
     try:
@@ -3524,6 +3546,7 @@ async def voice_tts(data: VoiceTtsRequest, api_key: str = Depends(get_api_key)):
 async def music_generate(request: Request, api_key: str = Depends(get_api_key)):
     form = await request.form()
     model = form.get("model", "lyria-3-clip-preview")
+    request.state.model = model
     prompt = (form.get("prompt") or "").strip()
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is required")

@@ -6,6 +6,17 @@
 
 ---
 
+## 2026-08-23
+
+- feat(stats)：**報表顯示使用者名稱、模型顯示名，長表前端分頁**。
+  - 新增 `scripts/build_uid_map.py`：唯讀連網關正式 PostgreSQL（Levi 確認後執行）撈 tokens×users，把每把 key **在記憶體裡**算成 uid（sk- 前綴與裸 key 兩形都算），只落地 uid→使用者名稱對照檔 `outputs/uid-map.json`（gitignore、不進 image）——明文 key 全程不落地。⚠️ 對照檔是去匿名化資料，同報表級保管，更新重跑即可。踩坑記錄：共用 .env 該區塊的 ip/user/passwd 是 VM 的 SSH 憑證，Postgres 帳密在同區塊的 `postgresql://` URI 裡（密碼 URL 編碼、URI 內 host 是內網 IP），且 pg_hba 要求 SSL。
+  - `usage_stats.py`：使用者欄顯示「名稱＋小字 uid」（無對照檔退回 uid）；模型欄用 `app.MODELS` 的顯示名（單一真實來源，import app 取得）；使用者／來源 IP／請求明細三張表前端分頁（vanilla JS，各 15/15/25 筆一頁），請求明細上限 200→1000。venv 補裝 psycopg2-binary（僅本地腳本用，刻意不進 requirements.txt）。
+- feat(stats)：**報表補「來源 IP／模型／請求明細」三個分析維度**（使用者要求：分析哪個用戶、連線 IP、用了什麼模型、做了什麼 API 動作）。
+  - IP 的設計原則不變：**統計檔照舊不存 IP**（外流無害的前提不動）。`scripts/usage_stats.py` 在本地產生報表的當下，用本機 gcloud 憑證即時查 Cloud Logging（平台請求日誌，保留 30 天），以「端點＋狀態碼＋最接近時間（容忍 10 分鐘，統計記於請求結束、日誌記於請求開始）」對回每筆統計紀錄——IP 只存在於本機產生的 HTML 裡。新增 `--no-ip` 旗標；gcloud 不可用時自動退化為無 IP 版本。實測 7 天資料：1994 筆日誌對上 151/203 筆統計（沒對上的是本機開發紀錄，本來就無雲端日誌）。
+  - 模型維度：`app.py` 統計 middleware 改由 `request.state.model` 取 model（ASGI scope 共享，繞過先前註解記錄的 BaseHTTPMiddleware 讀 body 與 ContextVar 兩條死路），15 個生成端點各補一行 `request.state.model = ...`；muleai 輪詢從路徑直接取。**需部署後新資料才有 model 欄位**，舊紀錄無此維度（報表 footer 已註明）。
+  - 報表新增「來源 IP」彙總表（IP／次數／uid／主要端點／User-Agent）與「請求明細」表（最近 200 筆：時間／uid／IP／模型／端點／狀態／ms）；使用者表加「模型」「來源 IP」欄。
+  - 時區修正：統計 ts 與 Cloud Logging 都是 UTC，報表顯示一律轉台北時間並標注（先前報表顯示 UTC 造成過誤讀）；`--days` 篩選基準同步改用 UTC。
+
 ## 2026-08-22
 
 - feat(ui)：**前端對齊 NEN 官網設計系統**（Levi 驗收通過後正式化）。與官網 session（website repo）跨 session 協作完成，設計出自官網 DESIGN.md 的色料表與鐵律，四輪對版逐版截圖驗證：
