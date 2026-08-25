@@ -3696,10 +3696,59 @@ _MCP_TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "category": {"type": "string", "enum": ["image", "video"],
-                             "description": "省略 = 全部（第一階段僅圖片與影片）"},
+                "category": {"type": "string", "enum": ["image", "video", "voice"],
+                             "description": "省略 = 全部。voice 含 tts（語音合成，附音色清單）與 asr（語音辨識）"},
                 "model": {"type": "string", "description": "指定單一模型 id 時回完整約束"},
             },
+        },
+    },
+    {
+        "name": "nenai_edit_image",
+        "description": (
+            "圖像編輯／多圖融合（同步）。以文字指令修改參考圖，或融合多張參考圖。"
+            "參考圖張數上限依模型（見 nenai_list_models 的 max_ref）。"
+            "回傳圖片 URL——" + _MCP_EXPIRES_HINT),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "model": {"type": "string"},
+                "prompt": {"type": "string", "description": "編輯指令"},
+                "images": {"type": "array", "items": {"type": "string"}, "minItems": 1,
+                           "description": "參考圖：http(s) URL 或 data URI，張數上限依模型"},
+                "size": {"type": "string", "description": "輸出尺寸，合法值見 nenai_list_models"},
+                "negative_prompt": {"type": "string"},
+                "seed": {"type": "integer"},
+            },
+            "required": ["model", "prompt", "images"],
+        },
+    },
+    {
+        "name": "nenai_tts",
+        "description": ("語音合成（同步）。合法音色 id 見 nenai_list_models(category=\"voice\") "
+                        "各模型的 voices。回傳音訊 URL——" + _MCP_EXPIRES_HINT),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "model": {"type": "string"},
+                "text": {"type": "string"},
+                "voice": {"type": "string", "description": "音色 id，省略用模型預設"},
+                "format": {"type": "string", "enum": ["mp3", "wav", "opus", "flac"],
+                           "description": "部分模型固定回 wav"},
+            },
+            "required": ["model", "text"],
+        },
+    },
+    {
+        "name": "nenai_asr",
+        "description": "語音辨識（同步）。輸入音訊檔，回傳文字。",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "model": {"type": "string"},
+                "audio_url": {"type": "string",
+                              "description": "音訊檔：http(s) URL 或 data URI（上限 50MB）"},
+            },
+            "required": ["model", "audio_url"],
         },
     },
     {
@@ -3830,7 +3879,9 @@ async def _mcp_tool_list_models(api_key: str, args: dict, request: Request) -> d
 
     category, want = args.get("category"), args.get("model")
     out: dict = {}
-    for cat in (["image", "video"] if not category else [category]):
+    flat_cats = ["image", "video"] if not category else \
+        [c for c in [category] if c in ("image", "video")]   # voice 是巢狀，另段處理
+    for cat in flat_cats:
         rows = []
         for m in all_models.get(cat, []):
             if want and m["id"] != want:
@@ -3844,9 +3895,30 @@ async def _mcp_tool_list_models(api_key: str, args: dict, request: Request) -> d
             rows.append(row)
         if rows:
             out[cat] = rows
+    # voice 分類是巢狀的 {tts:[...], asr:[...]}，音色清單只給 id/name/desc
+    if category in (None, "voice"):
+        voice_out: dict = {}
+        for sub in ("tts", "asr"):
+            rows = []
+            for m in all_models.get("voice", {}).get(sub, []):
+                if want and m["id"] != want:
+                    continue
+                row = {"id": m["id"], "name": m.get("name"), "desc": m.get("desc")}
+                if m.get("voices"):
+                    row["voices"] = [{"id": v["id"], "name": v.get("name"),
+                                      "desc": v.get("desc")} for v in m["voices"]]
+                if m["id"] in pricing:
+                    row["pricing"] = pricing[m["id"]]
+                rows.append(row)
+            if rows:
+                voice_out[sub] = rows
+        if voice_out:
+            out["voice"] = voice_out
+
     if want and not out:
-        return _mcp_err("model", f"找不到模型 {want}",
-                        sorted({m['id'] for c in ("image", "video") for m in all_models.get(c, [])}))
+        all_ids = sorted({m['id'] for c in ("image", "video") for m in all_models.get(c, [])}
+                         | {m['id'] for sub in all_models.get("voice", {}).values() for m in sub})
+        return _mcp_err("model", f"找不到模型 {want}", all_ids)
     if not pricing:
         out["note"] = "本次未能取得單價（pricing 欄位缺席），模型與約束不受影響"
     return out
@@ -3885,27 +3957,28 @@ async def _mcp_tool_generate_image(api_key: str, args: dict, request: Request) -
     return {"images": images, "model": model, "expires_hint": _MCP_EXPIRES_HINT}
 
 
-async def _mcp_fetch_image_input(image_url: str):
-    """把 image_url（http(s) 或 data URI）取成 bytes；處理中暫存，不落地。"""
-    if image_url.startswith("data:"):
+async def _mcp_fetch_media(url: str, field: str, cap_mb: int = 20,
+                           default_mime: str = "image/png"):
+    """把 URL（http(s) 或 data URI）取成 bytes；處理中暫存，不落地。"""
+    if url.startswith("data:"):
         try:
-            head, b64 = image_url.split(",", 1)
-            mime = head.split(";")[0][5:] or "image/png"
+            head, b64 = url.split(",", 1)
+            mime = head.split(";")[0][5:] or default_mime
             return base64.b64decode(b64), mime, None
         except Exception:
-            return None, None, _mcp_err("image_url", "data URI 解析失敗")
-    if not image_url.startswith(("http://", "https://")):
-        return None, None, _mcp_err("image_url", "僅接受 http(s) URL 或 data URI")
+            return None, None, _mcp_err(field, "data URI 解析失敗")
+    if not url.startswith(("http://", "https://")):
+        return None, None, _mcp_err(field, "僅接受 http(s) URL 或 data URI")
     try:
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-            r = await client.get(image_url)
+            r = await client.get(url)
             if r.status_code != 200:
-                return None, None, _mcp_err("image_url", f"下載失敗（HTTP {r.status_code}）")
-            if len(r.content) > 20 * 1024 * 1024:
-                return None, None, _mcp_err("image_url", "圖片超過 20MB 上限")
-            return r.content, r.headers.get("content-type", "image/png").split(";")[0], None
+                return None, None, _mcp_err(field, f"下載失敗（HTTP {r.status_code}）")
+            if len(r.content) > cap_mb * 1024 * 1024:
+                return None, None, _mcp_err(field, f"檔案超過 {cap_mb}MB 上限")
+            return r.content, r.headers.get("content-type", default_mime).split(";")[0], None
     except Exception as e:
-        return None, None, _mcp_err("image_url", f"下載失敗（{type(e).__name__}）")
+        return None, None, _mcp_err(field, f"下載失敗（{type(e).__name__}）")
 
 
 async def _mcp_tool_generate_video(api_key: str, args: dict, request: Request) -> dict:
@@ -3937,7 +4010,7 @@ async def _mcp_tool_generate_video(api_key: str, args: dict, request: Request) -
 
     files = None
     if is_i2v:
-        blob, mime, err = await _mcp_fetch_image_input(args["image_url"])
+        blob, mime, err = await _mcp_fetch_media(args["image_url"], "image_url")
         if err:
             return err
         files = {"image": ("input" + (".png" if "png" in mime else ".jpg"), blob, mime)}
@@ -3970,11 +4043,96 @@ async def _mcp_tool_task_status(api_key: str, args: dict, request: Request) -> d
     return out
 
 
+async def _mcp_tool_edit_image(api_key: str, args: dict, request: Request) -> dict:
+    model = args.get("model", "")
+    catalog = {m["id"]: m for m in MODELS.get("image", []) if m.get("type") == "i2i"}
+    if model not in catalog:
+        return _mcp_err("model", f"{model} 不是圖像編輯模型", sorted(catalog))
+    meta = catalog[model]
+    images = args.get("images") or []
+    max_ref = meta.get("max_ref", 9)
+    if len(images) > max_ref:
+        return _mcp_err("images", f"{model} 參考圖最多 {max_ref} 張（收到 {len(images)}）")
+    size = args.get("size")
+    if size and meta.get("sizes") and size not in meta["sizes"] and not meta.get("custom_size"):
+        return _mcp_err("size", f"{model} 不接受 size={size}", meta["sizes"])
+
+    data = {"model": model, "prompt": args.get("prompt", "")}
+    if size: data["size"] = size
+    if args.get("negative_prompt"): data["negative_prompt"] = args["negative_prompt"]
+    if args.get("seed") is not None: data["seed"] = str(args["seed"])
+    files = []
+    for i, u in enumerate(images, 1):
+        blob, mime, err = await _mcp_fetch_media(u, f"images[{i - 1}]")
+        if err:
+            return err
+        ext = ".png" if "png" in mime else ".jpg"
+        files.append((f"image_{i}", (f"ref_{i}{ext}", blob, mime)))
+    resp = await _mcp_internal(api_key, "POST", "/api/image/edit", data=data, files=files)
+    rj = resp.json()
+    if resp.status_code != 200 or not rj.get("success"):
+        return {"error": "generation_failed", "message": str(rj.get("error") or rj)[:500]}
+    out_images = []
+    for img in rj.get("images", []):
+        if isinstance(img, dict):
+            url = img.get("url") or ""
+            out_images.append({"url": url if url.startswith("http") else _mcp_abs(url or img.get("local_path"), request),
+                               "fallback_url": _mcp_abs(img.get("local_path"), request)})
+        else:
+            out_images.append({"url": _mcp_abs(str(img), request)})
+    return {"images": out_images, "model": model, "expires_hint": _MCP_EXPIRES_HINT}
+
+
+async def _mcp_tool_tts(api_key: str, args: dict, request: Request) -> dict:
+    model = args.get("model", "")
+    catalog = {m["id"]: m for m in MODELS.get("voice", {}).get("tts", [])}
+    if model not in catalog:
+        return _mcp_err("model", f"{model} 不是語音合成模型", sorted(catalog))
+    meta = catalog[model]
+    voice = args.get("voice", "")
+    if voice and meta.get("voices"):
+        valid = [v["id"] for v in meta["voices"]]
+        if voice not in valid:
+            return _mcp_err("voice", f"{model} 沒有音色 {voice}", valid)
+    body = {"model": model, "text": args.get("text", "")}
+    if voice: body["voice"] = voice
+    if args.get("format"): body["format"] = args["format"]
+    resp = await _mcp_internal(api_key, "POST", "/api/voice/tts", json=body)
+    rj = resp.json()
+    if resp.status_code != 200 or not rj.get("success"):
+        return {"error": "generation_failed", "message": str(rj.get("error") or rj)[:500]}
+    return {"audio_url": _mcp_abs(rj.get("audio_url"), request), "model": model,
+            "expires_hint": _MCP_EXPIRES_HINT}
+
+
+async def _mcp_tool_asr(api_key: str, args: dict, request: Request) -> dict:
+    model = args.get("model", "")
+    catalog = {m["id"]: m for m in MODELS.get("voice", {}).get("asr", [])}
+    if model not in catalog:
+        return _mcp_err("model", f"{model} 不是語音辨識模型", sorted(catalog))
+    blob, mime, err = await _mcp_fetch_media(args.get("audio_url", ""), "audio_url",
+                                             cap_mb=50, default_mime="audio/wav")
+    if err:
+        return err
+    ext = {"audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/x-wav": ".wav",
+           "audio/mp4": ".m4a", "audio/flac": ".flac", "audio/ogg": ".ogg"}.get(mime, ".wav")
+    resp = await _mcp_internal(api_key, "POST", "/api/voice/asr",
+                               data={"model": model},
+                               files={"audio": (f"input{ext}", blob, mime)})
+    rj = resp.json()
+    if resp.status_code != 200 or not rj.get("success"):
+        return {"error": "recognition_failed", "message": str(rj.get("error") or rj)[:500]}
+    return {"text": rj.get("text", ""), "model": model}
+
+
 _MCP_TOOL_IMPL = {
     "nenai_list_models": _mcp_tool_list_models,
     "nenai_generate_image": _mcp_tool_generate_image,
     "nenai_generate_video": _mcp_tool_generate_video,
     "nenai_task_status": _mcp_tool_task_status,
+    "nenai_edit_image": _mcp_tool_edit_image,
+    "nenai_tts": _mcp_tool_tts,
+    "nenai_asr": _mcp_tool_asr,
 }
 
 

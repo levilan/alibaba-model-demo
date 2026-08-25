@@ -64,7 +64,8 @@ def test_tools_list_has_phase1_tools():
     r = _rpc({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     names = {t["name"] for t in r.json()["result"]["tools"]}
     assert names == {"nenai_list_models", "nenai_generate_image",
-                     "nenai_generate_video", "nenai_task_status"}
+                     "nenai_generate_video", "nenai_task_status",
+                     "nenai_edit_image", "nenai_tts", "nenai_asr"}
     # 每個工具都要有 inputSchema（客戶端靠這個做參數 UI 與驗證）
     for t in r.json()["result"]["tools"]:
         assert t["inputSchema"]["type"] == "object"
@@ -162,6 +163,40 @@ def test_generate_video_bad_image_url_scheme():
     out = _call_tool("nenai_generate_video",
                      {"model": m["id"], "prompt": "x", "image_url": "ftp://x/y.png"})
     assert out["isError"] and out["field"] == "image_url"
+
+
+def test_edit_image_t2i_only_model_rejected():
+    # 只有 t2i 沒有 i2i 的模型不能拿來編輯，錯誤要列出 i2i 合法清單
+    i2i = {m["id"] for m in MODELS["image"] if m.get("type") == "i2i"}
+    t2i_only = {m["id"] for m in MODELS["image"] if m.get("type") == "t2i"} - i2i
+    if not t2i_only:
+        pytest.skip("所有 t2i 模型都有 i2i 對應")
+    out = _call_tool("nenai_edit_image",
+                     {"model": sorted(t2i_only)[0], "prompt": "x",
+                      "images": ["data:image/png;base64,aGk="]})
+    assert out["isError"] and out["field"] == "model"
+    assert set(out["valid_values"]) == i2i
+
+
+def test_edit_image_too_many_refs():
+    m = next(m for m in MODELS["image"] if m.get("type") == "i2i" and m.get("max_ref"))
+    imgs = ["data:image/png;base64,aGk="] * (m["max_ref"] + 1)
+    out = _call_tool("nenai_edit_image", {"model": m["id"], "prompt": "x", "images": imgs})
+    assert out["isError"] and out["field"] == "images"
+    assert str(m["max_ref"]) in out["message"]
+
+
+def test_tts_bad_voice_lists_valid_ids():
+    m = next(m for m in MODELS["voice"]["tts"] if m.get("voices"))
+    out = _call_tool("nenai_tts", {"model": m["id"], "text": "hi", "voice": "no-such-voice"})
+    assert out["isError"] and out["field"] == "voice"
+    assert out["valid_values"] == [v["id"] for v in m["voices"]]
+
+
+def test_asr_unknown_model():
+    out = _call_tool("nenai_asr", {"model": "not-asr", "audio_url": "data:audio/wav;base64,aGk="})
+    assert out["isError"] and out["field"] == "model"
+    assert all(m["id"] in out["valid_values"] for m in MODELS["voice"]["asr"])
 
 
 def test_unknown_tool():
