@@ -531,3 +531,36 @@ def test_default_ratio_per_generation():
     assert app._default_ratio("happyhorse-1.1-t2v") == ""
     assert app._default_ratio("wan2.6-t2v") == ""
     assert app._default_ratio("veo-3.1-generate-001") == "16:9"
+
+
+# ── _apply_image_negative_prompt：圖像 negative_prompt 的家族分流 ──────────
+# 平台 marshal 實測 2026-08-25：千問 3.0 扁平靜默失效、巢狀 parameters 有效；
+# MAI 請求被重建怎麼寫都到不了上游。與 wan 影片 metadata 那批同型的坑。
+
+def test_image_neg_prompt_qwen3_goes_parameters():
+    payload = {"model": "qwen-image-3.0", "prompt": "x"}
+    app._apply_image_negative_prompt(payload, "qwen-image-3.0", "blurry")
+    assert payload["parameters"] == {"negative_prompt": "blurry"}
+    assert "negative_prompt" not in payload
+
+
+def test_image_neg_prompt_mai_not_sent():
+    payload = {"model": "MAI-Image-2.5", "prompt": "x"}
+    app._apply_image_negative_prompt(payload, "MAI-Image-2.5", "blurry")
+    assert "negative_prompt" not in payload and "parameters" not in payload
+
+
+def test_image_neg_prompt_others_stay_flat():
+    # 其他家族維持扁平（未驗證前不改——各代巢狀位置不同，等平台批次結果）
+    payload = {"model": "z-image-turbo", "prompt": "x"}
+    app._apply_image_negative_prompt(payload, "z-image-turbo", "blurry")
+    assert payload["negative_prompt"] == "blurry"
+
+
+def test_mai_models_flagged_all_four():
+    # 平台 marshal 實測：MAI 重建請求只留 model/prompt/size/n（generations 與 edits
+    # 同一個函式）——六筆條目（t2i＋i2i）四旗標都要在，少一顆 UI 就會騙人
+    for m in app.MODELS["image"]:
+        if m["id"].startswith("MAI-Image"):
+            for flag in ("no_seed", "no_negative_prompt", "no_watermark", "no_prompt_extend"):
+                assert m.get(flag), m["name"] + " 缺 " + flag

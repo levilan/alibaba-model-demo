@@ -740,16 +740,22 @@ MODELS = {
             "id": "MAI-Image-2.5-Pro", "name": "MAI-Image-2.5-Pro", "group": "MAI Image",
             "desc": "旗艦圖像生成 Pro", "type": "t2i", "max_n": 1,
             "sizes": _MAI_IMAGE_SIZES, "custom_size": _MAI_CUSTOM_SIZE,
+            # 平台 marshal 實測 2026-08-25：MAI 轉換函式重建請求，seed/negative_prompt 怎麼寫都到不了上游
+            "no_seed": True, "no_negative_prompt": True, "no_watermark": True, "no_prompt_extend": True,
         },
         {
             "id": "MAI-Image-2.5", "name": "MAI-Image-2.5", "group": "MAI Image",
             "desc": "旗艦圖像生成", "type": "t2i", "max_n": 1,
             "sizes": _MAI_IMAGE_SIZES, "custom_size": _MAI_CUSTOM_SIZE,
+            # 平台 marshal 實測 2026-08-25：MAI 轉換函式重建請求，seed/negative_prompt 怎麼寫都到不了上游
+            "no_seed": True, "no_negative_prompt": True, "no_watermark": True, "no_prompt_extend": True,
         },
         {
             "id": "MAI-Image-2.5-Flash", "name": "MAI-Image-2.5-Flash", "group": "MAI Image",
             "desc": "極速圖像生成", "type": "t2i", "max_n": 1,
             "sizes": _MAI_IMAGE_SIZES, "custom_size": _MAI_CUSTOM_SIZE,
+            # 平台 marshal 實測 2026-08-25：MAI 轉換函式重建請求，seed/negative_prompt 怎麼寫都到不了上游
+            "no_seed": True, "no_negative_prompt": True, "no_watermark": True, "no_prompt_extend": True,
         },
         # ── 萬相圖像編輯 ──────────────────────────────────────────
         # 參考圖張數上限逐一實測（2026-08-10，正式網關）：萬相 2.7 兩個型號 9 張都生效；
@@ -807,11 +813,13 @@ MODELS = {
             "id": "gpt-image-2", "name": "GPT Image 2", "group": "GPT Image",
             "desc": "OpenAI 旗艦圖像模型", "type": "t2i", "max_n": 4,
             "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
+            "no_negative_prompt": True, "no_prompt_extend": True, "no_seed": True, "no_watermark": True,
         },
         {
             "id": "gpt-image-1.5", "name": "GPT Image 1.5", "group": "GPT Image",
             "desc": "OpenAI 前代圖像模型", "type": "t2i", "max_n": 4,
             "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
+            "no_negative_prompt": True, "no_prompt_extend": True, "no_seed": True, "no_watermark": True,
         },
         # ── ByteDance Seedream（尺寸格式同 GPT Image 為 WIDTHxHEIGHT；lite 版實測
         #    畫面至少要 ~369 萬像素，1024x1024 這種常見小尺寸會被拒絕，故只列
@@ -857,11 +865,13 @@ MODELS = {
             "id": "gpt-image-2", "name": "GPT Image 2（編輯）", "group": "GPT Image",
             "desc": "OpenAI 旗艦圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True,
             "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
+            "no_negative_prompt": True, "no_prompt_extend": True, "no_seed": True, "no_watermark": True,
         },
         {
             "id": "gpt-image-1.5", "name": "GPT Image 1.5（編輯）", "group": "GPT Image",
             "desc": "OpenAI 前代圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True,
             "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
+            "no_negative_prompt": True, "no_prompt_extend": True, "no_seed": True, "no_watermark": True,
         },
         # ── ByteDance Seedream 編輯（沿用一般 /v1/images/edits 流程，實測 ref_strength
         #    參數有效不會被拒絕，因此不加進 _NO_REF_STRENGTH_EDIT_MODELS）──
@@ -878,17 +888,23 @@ MODELS = {
         # ── MAI Image 編輯（Azure OpenAI 管道，沿用一般 /v1/images/edits 流程，不支援 ref_strength）──
         {
             "id": "MAI-Image-2.5-Pro", "name": "MAI-Image-2.5-Pro（編輯）", "group": "MAI Image",
-            "desc": "旗艦圖像編輯 Pro", "type": "i2i", "max_n": 1, "no_ref_strength": True, "max_ref": 1,
+            "desc": "旗艦圖像編輯 Pro", "type": "i2i",
+            # 平台 marshal 實測 2026-08-25：MAI 的 edits 走同一個重建函式，只留 model/prompt/size/n
+            "no_seed": True, "no_negative_prompt": True, "no_watermark": True, "no_prompt_extend": True, "max_n": 1, "no_ref_strength": True, "max_ref": 1,
             "sizes": _MAI_IMAGE_SIZES,
         },
         {
             "id": "MAI-Image-2.5", "name": "MAI-Image-2.5（編輯）", "group": "MAI Image",
-            "desc": "旗艦圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True, "max_ref": 1,
+            "desc": "旗艦圖像編輯", "type": "i2i",
+            # 平台 marshal 實測 2026-08-25：MAI 的 edits 走同一個重建函式，只留 model/prompt/size/n
+            "no_seed": True, "no_negative_prompt": True, "no_watermark": True, "no_prompt_extend": True, "max_n": 1, "no_ref_strength": True, "max_ref": 1,
             "sizes": _MAI_IMAGE_SIZES,
         },
         {
             "id": "MAI-Image-2.5-Flash", "name": "MAI-Image-2.5-Flash（編輯）", "group": "MAI Image",
-            "desc": "極速圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True, "max_ref": 1,
+            "desc": "極速圖像編輯", "type": "i2i",
+            # 平台 marshal 實測 2026-08-25：MAI 的 edits 走同一個重建函式，只留 model/prompt/size/n
+            "no_seed": True, "no_negative_prompt": True, "no_watermark": True, "no_prompt_extend": True, "max_n": 1, "no_ref_strength": True, "max_ref": 1,
             "sizes": _MAI_IMAGE_SIZES,
         },
         # ── Gemini Image 編輯（同樣走原生 generateContent，參考圖以 inlineData 帶入。
@@ -950,6 +966,15 @@ MODELS = {
         {"id": "wan3.0-video", "name": "萬相 3.0（文生影片）", "group": "萬相 3.0",
          "desc": "All-in-One 影片生成，最長 30 秒，音畫真實", "type": "t2v",
          "audio": True, "min_dur": 2, "max_dur": 30, "smart_duration": True, "resolutions": ["480P", "720P", "1080P"]},
+        # wan3.0-video-prime（2026-08-25 上架）：萬相 3.0 高速檔（平台倍率表註「高速版」，
+        # 官方定價 480P $0.068/720P $0.14/1080P $0.28）。**只列實測過的 t2v**：
+        # 480P 2 秒實測通過（99 秒完成、計費 68000 quota=0.068×2 分毫不差）、
+        # resolutions 白名單由閘道 422 實測證實與 wan3.0 相同、[2,30] 同驗證分支。
+        # i2v/r2v/vedit、smart_duration(-1)、adaptive ratio 對 prime 均未驗——
+        # 供應商文件（Levi 將提供進 ../reference/）到位後再擴充，不要照家族推。
+        {"id": "wan3.0-video-prime", "name": "萬相 3.0 Prime（文生影片）", "group": "萬相 3.0",
+         "desc": "萬相 3.0 高速版，快速文生影片", "type": "t2v",
+         "audio": True, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
         {"id": "wan3.0-video", "name": "萬相 3.0（圖生影片）", "group": "萬相 3.0",
          "desc": "首幀／首尾幀／驅動音訊／影片延伸", "type": "i2v",
          "audio": True, "min_dur": 2, "max_dur": 30, "smart_duration": True, "resolutions": ["480P", "720P", "1080P"]},
@@ -2319,6 +2344,34 @@ _QWEN_FUSION_EDIT_MODELS = {"qwen-image-2.0-pro", "qwen-image-2.0",
                             "qwen-image-3.0-pro", "qwen-image-3.0"}
 # GPT Image 系列額外支援 OpenAI 標準的 quality/background/output_format 三個參數（已實測確認有效）
 _GPT_IMAGE_MODELS = {"gpt-image-2", "gpt-image-1.5"}
+
+# 千問圖像 3.0 系列：negative_prompt 要巢狀放 parameters（平台 marshal 實測
+# 2026-08-25：扁平會被收進 Extra 但沒有任何程式碼去讀、靜默失效；巢狀
+# parameters.negative_prompt 原樣轉發有效——與 wan 影片那批完全同型的坑）
+_QWEN3_IMAGE_MODELS = {"qwen-image-3.0", "qwen-image-3.0-pro"}
+
+
+def _apply_image_negative_prompt(payload: dict, model: str, neg: str) -> None:
+    """圖像 generations 的 negative_prompt 放置層級依家族而異（都是平台 marshal 實測）：
+
+    - 千問 3.0 系列：巢狀 parameters.negative_prompt（扁平靜默失效）
+    - MAI：怎麼寫都到不了上游（convertToMAIImageRequest 重建請求只留
+      model/prompt/width/height），UI 已用 no_negative_prompt 旗標隱藏，
+      這裡不送、也不用送
+    - 其他家族（qwen-image-2.0／wan 圖像／z-image／seedream）：維持扁平——
+      批次二 marshal 實測（2026-08-25）：**平台層全家族行為一致**（扁平死、
+      parameters 與 input 兩種巢狀都原樣轉發），但「上游吃哪個位置」依代次
+      不同（3.0 在 parameters、舊 wanx 在 input）且屬效果層、冒煙凍結中。
+      貿然統一改 parameters 有 400 風險（ali 上游會驗 parameters 內容，
+      qwen-image-2.0 拒 ref_strength 的前例）。維持扁平＝維持現狀（無效但
+      無害），等 Levi 裁決平台側「扁平相容」修案——若採納，這裡零改動即修復。
+    """
+    if model.startswith("MAI-Image"):
+        return
+    if model in _QWEN3_IMAGE_MODELS:
+        payload.setdefault("parameters", {})["negative_prompt"] = neg
+    else:
+        payload["negative_prompt"] = neg
 # 支援組圖模式（enable_sequential）與更高解析度的萬相 2.7 系列
 _WAN27_IMAGE_MODELS = {"wan2.7-image-pro", "wan2.7-image"}
 # 圖像編輯的參考圖張數上限，以 MODELS 的 max_ref 為單一來源（前端讀同一份資料）。
@@ -2351,6 +2404,8 @@ class ImageGenerateRequest(BaseModel):
     quality: Optional[str] = None            # 僅 GPT Image 使用：auto/low/medium/high
     background: Optional[str] = None         # 僅 GPT Image 使用：auto/opaque/transparent
     output_format: Optional[str] = None      # 僅 GPT Image 使用：png/jpeg/webp
+    moderation: Optional[str] = None         # 僅 GPT Image 使用：auto/low（Levi 2026-08-25 裁示開放；
+                                             # 閘道透傳經平台 marshal 實測，上游效果未冒煙——首次真實使用即驗證）
     enable_sequential: bool = False          # 僅萬相 2.7 使用：組圖模式
     # 自訂尺寸的第二條路：直接送頂層 width/height（目前只有 MAI 這條路通）。
     # 兩者都給時**上游以 width/height 為準**——實測 size=1024x1024 配上不合法的
@@ -2386,14 +2441,21 @@ async def image_generate(request: Request, data: ImageGenerateRequest, api_key: 
         payload.pop("size", None)
         payload["width"] = data.width
         payload["height"] = data.height
-    if data.negative_prompt:
-        payload["negative_prompt"] = data.negative_prompt
-    if data.prompt_extend:
-        payload["prompt_extend"] = True
-    if data.watermark:
-        payload["watermark"] = True
-    if data.seed is not None:
-        payload["seed"] = data.seed
+    # GPT Image 家族不吃這四顆（OpenAI 圖像 API 沒有這些參數）——平台端 2026-08-25
+    # marshal 實測：seed/watermark 會被轉發→上游 400 unknown_parameter；
+    # negative_prompt/prompt_extend 被靜默丟棄。UI 已隱藏控制項，這裡再剝一層
+    # 是為了 Canvas 與直接打 API 的呼叫方（平台之後會在閘道剝除，剝兩層不衝突）
+    # MAI 同樣要剝：convertToMAIImageRequest 重建請求只留 model/prompt/width/height/n，
+    # 這四顆送了也到不了上游（平台 marshal 實測 2026-08-25，generations 與 edits 同函式）
+    if data.model not in _GPT_IMAGE_MODELS and not data.model.startswith("MAI-Image"):
+        if data.negative_prompt:
+            _apply_image_negative_prompt(payload, data.model, data.negative_prompt)
+        if data.prompt_extend:
+            payload["prompt_extend"] = True
+        if data.watermark:
+            payload["watermark"] = True
+        if data.seed is not None:
+            payload["seed"] = data.seed
     if data.model in _GPT_IMAGE_MODELS:
         if data.quality:
             payload["quality"] = data.quality
@@ -2401,6 +2463,8 @@ async def image_generate(request: Request, data: ImageGenerateRequest, api_key: 
             payload["background"] = data.background
         if data.output_format:
             payload["output_format"] = data.output_format
+        if data.moderation in ("auto", "low"):
+            payload["moderation"] = data.moderation
     if data.model in _WAN27_IMAGE_MODELS and data.enable_sequential:
         payload["enable_sequential"] = True
 
@@ -2498,14 +2562,20 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
         form_data = {"model": model, "prompt": prompt, "size": size, "n": str(n)}
         if is_fusion_edit:
             form_data["prompt_extend"] = "true" if prompt_extend else "false"
-        if model not in _NO_REF_STRENGTH_EDIT_MODELS:
-            form_data["ref_strength"] = str(ref_strength)
-        if neg_prompt:
-            form_data["negative_prompt"] = neg_prompt
-        if watermark:
-            form_data["watermark"] = "true"
-        if seed is not None:
-            form_data["seed"] = str(seed)
+        # ref_strength 不再送出（2026-08-25 考古定案）：平台整個 repo＋git 全歷史
+        # grep 為 0——這個參數名**從未存在於閘道**，ali edits 重建函式也不讀 Extra，
+        # 送了只是靜默消失。我方先前「實測有效」的記錄是證據等級混淆：當時只驗了
+        # 「帶了不會被拒」（丟棄當然不會被拒），從未驗過「調整值改變輸出」。
+        # UI 滑桿已同步隱藏；若平台日後實作轉發（需先驗上游支援），再恢復。
+        _ = ref_strength  # 保留解析（前端還會送舊欄位），刻意不轉發
+        # GPT Image 與 MAI 剝除不存在／到不了上游的參數（理由見 image_generate 同段註解）
+        if model not in _GPT_IMAGE_MODELS and not model.startswith("MAI-Image"):
+            if neg_prompt:
+                form_data["negative_prompt"] = neg_prompt
+            if watermark:
+                form_data["watermark"] = "true"
+            if seed is not None:
+                form_data["seed"] = str(seed)
         if model in _GPT_IMAGE_MODELS:
             if quality:
                 form_data["quality"] = quality
@@ -3724,6 +3794,8 @@ _MCP_CONSTRAINT_FIELDS = (
     "max_ref", "audio", "no_duration", "aspect_ratios", "custom_size",
     "i2v_modes", "ref_images_only", "vision", "thinking", "reasoning_efforts",
     "smart_duration",   # duration=-1（模型自行判斷合適時長）是否可用，僅 wan3.0
+    "no_seed", "no_negative_prompt",   # 該模型不存在這些參數（如 GPT Image 家族）
+    "supports_gpt_params",             # quality/background/output_format/moderation 可用
 )
 
 _MCP_TOOLS = [
@@ -3804,7 +3876,9 @@ _MCP_TOOLS = [
                 "size": {"type": "string", "description": "合法值依模型，見 nenai_list_models"},
                 "n": {"type": "integer", "minimum": 1, "description": "生成張數，上限依模型"},
                 "negative_prompt": {"type": "string"},
-                "seed": {"type": "integer", "description": "固定值可重現同一結果"},
+                "seed": {"type": "integer", "description": "固定值可重現同一結果（部分模型不支援，見 no_seed）"},
+                "moderation": {"type": "string", "enum": ["auto", "low"],
+                               "description": "內容審核嚴格度，僅 supports_gpt_params 的模型（GPT Image 家族）"},
             },
             "required": ["model", "prompt"],
         },
@@ -3979,10 +4053,19 @@ async def _mcp_tool_generate_image(api_key: str, args: dict, request: Request) -
     if n > meta.get("max_n", 1):
         return _mcp_err("n", f"{model} 一次最多 {meta.get('max_n', 1)} 張",
                         list(range(1, meta.get("max_n", 1) + 1)))
+    # 對「參數根本不存在」的模型明確報錯，不靜默剝除——API 呼叫方需要知道
+    # 它的意圖沒有被執行（跟 UI 隱藏控制項是同一件事的 API 版本）
+    if meta.get("no_seed") and args.get("seed") is not None:
+        return _mcp_err("seed", f"{model} 不支援 seed（此系列無法固定隨機種子）")
+    if meta.get("no_negative_prompt") and args.get("negative_prompt"):
+        return _mcp_err("negative_prompt", f"{model} 不支援 negative_prompt")
+    if args.get("moderation") and not meta.get("supports_gpt_params"):
+        return _mcp_err("moderation", f"{model} 不支援 moderation（僅 GPT Image 家族）")
     body = {"model": model, "prompt": args.get("prompt", ""), "n": n}
     if size: body["size"] = size
     if args.get("negative_prompt"): body["negative_prompt"] = args["negative_prompt"]
     if args.get("seed") is not None: body["seed"] = args["seed"]
+    if args.get("moderation"): body["moderation"] = args["moderation"]
     resp = await _mcp_internal(api_key, "POST", "/api/image/generate", json=body)
     rj = resp.json()
     if resp.status_code != 200 or not rj.get("success"):
@@ -4100,6 +4183,10 @@ async def _mcp_tool_edit_image(api_key: str, args: dict, request: Request) -> di
     size = args.get("size")
     if size and meta.get("sizes") and size not in meta["sizes"] and not meta.get("custom_size"):
         return _mcp_err("size", f"{model} 不接受 size={size}", meta["sizes"])
+    if meta.get("no_seed") and args.get("seed") is not None:
+        return _mcp_err("seed", f"{model} 不支援 seed")
+    if meta.get("no_negative_prompt") and args.get("negative_prompt"):
+        return _mcp_err("negative_prompt", f"{model} 不支援 negative_prompt")
 
     data = {"model": model, "prompt": args.get("prompt", "")}
     if size: data["size"] = size

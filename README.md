@@ -367,7 +367,7 @@ python app.py
 | dola-seedream-5.0-pro | Seedream 5.0 Pro（旗艦） |
 | dola-seedream-5.0-lite | Seedream 5.0 Lite（輕量，畫面較大，最小約 2K／369 萬像素，太小的尺寸會被上游拒絕） |
 
-> 兩個模型都同時支援圖像編輯 (I2I)，實測 `ref_strength` 參數有效、不會被拒絕，用法跟其餘走 `/v1/images/edits` 的模型一致。
+> 兩個模型都同時支援圖像編輯 (I2I)，用法跟其餘走 `/v1/images/edits` 的模型一致。（勘誤 2026-08-25：先前此處寫「`ref_strength` 有效」是證據等級混淆——當時只驗了「帶了不會被拒」，實際上閘道從未實作此參數、送出即靜默丟棄，對所有模型皆然；UI 已移除該滑桿。）
 
 **Gemini Image（文生圖 + 圖像編輯，走 Gemini 原生的 `/v1beta/models/{model}:generateContent`）**
 
@@ -416,6 +416,7 @@ python app.py
 | 模型 ID | 名稱 | 分類 | 配音 |
 |---|---|---|---|
 | wan3.0-video | 萬相 3.0（文生／圖生／參考生／視頻編輯） | 萬相 3.0 | 自動 |
+| wan3.0-video-prime | 萬相 3.0 Prime（文生影片） | 萬相 3.0 | 自動 |
 | wan2.7-t2v | 萬相 2.7 T2V | 文生影片 | 自動 |
 | wan2.6-t2v | 萬相 2.6 T2V | 文生影片 | 自動 |
 | wan2.7-i2v | 萬相 2.7 I2V | 圖生影片 | 自動 |
@@ -448,6 +449,13 @@ python app.py
 | dreamina-seedance-2.0-fast（參考生影片） | Seedance 2.0 Fast（即夢） | ByteDance Seedance | 可開關 ⚠️ |
 
 > 萬相 2.6/2.7 系列 T2V/I2V/R2V 皆支援自動配音（BGM 自動生成或自訂音訊上傳）。
+> **萬相 3.0 Prime（`wan3.0-video-prime`，2026-08-25 上架）**：萬相 3.0 的高速檔，
+> 每秒單價 480P $0.068／720P $0.14／1080P $0.28。**目前只開放文生影片（t2v）**——
+> 480P 2 秒實測通過（任務 99 秒完成、計費 0.068×2 分毫不差），解析度白名單與時長
+> [2,30] 經閘道 422 驗證與 wan3.0-video 相同。i2v/r2v/vedit、智能時長（-1）、adaptive
+> ratio 對 prime 均未驗證，供應商官方文件（將由 Levi 提供進 `../reference/`）到位後
+> 再擴充——不照家族推斷。
+>
 > **萬相 3.0（`wan3.0-video`）是 all-in-one 模型**——同一個模型 id 同時涵蓋文生／圖生／參考生／視頻編輯，UI 上以四個 type 分別呈現。最長 30 秒（其餘萬相家族是 15 秒），解析度 480P／720P／1080P，費率為每秒 $0.05／$0.10／$0.20。`ratio`（畫面比例）與 `resolution` 是兩個互相獨立的參數，預設 `adaptive`（其餘家族預設 16:9）。
 >
 > 因為模型名沒有 `i2v`／`r2v`／`videoedit` 後綴，上游無法從模型名判斷每個媒體的用途，改以「MIME／副檔名 ＋ 位置」推斷：data URI 取 `data:` 與第一個 `;`／`,` 之間的 MIME 前綴判定，HTTP URL 先切掉 query string 再比副檔名，判不出類型才回退到位置。我們送的 data URI 是判得出來的。

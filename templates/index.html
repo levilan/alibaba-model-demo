@@ -376,14 +376,14 @@
                     <label data-tip="啟用後模型自動擴充提示詞，補充更多場景、光線、風格等細節描述，通常能顯著提升圖片品質和豐富度">Prompt Extend</label>
                     <label class="toggle"><input type="checkbox" id="imgPromptExtend"><span class="toggle-slider"></span></label>
                 </div>
-                <div class="toggle-row">
+                <div class="toggle-row" id="imgWatermarkGroup">
                     <label data-tip="在生成的圖片上嵌入 AI 生成浮水印（不影響視覺品質），主要用於版權標識與 AI 內容識別">Watermark</label>
                     <label class="toggle"><input type="checkbox" id="imgWatermark"><span class="toggle-slider"></span></label>
                 </div>
             </div>
             <div class="sidebar-section">
                 <div class="sidebar-section-title">進階參數</div>
-                <div class="form-group">
+                <div class="form-group" id="imgSeedGroup">
                     <label class="form-label" data-tip="設定隨機種子以重現相近圖片結果。相同 Prompt + 相同 Seed 可生成高度相似的圖片，方便對比參數差異">Seed
                         <span class="param-hint">（留空 = 隨機）</span>
                     </label>
@@ -427,6 +427,13 @@
                         <option value="webp">WEBP</option>
                     </select>
                 </div>
+                <div class="form-group" id="imgModerationGroup">
+                    <label class="form-label" data-tip="圖像內容審核的嚴格程度。low 採較寬鬆的審核標準，適合藝術創作等需要更大表現空間的場景">內容審核 (moderation)</label>
+                    <select id="imgModeration" class="select-input">
+                        <option value="">auto（預設）</option>
+                        <option value="low">low（較寬鬆）</option>
+                    </select>
+                </div>
             </div>
             <div id="imgUploadSection" class="sidebar-section hidden">
                 <div class="sidebar-section-title">
@@ -449,7 +456,7 @@
                             <label class="form-label">Prompt</label>
                             <textarea id="imagePrompt" class="textarea-input" rows="2" placeholder="描述您想要生成的圖片..."></textarea>
                         </div>
-                        <div class="form-group" style="margin-bottom:0">
+                        <div class="form-group" id="imgNegGroup" style="margin-bottom:0">
                             <label class="form-label">Negative Prompt</label>
                             <textarea id="imageNegPrompt" class="textarea-input" rows="2" placeholder="不想出現的元素（可選）"></textarea>
                         </div>
@@ -1104,6 +1111,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=87"></script>
+<script src="/static/js/app.js?v=90"></script>
 </body>
 </html>

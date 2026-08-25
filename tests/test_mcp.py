@@ -235,6 +235,7 @@ def test_models_fields_are_known_to_mcp():
         "input_rate", "output_rate", "duration_hint", "default_voice", "voices",
         # 行為開關（轉譯層內部使用，agent 不需要知道）
         "fusion_edit", "no_negative_prompt", "no_prompt_extend", "no_ref_strength",
+        "no_watermark",   # MCP 沒有 watermark 參數，這旗標只給 UI 用
         "no_size", "supports_gpt_params", "supports_sequential",
         "sequential_max_size", "image_input", "audio_only", "turn_modes",
         "reasoning_effort",
@@ -262,3 +263,25 @@ def test_generate_video_smart_duration_in_valid_values():
     out2 = _call_tool("nenai_generate_video",
                       {"model": veo["id"], "prompt": "x", "duration": 99})
     assert out2["isError"] and -1 not in out2["valid_values"]
+
+
+def test_gpt_image_seed_and_negative_prompt_rejected():
+    # GPT Image 家族沒有 seed/negative_prompt 這兩顆參數（平台 marshal 實測：
+    # seed 轉發會 400、negative_prompt 靜默丟棄）——MCP 對呼叫方明確報錯而非默默剝除
+    out = _call_tool("nenai_generate_image",
+                     {"model": "gpt-image-2", "prompt": "x", "seed": 42})
+    assert out["isError"] and out["field"] == "seed"
+    out2 = _call_tool("nenai_generate_image",
+                      {"model": "gpt-image-2", "prompt": "x", "negative_prompt": "blurry"})
+    assert out2["isError"] and out2["field"] == "negative_prompt"
+    out3 = _call_tool("nenai_edit_image",
+                      {"model": "gpt-image-2", "prompt": "x", "seed": 1,
+                       "images": ["data:image/png;base64,aGk="]})
+    assert out3["isError"] and out3["field"] == "seed"
+
+
+def test_moderation_only_for_gpt_family():
+    # moderation 僅 GPT Image 家族（supports_gpt_params）；其他模型帶了要明確報錯
+    out = _call_tool("nenai_generate_image",
+                     {"model": "z-image-turbo", "prompt": "x", "moderation": "low"})
+    assert out["isError"] and out["field"] == "moderation"

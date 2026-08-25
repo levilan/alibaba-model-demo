@@ -1117,16 +1117,31 @@ function onImgModelChange() {
         onImgSequentialToggle();
     }
 
-    // ref_strength 僅 Wan 圖像編輯系列支援，qwen-image-2.0 系列無此參數
-    document.getElementById('imgRefStrengthGroup').style.display =
-        (t === 'i2i' && !modelInfo.no_ref_strength) ? '' : 'none';
+    // ref_strength 滑桿整個收起（2026-08-25 考古定案）：這個參數名從未存在於閘道
+    // （平台 repo＋git 全歷史 grep 為 0），送出後靜默消失——滑桿從第一天起就沒有
+    // 作用過。先前「僅 Wan 系列支援」的認知源自證據等級混淆（「帶了不會被拒」
+    // 被記成「有效」）。平台若日後實作轉發再恢復顯示。
+    document.getElementById('imgRefStrengthGroup').style.display = 'none';
 
     // prompt_extend 僅 T2I 與 qwen-image-2.0 系列（i2i 融合模型）支援，其餘 I2I 圖像編輯模型後端不支援此參數
     document.getElementById('imgPromptExtendGroup').style.display =
-        (t === 't2i' || modelInfo.fusion_edit) ? '' : 'none';
+        ((t === 't2i' || modelInfo.fusion_edit) && !modelInfo.no_prompt_extend) ? '' : 'none';
 
-    // GPT Image 專屬參數（quality/background/output_format），T2I/I2I 皆適用
+    // GPT Image 家族沒有這四顆參數（OpenAI 圖像 API 不存在它們；平台實測 seed/
+    // watermark 轉發會 400、negative_prompt/prompt_extend 被靜默丟棄）——控制項
+    // 留著只會讓使用者以為填了有作用，整組藏起來並清空值
+    const negG = document.getElementById('imgNegGroup');
+    negG.style.display = modelInfo.no_negative_prompt ? 'none' : '';
+    if (modelInfo.no_negative_prompt) document.getElementById('imageNegPrompt').value = '';
+    document.getElementById('imgWatermarkGroup').style.display = modelInfo.no_watermark ? 'none' : '';
+    if (modelInfo.no_watermark) document.getElementById('imgWatermark').checked = false;
+    document.getElementById('imgSeedGroup').style.display = modelInfo.no_seed ? 'none' : '';
+    if (modelInfo.no_seed) document.getElementById('imgSeed').value = '';
+
+    // GPT Image 專屬參數（quality/background/output_format），T2I/I2I 皆適用；
+    // moderation 是 generations 專屬參數，edits 端點沒有——I2I 時單獨收起來
     document.getElementById('imgGptParamsSection').style.display = modelInfo.supports_gpt_params ? '' : 'none';
+    document.getElementById('imgModerationGroup').style.display = (t === 't2i') ? '' : 'none';
 
     // 參考圖張數上限（qwen-image-2.0 系列最多 3 張，其餘模型最多 9 張）
     imgMaxRef = modelInfo.max_ref || 9;
@@ -1891,6 +1906,7 @@ async function sendImage() {
     const quality      = gptParamsVisible ? document.getElementById('imgQuality').value : '';
     const background   = gptParamsVisible ? document.getElementById('imgBackground').value : '';
     const outputFormat = gptParamsVisible ? document.getElementById('imgOutputFormat').value : '';
+    const moderation   = gptParamsVisible ? document.getElementById('imgModeration').value : '';
 
     if (!prompt) { toast('請輸入 Prompt', 'error'); return; }
 
@@ -1915,6 +1931,7 @@ async function sendImage() {
             if (quality) body.quality = quality;
             if (background) body.background = background;
             if (outputFormat) body.output_format = outputFormat;
+            if (moderation) body.moderation = moderation;   // 僅 generations 有這個參數，edits 沒有
             res = await apiPost('/api/image/generate', body);
         } else {
             const fd = new FormData();
