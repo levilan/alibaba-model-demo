@@ -564,3 +564,15 @@ def test_mai_models_flagged_all_four():
         if m["id"].startswith("MAI-Image"):
             for flag in ("no_seed", "no_negative_prompt", "no_watermark", "no_prompt_extend"):
                 assert m.get(flag), m["name"] + " 缺 " + flag
+
+
+def test_official_doc_flags_wan27_image_and_happyhorse():
+    # 📄官方（reference §2.3.5/2.3.6/2.3.10b，2026-08-25）：wan2.7 圖像不支援
+    # prompt_extend/negative_prompt；happyhorse 四接口皆無 prompt_extend。
+    # 旗標少一顆，UI 就會顯示一個「填了沒作用」的控制項。
+    for m in app.MODELS["image"]:
+        if m["id"].startswith("wan2.7-image"):
+            assert m.get("no_negative_prompt") and m.get("no_prompt_extend"), m["name"]
+    for m in app.MODELS["video"]:
+        if m["id"].startswith("happyhorse"):
+            assert m.get("no_prompt_extend"), m["name"]

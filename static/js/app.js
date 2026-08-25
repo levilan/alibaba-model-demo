@@ -815,6 +815,9 @@ function estimateVideoTokenCost(modelId, resolution, seconds) {
 const _VIDEO_SEC_PRICE = {
     // 萬相 3.0（all-in-one）：480P $0.05 / 720P $0.10 / 1080P $0.20
     'wan3.0-video':     { '480P': 0.05, '720P': 0.10, '1080P': 0.20 },
+    // 萬相 3.0 Prime（高速版）：官方定價 2026-08-25 核對（平台倍率表同源）；
+    // 漏列這裡會退回「$0.068/次」的錯誤顯示（那是後台 model_price＝480P 基準每秒價）
+    'wan3.0-video-prime': { '480P': 0.068, '720P': 0.14, '1080P': 0.28 },
     // 萬相 2.7 全系列：720P $0.10 / 1080P $0.15
     'wan2.7-t2v':       { '720P': 0.10, '1080P': 0.15 },
     'wan2.7-i2v':       { '720P': 0.10, '1080P': 0.15 },
@@ -1279,6 +1282,14 @@ function onVidModelChange() {
     const extGroup = document.getElementById('vidPromptExtendGroup');
     extGroup.style.display = (taskType === 'animate' || modelInfo.no_prompt_extend) ? 'none' : '';
     if (modelInfo.no_prompt_extend) document.getElementById('vidPromptExtend').checked = false;
+
+    // animate 的 watermark 開關收起（📄官方＋讀碼，reference §2.3.13／P1-1）：
+    // wan-animate 是全阿里唯一 watermark 在 input 層的模型，閘道結構沒有該欄位
+    // 且 animate 分支硬編 Parameters.Watermark=false——客戶開了也送不出去、無錯誤。
+    // 平台修復（P1-1）部署後再恢復顯示。
+    document.getElementById('vidWatermarkGroup').style.display =
+        (taskType === 'animate') ? 'none' : '';
+    if (taskType === 'animate') document.getElementById('vidWatermark').checked = false;
 
     // 調整時長範圍（gemini-omni-flash-preview 等模型自行決定長度與解析度，不支援 duration/resolution 參數）
     document.getElementById('vidDurationGroup').style.display = modelInfo.no_duration ? 'none' : '';

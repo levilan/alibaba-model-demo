@@ -699,12 +699,18 @@ MODELS = {
         #    官方文件。所以能不能用不能靠打網關試出來——這裡的清單以文件為準。
         {
             "id": "wan2.7-image-pro", "name": "萬相 2.7 Image Pro", "group": "萬相文生圖",
+            # 📄官方（reference §2.3.5/2.3.6）：wan2.7 圖像明載不支援 prompt_extend（改用
+            # thinking_mode）、文檔無 negative_prompt——兩控制項照官方隱藏；wan2.6 未有官方頁維持現狀
+            "no_negative_prompt": True, "no_prompt_extend": True,
             "desc": "旗艦文生圖，細節與畫質更佳", "type": "t2i", "max_n": 4,
             "sizes": ["1024*1024","1K","2K","4K","1280*720","720*1280","960*1280","1280*960","960*1696","1696*960","2048*2048","4096*4096"],
             "supports_sequential": True, "sequential_max_size": "2K",
         },
         {
             "id": "wan2.7-image", "name": "萬相 2.7 Image", "group": "萬相文生圖",
+            # 📄官方（reference §2.3.5/2.3.6）：wan2.7 圖像明載不支援 prompt_extend（改用
+            # thinking_mode）、文檔無 negative_prompt——兩控制項照官方隱藏；wan2.6 未有官方頁維持現狀
+            "no_negative_prompt": True, "no_prompt_extend": True,
             "desc": "標準文生圖", "type": "t2i", "max_n": 4,
             "sizes": ["1024*1024","1K","2K","1280*720","720*1280","960*1280","1280*960","960*1696","1696*960","2048*2048"],
             "supports_sequential": True, "sequential_max_size": "2K",
@@ -764,11 +770,17 @@ MODELS = {
         # 沒有實測——實際上那條約束不適用於 /v1/images/edits 這條路徑。
         {
             "id": "wan2.7-image-pro", "name": "萬相 2.7 Image Pro（編輯）", "group": "萬相圖像編輯",
+            # 📄官方（reference §2.3.5/2.3.6）：wan2.7 圖像明載不支援 prompt_extend（改用
+            # thinking_mode）、文檔無 negative_prompt——兩控制項照官方隱藏；wan2.6 未有官方頁維持現狀
+            "no_negative_prompt": True, "no_prompt_extend": True,
             "desc": "多圖融合、風格遷移（最多 9 張）", "type": "i2i", "max_n": 1, "max_ref": 9,
             "sizes": ["1024*1024","1K","2K","1280*720","720*1280","960*1280","1280*960","2048*2048"],
         },
         {
             "id": "wan2.7-image", "name": "萬相 2.7 Image（編輯）", "group": "萬相圖像編輯",
+            # 📄官方（reference §2.3.5/2.3.6）：wan2.7 圖像明載不支援 prompt_extend（改用
+            # thinking_mode）、文檔無 negative_prompt——兩控制項照官方隱藏；wan2.6 未有官方頁維持現狀
+            "no_negative_prompt": True, "no_prompt_extend": True,
             "desc": "標準圖像編輯（最多 9 張）", "type": "i2i", "max_n": 1, "max_ref": 9,
             "sizes": ["1024*1024","1K","2K","1280*720","720*1280","960*1280","1280*960","2048*2048"],
         },
@@ -998,13 +1010,13 @@ MODELS = {
         {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片（僅接受圖片）",     "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True},
         {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版（僅接受圖片）", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True},
         # ── HappyHorse ────────────────────────────────────────────
-         {"id": "happyhorse-1.1-t2v",        "name": "HappyHorse 1.1 T2V",        "group": "HappyHorse", "desc": "高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},    
-        {"id": "happyhorse-1.0-t2v",        "name": "HappyHorse 1.0 T2V",        "group": "HappyHorse", "desc": "前一代高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15},
-        {"id": "happyhorse-1.1-i2v",        "name": "HappyHorse 1.1 I2V",        "group": "HappyHorse", "desc": "高還原度圖生影片（僅首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15, "i2v_modes": ["first_frame"]},
-        {"id": "happyhorse-1.0-i2v",        "name": "HappyHorse 1.0 I2V",        "group": "HappyHorse", "desc": "前一代高還原度圖生影片（僅首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15, "i2v_modes": ["first_frame"]},
-        {"id": "happyhorse-1.1-r2v",        "name": "HappyHorse 1.1 R2V",        "group": "HappyHorse", "desc": "多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True, "max_ref": 9},
-        {"id": "happyhorse-1.0-r2v",        "name": "HappyHorse 1.0 R2V",        "group": "HappyHorse", "desc": "前一代多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True, "max_ref": 9},
-        {"id": "happyhorse-1.0-video-edit", "name": "HappyHorse Video Edit 1.0", "group": "HappyHorse", "desc": "視頻編輯（最多 5 張參考圖）", "type": "vedit", "audio": False, "min_dur": 3, "max_dur": 15, "max_ref": 5},      
+         {"id": "happyhorse-1.1-t2v",        "name": "HappyHorse 1.1 T2V",        "group": "HappyHorse", "desc": "高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15, "no_prompt_extend": True},    
+        {"id": "happyhorse-1.0-t2v",        "name": "HappyHorse 1.0 T2V",        "group": "HappyHorse", "desc": "前一代高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15, "no_prompt_extend": True},
+        {"id": "happyhorse-1.1-i2v",        "name": "HappyHorse 1.1 I2V",        "group": "HappyHorse", "desc": "高還原度圖生影片（僅首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15, "i2v_modes": ["first_frame"], "no_prompt_extend": True},
+        {"id": "happyhorse-1.0-i2v",        "name": "HappyHorse 1.0 I2V",        "group": "HappyHorse", "desc": "前一代高還原度圖生影片（僅首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15, "i2v_modes": ["first_frame"], "no_prompt_extend": True},
+        {"id": "happyhorse-1.1-r2v",        "name": "HappyHorse 1.1 R2V",        "group": "HappyHorse", "desc": "多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True, "max_ref": 9, "no_prompt_extend": True},
+        {"id": "happyhorse-1.0-r2v",        "name": "HappyHorse 1.0 R2V",        "group": "HappyHorse", "desc": "前一代多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True, "max_ref": 9, "no_prompt_extend": True},
+        {"id": "happyhorse-1.0-video-edit", "name": "HappyHorse Video Edit 1.0", "group": "HappyHorse", "desc": "視頻編輯（最多 5 張參考圖）", "type": "vedit", "audio": False, "min_dur": 3, "max_dur": 15, "max_ref": 5, "no_prompt_extend": True},      
         # ── 視頻編輯 ──────────────────────────────────────────────
         {"id": "wan2.7-videoedit", "name": "萬相 2.7 視頻編輯", "group": "萬相視頻編輯",
          "desc": "文字/參考圖驅動編輯", "type": "vedit", "audio": False, "min_dur": 2, "max_dur": 15},
