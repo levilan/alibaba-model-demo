@@ -500,3 +500,34 @@ def test_video_extra_params_seed_zero_is_sent():
     meta = {}
     app._apply_video_extra_params(meta, "wan3.0-video", 0, False, False)
     assert meta["parameters"]["seed"] == 0
+
+
+def test_video_extra_params_negative_prompt_wan_goes_input_layer():
+    # negative_prompt 在 ali 系走 metadata.input.*（不是 parameters！）——
+    # 平台端 2026-08-25 實測：扁平與 parameters 層都無效，只有 input 層生效
+    meta = {}
+    app._apply_video_extra_params(meta, "wan2.7-t2v", None, False, False, "blurry")
+    assert meta == {"input": {"negative_prompt": "blurry"}}
+
+
+def test_video_extra_params_negative_prompt_veo_stays_flat():
+    meta = {}
+    app._apply_video_extra_params(meta, "veo-3.1-generate-001", None, False, False, "blurry")
+    assert meta == {"negative_prompt": "blurry"}
+
+
+def test_video_extra_params_input_layer_merges_with_existing():
+    # vedit 的 meta 可能已有 input（_apply_explicit_media 的 media 陣列），要合併不能蓋掉
+    meta = {"input": {"media": [{"type": "reference_image", "url": "x"}]}}
+    app._apply_video_extra_params(meta, "wan3.0-video", None, False, False, "ugly")
+    assert meta["input"]["media"] and meta["input"]["negative_prompt"] == "ugly"
+
+
+def test_default_ratio_per_generation():
+    # 平台端 2026-08-25 實測的各代行為：wan3.0 主動 adaptive、wan2.7/hh 不送、
+    # wan2.6 不走 ratio、其他家族維持 16:9
+    assert app._default_ratio("wan3.0-video") == "adaptive"
+    assert app._default_ratio("wan2.7-t2v") == ""
+    assert app._default_ratio("happyhorse-1.1-t2v") == ""
+    assert app._default_ratio("wan2.6-t2v") == ""
+    assert app._default_ratio("veo-3.1-generate-001") == "16:9"

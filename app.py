@@ -949,16 +949,16 @@ MODELS = {
         # 預設值依 Levi 裁示為「無聲」（HTML checkbox 無 checked 屬性即預設不勾）。
         {"id": "wan3.0-video", "name": "萬相 3.0（文生影片）", "group": "萬相 3.0",
          "desc": "All-in-One 影片生成，最長 30 秒，音畫真實", "type": "t2v",
-         "audio": True, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
+         "audio": True, "min_dur": 2, "max_dur": 30, "smart_duration": True, "resolutions": ["480P", "720P", "1080P"]},
         {"id": "wan3.0-video", "name": "萬相 3.0（圖生影片）", "group": "萬相 3.0",
          "desc": "首幀／首尾幀／驅動音訊／影片延伸", "type": "i2v",
-         "audio": True, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
+         "audio": True, "min_dur": 2, "max_dur": 30, "smart_duration": True, "resolutions": ["480P", "720P", "1080P"]},
         {"id": "wan3.0-video", "name": "萬相 3.0（參考生影片）", "group": "萬相 3.0",
          "desc": "多圖參考生影片，生產級角色一致性", "type": "r2v",
-         "audio": True, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
+         "audio": True, "min_dur": 2, "max_dur": 30, "smart_duration": True, "resolutions": ["480P", "720P", "1080P"]},
         {"id": "wan3.0-video", "name": "萬相 3.0（視頻編輯）", "group": "萬相 3.0",
          "desc": "統一支援參考／編輯／複刻／驅動", "type": "vedit",
-         "audio": True, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
+         "audio": True, "min_dur": 2, "max_dur": 30, "smart_duration": True, "resolutions": ["480P", "720P", "1080P"]},
         # ── 文生影片 ──────────────────────────────────────────────
         {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭，自動配音", "type": "t2v",   "audio": False,  "min_dur": 2, "max_dur": 15},
         {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片（配音由模型自動決定）",     "type": "t2v",   "audio": False, "min_dur": 2, "max_dur": 15},
@@ -2594,7 +2594,17 @@ _ADAPTIVE_RATIO_MODELS = _WAN30_ALLINONE_MODELS
 
 
 def _default_ratio(model: str) -> str:
-    return "adaptive" if model in _ADAPTIVE_RATIO_MODELS else "16:9"
+    """未指定 ratio 時的預設值（平台端 2026-08-25 實測確認的各代行為）：
+    - wan3.0：平台本來就會主動下發 adaptive，我們預設也送 adaptive（語意一致）
+    - wan2.7 / happyhorse：不送（回空字串），交給上游自己的預設（happyhorse 是 16:9）
+    - wan2.6 及更早：不走 ratio、比例含在 size 字串裡——送了也沒意義，不送
+    - 其他家族（veo aspectRatio / seedance ratio）：維持既有的 16:9 預設不動
+    """
+    if model in _ADAPTIVE_RATIO_MODELS:
+        return "adaptive"
+    if model.startswith(("wan", "happyhorse")):
+        return ""
+    return "16:9"
 
 
 def _apply_explicit_media(model: str, meta: dict, media_arr: list) -> None:
@@ -2604,7 +2614,8 @@ def _apply_explicit_media(model: str, meta: dict, media_arr: list) -> None:
 
 
 def _apply_video_extra_params(meta: dict, model: str, seed: Optional[int],
-                              watermark: bool, prompt_extend: bool) -> None:
+                              watermark: bool, prompt_extend: bool,
+                              negative_prompt: str = "") -> None:
     """seed / watermark / prompt_extend 的放置層級依上游 adaptor 而異。
 
     閘道的 ali 系 adaptor（萬相 wan* 與 happyhorse*）只讀**巢狀**的
@@ -2625,9 +2636,17 @@ def _apply_video_extra_params(meta: dict, model: str, seed: Optional[int],
     實測過「送達了但上游不當一回事」（同 seed 4 次全不同），且阿里文檔對
     wan 的 seed 只寫「用於復現」沒有硬保證。實測不重現時先別懷疑這裡。
     """
+    nested = model.startswith(("wan", "happyhorse"))
+    if negative_prompt:
+        # negative_prompt 在 ali 系走 metadata.input.*（⚠️ 不是 parameters——
+        # 平台端 2026-08-25 實測：扁平與 parameters 層都無效，只有 input 層生效；
+        # 這顆跟 seed 三顆同病但不同層，第一輪盤點漏了、追問才抓到）
+        if nested:
+            meta.setdefault("input", {})["negative_prompt"] = negative_prompt
+        else:
+            meta["negative_prompt"] = negative_prompt
     if not (prompt_extend or watermark or seed is not None):
         return
-    nested = model.startswith(("wan", "happyhorse"))
     target = meta.setdefault("parameters", {}) if nested else meta
     if prompt_extend: target["prompt_extend"] = True
     if watermark: target["watermark"] = True
@@ -2894,8 +2913,7 @@ async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
     payload: dict = {"model": model, "prompt": prompt}
     meta: dict = {}
     _apply_res_and_duration(payload, meta, resolution, duration, ratio)
-    if negative_prompt: meta["negative_prompt"] = negative_prompt
-    _apply_video_extra_params(meta, model, seed, watermark, prompt_extend)
+    _apply_video_extra_params(meta, model, seed, watermark, prompt_extend, negative_prompt)
     if model in _VEO_MODELS: meta["person_generation"] = "allow_adult"
 
     # 上游未收到欄位時會自行判斷是否配音，不會視為「不要配音」——
@@ -2981,8 +2999,7 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
     payload: dict = {"model": model, "prompt": prompt}
     meta: dict = {"i2v_mode": i2v_mode}
     _apply_res_and_duration(payload, meta, resolution, actual_duration, ratio)
-    if neg_prompt:    meta["negative_prompt"] = neg_prompt
-    _apply_video_extra_params(meta, model, seed, watermark, prompt_extend)
+    _apply_video_extra_params(meta, model, seed, watermark, prompt_extend, neg_prompt)
     if model in _VEO_MODELS: meta["person_generation"] = "allow_adult"
     # 上游未收到欄位時會自行判斷是否配音，不會視為「不要配音」——
     # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
@@ -3097,8 +3114,7 @@ async def video_vedit(request: Request, api_key: str = Depends(get_api_key)):
             media_arr.append({"url": f"data:image/png;base64,{base64.b64encode(rb).decode()}", "type": "reference_image"})
 
     meta: dict = {"audio_setting": audio_setting}
-    if neg_prompt:    meta["negative_prompt"] = neg_prompt
-    _apply_video_extra_params(meta, model, seed, watermark, prompt_extend)
+    _apply_video_extra_params(meta, model, seed, watermark, prompt_extend, neg_prompt)
 
     _apply_explicit_media(model, meta, media_arr)
     payload: dict = {
@@ -3707,6 +3723,7 @@ _MCP_CONSTRAINT_FIELDS = (
     "type", "sizes", "resolutions", "min_dur", "max_dur", "dur_step", "max_n",
     "max_ref", "audio", "no_duration", "aspect_ratios", "custom_size",
     "i2v_modes", "ref_images_only", "vision", "thinking", "reasoning_efforts",
+    "smart_duration",   # duration=-1（模型自行判斷合適時長）是否可用，僅 wan3.0
 )
 
 _MCP_TOOLS = [
@@ -3806,7 +3823,9 @@ _MCP_TOOLS = [
                 "image_url": {"type": "string",
                               "description": "首幀圖片：http(s) URL 或 data URI；省略 = 文生影片"},
                 "resolution": {"type": "string"},
-                "duration": {"type": "integer", "description": "秒數，範圍依模型"},
+                "duration": {"type": "integer",
+                             "description": "秒數，範圍依模型；支援 smart_duration 的模型可送 -1"
+                                            "（模型依內容自行決定時長，費用依實際生成長度計）"},
                 "audio": {"type": "boolean", "description": "自動配音（支援與否依模型）"},
                 "negative_prompt": {"type": "string"},
                 "seed": {"type": "integer"},
@@ -4021,6 +4040,8 @@ async def _mcp_tool_generate_video(api_key: str, args: dict, request: Request) -
         lo, hi = meta.get("min_dur", 2), meta.get("max_dur", 15)
         step = meta.get("dur_step", 1)
         valid = list(range(lo, hi + 1, step))
+        if meta.get("smart_duration"):
+            valid = [-1] + valid   # -1 = 智能時長（模型自行判斷），僅支援的模型放行
         if duration not in valid:
             return _mcp_err("duration", f"{model} 時長需在 {lo}~{hi} 秒（step {step}）", valid)
 

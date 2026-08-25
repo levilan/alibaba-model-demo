@@ -250,3 +250,15 @@ def test_models_fields_are_known_to_mcp():
         f"MODELS 出現 MCP 映射表不認識的欄位：{unknown}——"
         "請決定它要進 _MCP_CONSTRAINT_FIELDS（agent 可見約束）"
         "還是 test_mcp.py 的 non_constraint（內部欄位）")
+
+
+def test_generate_video_smart_duration_in_valid_values():
+    # wan3.0 支援 duration=-1（智能時長）：給非法時長時 -1 要出現在合法清單裡；
+    # 不支援的模型（veo）則不能出現
+    out = _call_tool("nenai_generate_video",
+                     {"model": "wan3.0-video", "prompt": "x", "duration": 99})
+    assert out["isError"] and -1 in out["valid_values"]
+    veo = next(m for m in MODELS["video"] if m["id"].startswith("veo") and m.get("type") == "t2v")
+    out2 = _call_tool("nenai_generate_video",
+                      {"model": veo["id"], "prompt": "x", "duration": 99})
+    assert out2["isError"] and -1 not in out2["valid_values"]

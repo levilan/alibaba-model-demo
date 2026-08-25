@@ -1169,8 +1169,7 @@ function onVidTaskChange() {
     document.getElementById('vidEditUpload').classList.toggle('hidden', t !== 'vedit');
     document.getElementById('vidAnimateUpload').classList.toggle('hidden', t !== 'animate');
 
-    // vedit-specific controls
-    document.getElementById('vidRatioGroup').style.display = (t === 'vedit') ? '' : 'none';
+    // vedit-specific controls（ratio 改為依模型家族動態顯示，見 syncVidRatio）
     document.getElementById('vidAudioSettingGroup').style.display = (t === 'vedit') ? '' : 'none';
 
     // i2v-specific controls
@@ -1192,6 +1191,55 @@ function onVidTaskChange() {
 
     if (t === 'i2v') onI2VModeChange();
     onVidModelChange();
+}
+
+// 畫面比例：各代行為不同（平台端 2026-08-25 實測確認），不能共用一份下拉——
+//   wan3.0：值域 adaptive + 五種比例，未指定時平台會主動下發 adaptive
+//   wan2.7 / happyhorse：同值域，但未指定時不送、交給上游預設
+//   wan2.6 及更早：不走 ratio（比例含在 size 裡），顯示這個下拉只會誤導
+//   其他家族（veo/seedance）：維持原本僅 vedit 顯示的行為
+function syncVidRatio() {
+    const t     = document.getElementById('videoTaskType').value;
+    const model = document.getElementById('videoModel').value || '';
+    const group = document.getElementById('vidRatioGroup');
+    const sel   = document.getElementById('videoRatio');
+    const isWan30  = model.startsWith('wan3.0');
+    const isFamily = isWan30 || model.startsWith('wan2.7') || model.startsWith('happyhorse');
+    const show = (isFamily && t !== 'animate') || (t === 'vedit');
+    group.style.display = show ? '' : 'none';
+    if (!show) { sel.value = ''; return; }
+    const prev = sel.value;
+    const opts = isWan30 ? [['adaptive', '自動（依內容）']] : [['', '自動（預設）']];
+    ['16:9', '9:16', '1:1', '4:3', '3:4'].forEach(r => opts.push([r, r]));
+    sel.innerHTML = opts.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+    sel.value = opts.some(([v]) => v === prev) ? prev : opts[0][0];
+}
+
+// 智能時長（duration=-1，僅萬相 3.0）：模型依內容自行決定長度。
+// 開啟時隱藏秒數滑桿、費用提示改成「依實際生成長度計費」——這種情況平台走
+// 保證金預扣、完成後按實際秒數結算，事前給任何數字都是假的。
+function syncSmartDur() {
+    const modelId   = document.getElementById('videoModel').value;
+    const taskType  = document.getElementById('videoTaskType').value;
+    const modelInfo = models.video.find(m => m.id === modelId) || {};
+    const row = document.getElementById('vidSmartDurRow');
+    const supported = !!modelInfo.smart_duration && taskType !== 'animate' && !modelInfo.no_duration;
+    row.style.display = supported ? '' : 'none';
+    if (!supported && document.getElementById('vidSmartDuration').checked) {
+        document.getElementById('vidSmartDuration').checked = false;
+    }
+    onSmartDurToggle();
+}
+
+function onSmartDurToggle() {
+    const on = document.getElementById('vidSmartDuration').checked &&
+               document.getElementById('vidSmartDurRow').style.display !== 'none';
+    const modelInfo = models.video.find(m => m.id === document.getElementById('videoModel').value) || {};
+    document.getElementById('vidDurationGroup').style.display =
+        (on || modelInfo.no_duration || document.getElementById('videoTaskType').value === 'animate') ? 'none' : '';
+    const priceEl = document.getElementById('videoModelPrice');
+    if (on) priceEl.textContent = '（依實際生成長度計費）';
+    else updateModelPriceHint('videoModelPrice', document.getElementById('videoModel').value);
 }
 
 function onVidModelChange() {
@@ -1271,6 +1319,11 @@ function onVidModelChange() {
     if (refInput) {
         refInput.accept = modelInfo.ref_images_only ? 'image/*' : 'image/*,video/*';
     }
+
+    // 放在最後：syncSmartDur 會依開關狀態隱藏時長滑桿，必須蓋過上面
+    // 依 no_duration 重設 display 的那行，順序反了智能時長開啟時滑桿會跑回來
+    syncVidRatio();
+    syncSmartDur();
 }
 
 // I2V 模式切換（顯示對應上傳區）
@@ -2023,18 +2076,26 @@ async function sendVideo() {
     const prompt    = document.getElementById('videoPrompt').value.trim();
     const negPrompt = document.getElementById('videoNegPrompt').value.trim();
     const resolution= document.getElementById('videoResolution').value;
-    const duration  = parseInt(document.getElementById('videoDuration').value);
+    let duration    = parseInt(document.getElementById('videoDuration').value);
     const audio         = document.getElementById('vidAudio').checked;
     const vidExtend     = document.getElementById('vidPromptExtend').checked;
     const vidWatermark  = document.getElementById('vidWatermark').checked;
     const vidSeedRaw    = document.getElementById('vidSeed').value.trim();
     const vidSeed       = vidSeedRaw !== '' ? parseInt(vidSeedRaw) : null;
+    // 智能時長開啟時送 -1（模型自行決定長度，僅萬相 3.0；費用依實際秒數結算）
+    const smartDur = document.getElementById('vidSmartDuration').checked &&
+                     document.getElementById('vidSmartDurRow').style.display !== 'none';
+    if (smartDur) duration = -1;
+    // ratio 只在下拉可見時帶值（各家族值域不同，隱藏時代表該模型不吃這個參數）
+    const ratioVal = document.getElementById('vidRatioGroup').style.display !== 'none'
+                   ? document.getElementById('videoRatio').value : '';
 
     if (!prompt && taskType !== 'vedit' && taskType !== 'animate') { toast('請輸入 Prompt', 'error'); return; }
 
     // 昂貴任務先確認（門檻與理由見 confirmIfExpensive）。放在按鈕鎖定之前，
-    // 使用者取消時不需要再把按鈕解鎖
-    if (!confirmIfExpensive(model, { resolution, seconds: duration, audio,
+    // 使用者取消時不需要再把按鈕解鎖。智能時長無法預知秒數，以該模型上限
+    // 當最壞情況估——寧可多確認一次，不要低估後放行
+    if (!confirmIfExpensive(model, { resolution, seconds: smartDur ? 30 : duration, audio,
                                      mode: document.getElementById('videoAnimateMode')?.value })) return;
 
     const btn = document.getElementById('videoSendBtn');
@@ -2050,6 +2111,7 @@ async function sendVideo() {
             fd.append('negative_prompt', negPrompt); fd.append('resolution', resolution);
             fd.append('duration', duration); fd.append('audio', audio);
             fd.append('prompt_extend', vidExtend); fd.append('watermark', vidWatermark);
+            if (ratioVal) fd.append('ratio', ratioVal);
             if (vidSeed !== null) fd.append('seed', vidSeed);
             if (audio) {
                 const audioFile = document.getElementById('vidT2VAudioInput').files[0];
@@ -2064,6 +2126,7 @@ async function sendVideo() {
             fd.append('negative_prompt', negPrompt); fd.append('resolution', resolution);
             fd.append('duration', duration); fd.append('i2v_mode', i2vMode);
             fd.append('prompt_extend', vidExtend); fd.append('watermark', vidWatermark);
+            if (ratioVal) fd.append('ratio', ratioVal);
             if (vidSeed !== null) fd.append('seed', vidSeed);
 
             fd.append('audio', audio);
@@ -2131,6 +2194,7 @@ async function sendVideo() {
             fd.append('resolution', resolution); fd.append('duration', duration);
             fd.append('prompt_extend', vidExtend); fd.append('watermark', vidWatermark);
             fd.append('audio', audio);
+            if (ratioVal) fd.append('ratio', ratioVal);
             if (vidSeed !== null) fd.append('seed', vidSeed);
             if (audio) {
                 const bgmFile = document.getElementById('vidT2VAudioInput')?.files[0];

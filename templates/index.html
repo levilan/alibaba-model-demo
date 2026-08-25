@@ -551,6 +551,11 @@
                     <input type="range" id="videoDuration" min="2" max="15" step="1" value="5"
                            oninput="document.getElementById('durVal').textContent=this.value; updateModelPriceHint('videoModelPrice', document.getElementById('videoModel').value)">
                 </div>
+                <!-- 智能時長（僅萬相 3.0）：模型依內容自行決定長度 -->
+                <div class="toggle-row" id="vidSmartDurRow" style="display:none">
+                    <label data-tip="由模型依影片內容自動決定合適的長度。費用依實際生成的秒數計算，送出前無法預估確切金額">智能時長</label>
+                    <label class="toggle"><input type="checkbox" id="vidSmartDuration" onchange="onSmartDurToggle()"><span class="toggle-slider"></span></label>
+                </div>
                 <!-- 自動配音（萬相 2.6/2.7 的 T2V/I2V/R2V 皆支援） -->
                 <div class="toggle-row" id="vidAudioRow" style="display:none">
                     <label data-tip="為生成的影片自動加入背景音效與環境音（萬相 2.6/2.7 系列 T2V/I2V/R2V 支援）。依影片內容自動搭配音效">自動配音</label>
@@ -1099,6 +1104,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=86"></script>
+<script src="/static/js/app.js?v=87"></script>
 </body>
 </html>
