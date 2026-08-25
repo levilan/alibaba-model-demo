@@ -8,6 +8,7 @@
 
 ## 2026-08-25
 
+- fix(video)：**wan＊/happyhorse＊ 的 seed／watermark／prompt_extend 改送巢狀 `metadata.parameters.*`**。平台端 session 回報（文檔站發現行號）：閘道 ali 系 adaptor 只讀巢狀，扁平的 `metadata.seed` 被靜默忽略——playground 這三個開關在兩家等於一直沒作用（seed 設了仍隨機、浮水印關不掉、無錯誤訊息）。四個端點（t2v/i2v/vedit/r2v）的重複寫入抽成 `_apply_video_extra_params()`：**僅確認受影響的兩家走巢狀**（平台修扁平相容部署前後皆有效），veo/seedance 等 adaptor 行為未驗證維持扁平不動、不順手統一；三值皆空時不留空 `parameters` 鍵、seed=0 為合法值。補 5 條純函式測試，64 條全過。
 - feat(mcp)：**MCP 第二階段——edit_image／tts／asr 三工具**。`nenai_edit_image`（多圖融合編輯，參考圖收 URL/data URI、上限依 MODELS max_ref、伺服器端逐張抓取轉 multipart image_N）、`nenai_tts`（音色驗證附合法 id 清單）、`nenai_asr`（音訊收 URL/data URI，上限 50MB）。`nenai_list_models` 補 voice 分類（巢狀 tts/asr，音色清單 id/name/desc）；`_mcp_fetch_image_input` 泛化為 `_mcp_fetch_media`（可調上限與預設 mime）。冒煙實測（Levi 確認付費，約 NT$2）：TTS「影音生成平台測試成功」→ ASR 回讀「影音生成平台测试成功。」逐字命中（一次驗兩工具＋data URI 路徑）；edit_image 以上輪青瓷杯圖為參考改色成功。已知行為：本機開發時 `_public_base_url` 對 localhost 回 None，audio_url 維持相對路徑（正式環境自動轉絕對，設計如此）。測試 55→59 條全過。
 - fix(mcp)：**tools/call 補 key 有效性驗證**。文檔站對版時發現：假 key（任意 Bearer 值）可透過 `nenai_list_models` 取得完整模型目錄＋即時單價——根因是 `get_api_key()` 只驗「有沒有帶」不驗「是不是真的」（REST 既有行為，瀏覽器流程靠 /login 真驗證擋），加上 `/api/pricing` 全域共享快取會把真使用者暖過的價格服務給任何 key。Levi 裁示收緊 MCP：tools/call 統一先驗 key（上游 GET /v1/models，免費，按 key 雜湊快取 10 分鐘；上游不可達時 fail-open 不進快取），假 key 回 `invalid_api_key`。REST 端維持現狀（比照 /api/user/groups 先例）。補測試（快取 prime 不出網路），55 條全過。
 - feat(mcp)：**MCP 第一階段實作**（`/mcp`，依 docs/mcp-tool-design.md）。四工具：`nenai_list_models`（能力/約束/即時單價 discovery）、`nenai_generate_image`、`nenai_generate_video`（t2v/i2v 合一，帶 image_url 即圖生）、`nenai_task_status`。實作要點：

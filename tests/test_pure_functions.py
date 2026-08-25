@@ -461,3 +461,42 @@ def test_debug_req_summarizes_base64():
     assert out["body"]["prompt"] == "keep me"
     assert "5000 chars" in out["body"]["image"]
     assert "A" * 100 not in json.dumps(out)
+
+
+# ── _apply_video_extra_params：seed/watermark/prompt_extend 的放置層級 ──────
+# 對應 2026-08-25 平台端回報的 bug：ali 系 adaptor（wan*/happyhorse*）只讀巢狀
+# metadata.parameters.*，扁平的 metadata.seed 被靜默忽略——playground 的 seed/
+# 浮水印/prompt_extend 三個開關在這兩家等於沒作用。其他家族行為未驗證維持扁平。
+
+def test_video_extra_params_wan_goes_nested():
+    meta = {}
+    app._apply_video_extra_params(meta, "wan2.7-t2v", 42, True, True)
+    assert meta == {"parameters": {"seed": 42, "watermark": True, "prompt_extend": True}}
+
+
+def test_video_extra_params_happyhorse_goes_nested():
+    meta = {}
+    app._apply_video_extra_params(meta, "happyhorse-1.1-t2v", 7, False, False)
+    assert meta == {"parameters": {"seed": 7}}
+
+
+def test_video_extra_params_veo_stays_flat():
+    # veo 的 adaptor 行為未驗證，維持原本的扁平寫法——不要「順手統一」
+    meta = {}
+    app._apply_video_extra_params(meta, "veo-3.1-generate-001", 42, True, False)
+    assert meta == {"seed": 42, "watermark": True}
+    assert "parameters" not in meta
+
+
+def test_video_extra_params_noop_leaves_meta_clean():
+    # 三個都沒設時不能留下空的 parameters 鍵——多餘欄位可能改變上游行為
+    meta = {"negative_prompt": "x"}
+    app._apply_video_extra_params(meta, "wan2.7-t2v", None, False, False)
+    assert meta == {"negative_prompt": "x"}
+
+
+def test_video_extra_params_seed_zero_is_sent():
+    # seed=0 是合法值，不能被當成「沒設」丟掉（與前端「留空≠0」同一條原則）
+    meta = {}
+    app._apply_video_extra_params(meta, "wan3.0-video", 0, False, False)
+    assert meta["parameters"]["seed"] == 0

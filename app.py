@@ -2603,6 +2603,37 @@ def _apply_explicit_media(model: str, meta: dict, media_arr: list) -> None:
         meta.setdefault("input", {})["media"] = media_arr
 
 
+def _apply_video_extra_params(meta: dict, model: str, seed: Optional[int],
+                              watermark: bool, prompt_extend: bool) -> None:
+    """seed / watermark / prompt_extend 的放置層級依上游 adaptor 而異。
+
+    閘道的 ali 系 adaptor（萬相 wan* 與 happyhorse*）只讀**巢狀**的
+    metadata.parameters.*——扁平的 metadata.seed 會在反序列化時被靜默忽略
+    （不報錯、不生效；平台端 session 2026-08-25 回報，根因是唯一生效路徑
+    是把 metadata 反序列化回欄位名為 parameters 的請求結構）。平台已修
+    扁平相容但尚未部署；巢狀寫法修前修後都有效，所以這兩家改走巢狀。
+    其他家族（veo / seedance / gemini-omni…）的 adaptor 行為未驗證，
+    維持原本的扁平寫法不動——不要「順手統一」，統一就是拿未驗證的家族冒險。
+    同一個 metadata 裡 ratio/audio/duration/resolution 讀扁平是對的，不要搬。
+
+    優先序（平台端 2026-08-25 實測，非推測）：扁平與巢狀**同時出現時巢狀勝出**
+    （平台的扁平讀取在前、巢狀泛用覆寫在後）——所以就算未來有人兩邊都送，
+    結果仍是巢狀的值，不會出現看運氣的行為。
+
+    驗收 seed 時注意分兩層：「平台有沒有送到」（本函式＋單元測試保證）與
+    「上游有沒有真的照 seed 重現」是兩回事——平台端 2026-08-18 在 lyria-002
+    實測過「送達了但上游不當一回事」（同 seed 4 次全不同），且阿里文檔對
+    wan 的 seed 只寫「用於復現」沒有硬保證。實測不重現時先別懷疑這裡。
+    """
+    if not (prompt_extend or watermark or seed is not None):
+        return
+    nested = model.startswith(("wan", "happyhorse"))
+    target = meta.setdefault("parameters", {}) if nested else meta
+    if prompt_extend: target["prompt_extend"] = True
+    if watermark: target["watermark"] = True
+    if seed is not None: target["seed"] = seed
+
+
 def _apply_res_and_duration(payload: dict, meta: dict, resolution: str,
                             duration: Optional[int] = None, ratio: str = "") -> None:
     """把解析度／時長／畫面比例同時以三家上游各自看得懂的形式塞進 payload 與 metadata。
@@ -2864,9 +2895,7 @@ async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
     meta: dict = {}
     _apply_res_and_duration(payload, meta, resolution, duration, ratio)
     if negative_prompt: meta["negative_prompt"] = negative_prompt
-    if prompt_extend:   meta["prompt_extend"] = True
-    if watermark:       meta["watermark"] = True
-    if seed is not None: meta["seed"] = seed
+    _apply_video_extra_params(meta, model, seed, watermark, prompt_extend)
     if model in _VEO_MODELS: meta["person_generation"] = "allow_adult"
 
     # 上游未收到欄位時會自行判斷是否配音，不會視為「不要配音」——
@@ -2953,9 +2982,7 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
     meta: dict = {"i2v_mode": i2v_mode}
     _apply_res_and_duration(payload, meta, resolution, actual_duration, ratio)
     if neg_prompt:    meta["negative_prompt"] = neg_prompt
-    if prompt_extend: meta["prompt_extend"] = True
-    if watermark:     meta["watermark"] = True
-    if seed is not None: meta["seed"] = seed
+    _apply_video_extra_params(meta, model, seed, watermark, prompt_extend)
     if model in _VEO_MODELS: meta["person_generation"] = "allow_adult"
     # 上游未收到欄位時會自行判斷是否配音，不會視為「不要配音」——
     # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
@@ -3071,9 +3098,7 @@ async def video_vedit(request: Request, api_key: str = Depends(get_api_key)):
 
     meta: dict = {"audio_setting": audio_setting}
     if neg_prompt:    meta["negative_prompt"] = neg_prompt
-    if prompt_extend: meta["prompt_extend"] = True
-    if watermark:     meta["watermark"] = True
-    if seed is not None: meta["seed"] = seed
+    _apply_video_extra_params(meta, model, seed, watermark, prompt_extend)
 
     _apply_explicit_media(model, meta, media_arr)
     payload: dict = {
@@ -3164,9 +3189,7 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
             raise HTTPException(status_code=500, detail=str(e))
 
     meta: dict = {}
-    if prompt_extend: meta["prompt_extend"] = True
-    if watermark:     meta["watermark"] = True
-    if seed is not None: meta["seed"] = seed
+    _apply_video_extra_params(meta, model, seed, watermark, prompt_extend)
     if model in _VEO_MODELS: meta["person_generation"] = "allow_adult"
     payload: dict = {"model": model, "prompt": prompt,
                      "media": media_arr,
