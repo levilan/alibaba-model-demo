@@ -8,6 +8,7 @@
 
 ## 2026-08-25
 
+- fix(mcp)：**tools/call 補 key 有效性驗證**。文檔站對版時發現：假 key（任意 Bearer 值）可透過 `nenai_list_models` 取得完整模型目錄＋即時單價——根因是 `get_api_key()` 只驗「有沒有帶」不驗「是不是真的」（REST 既有行為，瀏覽器流程靠 /login 真驗證擋），加上 `/api/pricing` 全域共享快取會把真使用者暖過的價格服務給任何 key。Levi 裁示收緊 MCP：tools/call 統一先驗 key（上游 GET /v1/models，免費，按 key 雜湊快取 10 分鐘；上游不可達時 fail-open 不進快取），假 key 回 `invalid_api_key`。REST 端維持現狀（比照 /api/user/groups 先例）。補測試（快取 prime 不出網路），55 條全過。
 - feat(mcp)：**MCP 第一階段實作**（`/mcp`，依 docs/mcp-tool-design.md）。四工具：`nenai_list_models`（能力/約束/即時單價 discovery）、`nenai_generate_image`、`nenai_generate_video`（t2v/i2v 合一，帶 image_url 即圖生）、`nenai_task_status`。實作要點：
   - 手寫極簡 stateless JSON-RPC（initialize/tools/list/tools/call/ping），**零新依賴**；不發 Mcp-Session-Id（Streamable HTTP 規範允許 stateless）、GET /mcp 回 405。接入方式：`claude mcp add --transport http nenai <站台>/mcp --header "Authorization: Bearer sk-..."`。
   - 工具實作用 in-process ASGI（httpx.ASGITransport）呼叫自己的 `/api/*`——與瀏覽器同路徑，轉譯層/統計自動生效且只計一次；/mcp 本身不在統計範圍。

@@ -3754,6 +3754,34 @@ _MCP_TOOLS = [
 ]
 
 
+# tools/call 的 key 有效性驗證（Levi 裁示 2026-08-25：文檔站發現假 key 可取得
+# 模型目錄＋即時單價後收緊）。get_api_key() 只驗「有沒有帶」，這裡補「是不是真的」：
+# 上游 GET /v1/models 需要有效 key 且免費，結果按 key 雜湊快取 10 分鐘。
+# 上游暫時不可達時 fail-open（不進快取）——生成請求到上游還會再驗一次，
+# 別讓上游抖動把真用戶的 discovery 也鎖住。
+_MCP_KEY_VALID_CACHE: Dict[str, tuple] = {}
+_MCP_KEY_VALID_TTL = 600.0
+
+
+async def _mcp_key_valid(api_key: str) -> bool:
+    h = hashlib.sha256(api_key.encode()).hexdigest()
+    now = time.time()
+    hit = _MCP_KEY_VALID_CACHE.get(h)
+    if hit and now - hit[1] < _MCP_KEY_VALID_TTL:
+        return hit[0]
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(f"{NENAI_V1}/models",
+                                 headers={"Authorization": f"Bearer {api_key}"})
+        valid = r.status_code == 200
+    except Exception:
+        return True
+    if len(_MCP_KEY_VALID_CACHE) > 10000:
+        _MCP_KEY_VALID_CACHE.clear()   # 防大量隨機假 key 灌爆記憶體
+    _MCP_KEY_VALID_CACHE[h] = (valid, now)
+    return valid
+
+
 def _mcp_abs(url: Optional[str], request: Request) -> Optional[str]:
     """把本站相對路徑（/outputs/...）轉成絕對網址——remote MCP 客戶端拿到相對
     路徑是抓不到檔案的（冒煙實測抓到的問題）。推導不出公開 base（本機開發）就原樣回。"""
@@ -4004,6 +4032,11 @@ async def mcp_endpoint(request: Request):
         if not api_key:
             result = {"error": "missing_api_key",
                       "message": "請在 MCP 連線設定加上 header：Authorization: Bearer <你的 NenAI API key>"}
+            return ok({"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
+                       "isError": True})
+        if not await _mcp_key_valid(api_key):
+            result = {"error": "invalid_api_key",
+                      "message": "API key 無效或權限不足，請確認你的 NenAI API key"}
             return ok({"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
                        "isError": True})
         try:

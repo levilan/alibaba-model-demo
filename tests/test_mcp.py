@@ -30,7 +30,15 @@ def _rpc(body: dict, headers: dict | None = None) -> httpx.Response:
     return asyncio.run(go())
 
 
+def _prime_key(key: str, valid: bool = True) -> None:
+    """把 key 有效性寫進快取，讓測試不出網路。"""
+    import hashlib
+    app_module._MCP_KEY_VALID_CACHE[hashlib.sha256(key.encode()).hexdigest()] = (valid, time.time())
+
+
 def _call_tool(name: str, arguments: dict, key: str | None = "sk-test") -> dict:
+    if key:
+        _prime_key(key, True)
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     r = _rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
               "params": {"name": name, "arguments": arguments}}, headers)
@@ -92,6 +100,17 @@ def test_call_without_key_is_guided_error():
     out = _call_tool("nenai_generate_image", {"model": "z-image-turbo", "prompt": "x"}, key=None)
     assert out["isError"] and out["error"] == "missing_api_key"
     assert "Authorization" in out["message"]
+
+
+def test_call_with_invalid_key_is_rejected():
+    """假 key 要被擋（2026-08-25 文檔站回報：假 key 可拿模型目錄＋單價，Levi 裁示收緊）。"""
+    _prime_key("sk-definitely-invalid", valid=False)
+    r = _rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+              "params": {"name": "nenai_list_models", "arguments": {}}},
+             {"Authorization": "Bearer sk-definitely-invalid"})
+    result = r.json()["result"]
+    payload = json.loads(result["content"][0]["text"])
+    assert result["isError"] and payload["error"] == "invalid_api_key"
 
 
 def test_generate_image_unknown_model_lists_valid():
