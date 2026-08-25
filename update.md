@@ -8,6 +8,12 @@
 
 ## 2026-08-25
 
+- feat(mcp)：**MCP 第一階段實作**（`/mcp`，依 docs/mcp-tool-design.md）。四工具：`nenai_list_models`（能力/約束/即時單價 discovery）、`nenai_generate_image`、`nenai_generate_video`（t2v/i2v 合一，帶 image_url 即圖生）、`nenai_task_status`。實作要點：
+  - 手寫極簡 stateless JSON-RPC（initialize/tools/list/tools/call/ping），**零新依賴**；不發 Mcp-Session-Id（Streamable HTTP 規範允許 stateless）、GET /mcp 回 405。接入方式：`claude mcp add --transport http nenai <站台>/mcp --header "Authorization: Bearer sk-..."`。
+  - 工具實作用 in-process ASGI（httpx.ASGITransport）呼叫自己的 `/api/*`——與瀏覽器同路徑，轉譯層/統計自動生效且只計一次；/mcp 本身不在統計範圍。
+  - 雙層驗證：MCP 層以 MODELS 預檢，錯誤附 `valid_values`（如 Veo 非法時長回 [4,6,8]）；initialize/tools/list 免 key，tools/call 無 key 回設定引導。
+  - 冒煙實測（Levi 確認付費，z-image-turbo 一張＋happyhorse-1.1-t2v 3 秒，約 NT$3）：全鏈路通過；**抓到並修掉一個 bug**——結果 URL 原回相對路徑 `/outputs/...`，remote 客戶端抓不到，改為優先回上游絕對網址、本站暫存以 `_public_base_url` 轉絕對當備援（`fallback_url`）。
+  - 新增 `tests/test_mcp.py` 16 條（協定面/驗證路徑/無 key 引導/**MODELS 欄位白名單守門**——出現 MCP 映射表不認識的新欄位即 fail），54 條全過。設計文件同步補：計價「文件不印價格、工具回即時價格」分工、Spicy 公開文件完全不提、llms.txt 引用、URL 時效上線前實測待辦。
 - docs：**MCP tool 設計稿**（`docs/mcp-tool-design.md`，未實作）。定案方向：remote MCP 掛現有 FastAPI 的 `/mcp`、共用轉譯層與統計；8＋1 個動作型工具（model 當參數，非 158 模型 158 工具）、動態約束三層解法（list_models discovery＋description 引導＋伺服器端驗證附合法值）、影片 submit/status 分離、Spicy 預設隱藏、媒體 URL 附時效提示對齊「客戶內容不上雲」。AI Canvas 整合拆三層（L0 agent 原生鏈式呼叫／L1 workflow DSL 與 canvas_compose/parse 圖互通、圖不落地／L2 伺服器端 runner 等 L1 驗證後再投資）。新模型上線的同步機制：MODELS 單一真實來源＋部署即生效，工作流只多一步 MCP 冒煙；配套「欄位白名單」守門測試構想。文字對話刻意不收（OpenAI 相容 endpoint 已是標準）。
 
 ## 2026-08-23

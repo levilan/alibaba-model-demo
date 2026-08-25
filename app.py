@@ -3655,6 +3655,369 @@ async def _async_download_video(url: str) -> Optional[str]:
         print(f"Video download error: {e}")
     return None
 
+# ═══ MCP（Model Context Protocol）endpoint ═══════════════════════════════════
+# 設計依據 docs/mcp-tool-design.md。第一階段四工具：
+#   nenai_list_models / nenai_generate_image / nenai_generate_video / nenai_task_status
+#
+# 實作取捨（跟設計文件一致，這裡記「為什麼這樣做」）：
+# · **手寫極簡 stateless JSON-RPC，不引入 mcp SDK。** 我們的工具全是單純
+#   request/response，協定面只需要 initialize / tools/list / tools/call / ping；
+#   stateless（不發 Mcp-Session-Id）是 Streamable HTTP 規範允許的，Claude Code
+#   等客戶端直接可用。省一個依賴，auth 讀 header 也不用繞 SDK 的 context。
+# · **工具實作用 in-process ASGI 呼叫自己的 /api/***（httpx.ASGITransport），
+#   跟瀏覽器走完全同一條路：轉譯層、統計 middleware（記到 /api/* 路徑與 model）
+#   全部自動生效，不複製任何上游怪癖的處理。/mcp 本身不在統計範圍，
+#   所以一次工具呼叫只會被統計一次。
+# · **驗證雙層**：MCP 層先用 MODELS 做便宜的預檢（錯誤附 valid_values，讓 agent
+#   一次修正），過了再進 /api/*（那裡還有一層），最後上游把關。
+# · initialize / tools/list 不需要 key（客戶端安裝時會先打這兩個）；
+#   tools/call 沒帶 key 回 isError 並教怎麼設定。
+
+_MCP_PROTOCOL_FALLBACK = "2025-06-18"
+_MCP_SERVER_INFO = {"name": "nenai-playground", "version": "0.1.0"}
+_MCP_POLL_HINT = "影片生成約 1~10 分鐘：建議 30 秒後首次查詢 nenai_task_status，之後每 15 秒一次"
+_MCP_EXPIRES_HINT = "結果連結有時效（依上游而異，最短數小時），請立即下載保存"
+
+# 每個模型可揭露給 agent 的約束欄位（白名單——MODELS 新欄位要進 MCP 得先加進這裡，
+# 配套的守門測試見 tests/test_mcp.py）
+_MCP_CONSTRAINT_FIELDS = (
+    "type", "sizes", "resolutions", "min_dur", "max_dur", "dur_step", "max_n",
+    "max_ref", "audio", "no_duration", "aspect_ratios", "custom_size",
+    "i2v_modes", "ref_images_only", "vision", "thinking", "reasoning_efforts",
+)
+
+_MCP_TOOLS = [
+    {
+        "name": "nenai_list_models",
+        "description": (
+            "查詢 NenAI 可用的生成模型：能力、參數約束（合法尺寸/解析度/時長/張數）與即時單價。"
+            "呼叫生成工具前先用這支確認該模型的合法參數值。"
+            "完整使用文件見 https://docs.nen.com.tw/en/llms.txt"),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string", "enum": ["image", "video"],
+                             "description": "省略 = 全部（第一階段僅圖片與影片）"},
+                "model": {"type": "string", "description": "指定單一模型 id 時回完整約束"},
+            },
+        },
+    },
+    {
+        "name": "nenai_generate_image",
+        "description": (
+            "文生圖（同步，數秒到一分鐘）。model 的合法 size/n 上限先用 nenai_list_models 查。"
+            "回傳圖片 URL——" + _MCP_EXPIRES_HINT),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "model": {"type": "string"},
+                "prompt": {"type": "string"},
+                "size": {"type": "string", "description": "合法值依模型，見 nenai_list_models"},
+                "n": {"type": "integer", "minimum": 1, "description": "生成張數，上限依模型"},
+                "negative_prompt": {"type": "string"},
+                "seed": {"type": "integer", "description": "固定值可重現同一結果"},
+            },
+            "required": ["model", "prompt"],
+        },
+    },
+    {
+        "name": "nenai_generate_video",
+        "description": (
+            "文生／圖生影片（非同步）。回傳 task_id，用 nenai_task_status 查進度。"
+            "帶 image_url 即為圖生影片（首幀）。resolution/duration 合法值依模型，"
+            "先用 nenai_list_models 查。" + _MCP_POLL_HINT),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "model": {"type": "string"},
+                "prompt": {"type": "string"},
+                "image_url": {"type": "string",
+                              "description": "首幀圖片：http(s) URL 或 data URI；省略 = 文生影片"},
+                "resolution": {"type": "string"},
+                "duration": {"type": "integer", "description": "秒數，範圍依模型"},
+                "audio": {"type": "boolean", "description": "自動配音（支援與否依模型）"},
+                "negative_prompt": {"type": "string"},
+                "seed": {"type": "integer"},
+            },
+            "required": ["model", "prompt"],
+        },
+    },
+    {
+        "name": "nenai_task_status",
+        "description": ("查詢影片生成任務狀態。SUCCEEDED 時回傳影片 URL——" + _MCP_EXPIRES_HINT),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"task_id": {"type": "string"}},
+            "required": ["task_id"],
+        },
+    },
+]
+
+
+def _mcp_abs(url: Optional[str], request: Request) -> Optional[str]:
+    """把本站相對路徑（/outputs/...）轉成絕對網址——remote MCP 客戶端拿到相對
+    路徑是抓不到檔案的（冒煙實測抓到的問題）。推導不出公開 base（本機開發）就原樣回。"""
+    if url and url.startswith("/"):
+        base = _public_base_url(request)
+        return f"{base}{url}" if base else url
+    return url
+
+
+def _mcp_err(field: str, message: str, valid_values: Optional[list] = None) -> dict:
+    out = {"error": "invalid_parameter", "field": field, "message": message}
+    if valid_values:
+        out["valid_values"] = valid_values
+    return out
+
+
+def _mcp_image_models() -> Dict[str, dict]:
+    return {m["id"]: m for m in MODELS.get("image", []) if m.get("type") == "t2i"}
+
+
+def _mcp_video_models(vtype: str) -> Dict[str, dict]:
+    return {m["id"]: m for m in MODELS.get("video", []) if m.get("type") == vtype}
+
+
+async def _mcp_internal(api_key: str, method: str, path: str, **kw):
+    """in-process 呼叫自己的 /api/*，走與瀏覽器完全相同的路徑。"""
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://mcp.internal",
+                                 timeout=180.0) as client:
+        return await client.request(
+            method, path, headers={"Authorization": f"Bearer {api_key}"}, **kw)
+
+
+async def _mcp_tool_list_models(api_key: str, args: dict, request: Request) -> dict:
+    resp = await _mcp_internal(api_key, "GET", "/api/models")
+    if resp.status_code != 200:
+        return {"error": "upstream_error", "message": resp.text[:300]}
+    all_models = resp.json()
+    pricing = {}
+    try:
+        p = await _mcp_internal(api_key, "GET", "/api/pricing")
+        if p.status_code == 200:
+            pricing = p.json()
+    except Exception:
+        pass  # 拿不到單價就不附，模型清單照回
+
+    category, want = args.get("category"), args.get("model")
+    out: dict = {}
+    for cat in (["image", "video"] if not category else [category]):
+        rows = []
+        for m in all_models.get(cat, []):
+            if want and m["id"] != want:
+                continue
+            row = {"id": m["id"], "name": m.get("name"), "desc": m.get("desc")}
+            for f in _MCP_CONSTRAINT_FIELDS:
+                if f in m:
+                    row[f] = m[f]
+            if m["id"] in pricing:
+                row["pricing"] = pricing[m["id"]]
+            rows.append(row)
+        if rows:
+            out[cat] = rows
+    if want and not out:
+        return _mcp_err("model", f"找不到模型 {want}",
+                        sorted({m['id'] for c in ("image", "video") for m in all_models.get(c, [])}))
+    if not pricing:
+        out["note"] = "本次未能取得單價（pricing 欄位缺席），模型與約束不受影響"
+    return out
+
+
+async def _mcp_tool_generate_image(api_key: str, args: dict, request: Request) -> dict:
+    model = args.get("model", "")
+    catalog = _mcp_image_models()
+    if model not in catalog:
+        return _mcp_err("model", f"{model} 不是文生圖模型", sorted(catalog))
+    meta = catalog[model]
+    size = args.get("size")
+    if size and meta.get("sizes") and size not in meta["sizes"] and not meta.get("custom_size"):
+        return _mcp_err("size", f"{model} 不接受 size={size}", meta["sizes"])
+    n = int(args.get("n") or 1)
+    if n > meta.get("max_n", 1):
+        return _mcp_err("n", f"{model} 一次最多 {meta.get('max_n', 1)} 張",
+                        list(range(1, meta.get("max_n", 1) + 1)))
+    body = {"model": model, "prompt": args.get("prompt", ""), "n": n}
+    if size: body["size"] = size
+    if args.get("negative_prompt"): body["negative_prompt"] = args["negative_prompt"]
+    if args.get("seed") is not None: body["seed"] = args["seed"]
+    resp = await _mcp_internal(api_key, "POST", "/api/image/generate", json=body)
+    rj = resp.json()
+    if resp.status_code != 200 or not rj.get("success"):
+        return {"error": "generation_failed", "message": str(rj.get("error") or rj)[:500]}
+    images = []
+    for img in rj.get("images", []):
+        if isinstance(img, dict):
+            # 優先給上游絕對網址；本站暫存路徑轉絕對後當備援
+            url = img.get("url") or ""
+            images.append({"url": url if url.startswith("http") else _mcp_abs(url or img.get("local_path"), request),
+                           "fallback_url": _mcp_abs(img.get("local_path"), request)})
+        else:
+            images.append({"url": _mcp_abs(str(img), request)})
+    return {"images": images, "model": model, "expires_hint": _MCP_EXPIRES_HINT}
+
+
+async def _mcp_fetch_image_input(image_url: str):
+    """把 image_url（http(s) 或 data URI）取成 bytes；處理中暫存，不落地。"""
+    if image_url.startswith("data:"):
+        try:
+            head, b64 = image_url.split(",", 1)
+            mime = head.split(";")[0][5:] or "image/png"
+            return base64.b64decode(b64), mime, None
+        except Exception:
+            return None, None, _mcp_err("image_url", "data URI 解析失敗")
+    if not image_url.startswith(("http://", "https://")):
+        return None, None, _mcp_err("image_url", "僅接受 http(s) URL 或 data URI")
+    try:
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            r = await client.get(image_url)
+            if r.status_code != 200:
+                return None, None, _mcp_err("image_url", f"下載失敗（HTTP {r.status_code}）")
+            if len(r.content) > 20 * 1024 * 1024:
+                return None, None, _mcp_err("image_url", "圖片超過 20MB 上限")
+            return r.content, r.headers.get("content-type", "image/png").split(";")[0], None
+    except Exception as e:
+        return None, None, _mcp_err("image_url", f"下載失敗（{type(e).__name__}）")
+
+
+async def _mcp_tool_generate_video(api_key: str, args: dict, request: Request) -> dict:
+    model = args.get("model", "")
+    is_i2v = bool(args.get("image_url"))
+    vtype = "i2v" if is_i2v else "t2v"
+    catalog = _mcp_video_models(vtype)
+    if model not in catalog:
+        label = "圖生影片（i2v）" if is_i2v else "文生影片（t2v）"
+        return _mcp_err("model", f"{model} 不支援{label}", sorted(catalog))
+    meta = catalog[model]
+    resolution = args.get("resolution")
+    if resolution and meta.get("resolutions") and resolution not in meta["resolutions"]:
+        return _mcp_err("resolution", f"{model} 不接受 {resolution}", meta["resolutions"])
+    duration = args.get("duration")
+    if duration is not None and not meta.get("no_duration"):
+        lo, hi = meta.get("min_dur", 2), meta.get("max_dur", 15)
+        step = meta.get("dur_step", 1)
+        valid = list(range(lo, hi + 1, step))
+        if duration not in valid:
+            return _mcp_err("duration", f"{model} 時長需在 {lo}~{hi} 秒（step {step}）", valid)
+
+    data = {"model": model, "prompt": args.get("prompt", "")}
+    if resolution: data["resolution"] = resolution
+    if duration is not None: data["duration"] = str(duration)
+    if args.get("audio") is not None: data["audio"] = "true" if args["audio"] else "false"
+    if args.get("negative_prompt"): data["negative_prompt"] = args["negative_prompt"]
+    if args.get("seed") is not None: data["seed"] = str(args["seed"])
+
+    files = None
+    if is_i2v:
+        blob, mime, err = await _mcp_fetch_image_input(args["image_url"])
+        if err:
+            return err
+        files = {"image": ("input" + (".png" if "png" in mime else ".jpg"), blob, mime)}
+    resp = await _mcp_internal(api_key, "POST", f"/api/video/{vtype}", data=data, files=files)
+    rj = resp.json()
+    if resp.status_code != 200 or not rj.get("success"):
+        return {"error": "task_create_failed", "message": str(rj.get("error") or rj)[:500]}
+    return {"task_id": rj["task_id"], "status": rj.get("status", "PENDING"),
+            "model": model, "poll_hint": _MCP_POLL_HINT}
+
+
+async def _mcp_tool_task_status(api_key: str, args: dict, request: Request) -> dict:
+    task_id = args.get("task_id", "")
+    if not task_id:
+        return _mcp_err("task_id", "task_id 必填")
+    resp = await _mcp_internal(api_key, "GET", f"/api/video/status/{task_id}")
+    if resp.status_code != 200:
+        return {"error": "status_query_failed", "message": resp.text[:300]}
+    rj = resp.json()
+    out = {"task_id": task_id, "status": rj.get("status", "PENDING")}
+    if rj.get("error"):
+        out["error"] = rj["error"]
+    # 優先給上游絕對網址（時效較明確）；本站暫存受多實例限制，轉絕對後當備援
+    candidates = [rj.get("video_url"), rj.get("local_path")]
+    url = next((u for u in candidates if u and str(u).startswith("http")), None) \
+        or _mcp_abs(next((u for u in candidates if u), None), request)
+    if url:
+        out["video_url"] = url
+        out["expires_hint"] = _MCP_EXPIRES_HINT
+    return out
+
+
+_MCP_TOOL_IMPL = {
+    "nenai_list_models": _mcp_tool_list_models,
+    "nenai_generate_image": _mcp_tool_generate_image,
+    "nenai_generate_video": _mcp_tool_generate_video,
+    "nenai_task_status": _mcp_tool_task_status,
+}
+
+
+@app.get("/mcp")
+async def mcp_get():
+    # stateless server：不提供 SSE 串流，規範允許對 GET 回 405
+    return JSONResponse(status_code=405, content={"error": "SSE stream not supported"})
+
+
+@app.post("/mcp")
+async def mcp_endpoint(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={
+            "jsonrpc": "2.0", "id": None,
+            "error": {"code": -32700, "message": "Parse error"}})
+    if isinstance(body, list):
+        return JSONResponse(status_code=400, content={
+            "jsonrpc": "2.0", "id": None,
+            "error": {"code": -32600, "message": "Batch requests not supported"}})
+
+    method, mid = body.get("method", ""), body.get("id")
+    params = body.get("params") or {}
+
+    # notification（沒有 id）：收下即可
+    if mid is None:
+        return Response(status_code=202)
+
+    def ok(result: dict):
+        return {"jsonrpc": "2.0", "id": mid, "result": result}
+
+    if method == "initialize":
+        return ok({
+            "protocolVersion": params.get("protocolVersion") or _MCP_PROTOCOL_FALLBACK,
+            "capabilities": {"tools": {}},
+            "serverInfo": _MCP_SERVER_INFO,
+            "instructions": (
+                "NenAI 影音生成工具。需要 NenAI API key（Authorization: Bearer sk-...）。"
+                "文字對話請改用 OpenAI 相容 API（base_url 指向 NenAI 閘道），"
+                "教學見 https://docs.nen.com.tw"),
+        })
+    if method == "ping":
+        return ok({})
+    if method == "tools/list":
+        return ok({"tools": _MCP_TOOLS})
+    if method == "tools/call":
+        name = params.get("name", "")
+        impl = _MCP_TOOL_IMPL.get(name)
+        if impl is None:
+            return {"jsonrpc": "2.0", "id": mid,
+                    "error": {"code": -32602, "message": f"Unknown tool: {name}"}}
+        auth = request.headers.get("authorization", "")
+        api_key = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+        if not api_key:
+            result = {"error": "missing_api_key",
+                      "message": "請在 MCP 連線設定加上 header：Authorization: Bearer <你的 NenAI API key>"}
+            return ok({"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
+                       "isError": True})
+        try:
+            result = await impl(api_key, params.get("arguments") or {}, request)
+        except Exception as e:
+            result = {"error": "internal_error", "message": f"{type(e).__name__}: {e}"}
+        is_err = isinstance(result, dict) and "error" in result
+        return ok({"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
+                   "isError": is_err})
+
+    return {"jsonrpc": "2.0", "id": mid,
+            "error": {"code": -32601, "message": f"Method not found: {method}"}}
+
+
 if __name__ == "__main__":
     import uvicorn
     print("=" * 60)
