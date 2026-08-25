@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-08-25
+
+- docs：**MCP tool 設計稿**（`docs/mcp-tool-design.md`，未實作）。定案方向：remote MCP 掛現有 FastAPI 的 `/mcp`、共用轉譯層與統計；8＋1 個動作型工具（model 當參數，非 158 模型 158 工具）、動態約束三層解法（list_models discovery＋description 引導＋伺服器端驗證附合法值）、影片 submit/status 分離、Spicy 預設隱藏、媒體 URL 附時效提示對齊「客戶內容不上雲」。AI Canvas 整合拆三層（L0 agent 原生鏈式呼叫／L1 workflow DSL 與 canvas_compose/parse 圖互通、圖不落地／L2 伺服器端 runner 等 L1 驗證後再投資）。新模型上線的同步機制：MODELS 單一真實來源＋部署即生效，工作流只多一步 MCP 冒煙；配套「欄位白名單」守門測試構想。文字對話刻意不收（OpenAI 相容 endpoint 已是標準）。
+
 ## 2026-08-23
 
 - feat(stats)：**報表顯示使用者名稱、模型顯示名，長表前端分頁**。
