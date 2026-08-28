@@ -616,6 +616,11 @@ function onTextModelChange() {
     const modelInfo = models.text.find(m => m.id === modelId) || {};
     document.getElementById('textThinkingGroup').style.display = modelInfo.thinking ? '' : 'none';
 
+    // no_sampling：後端對這些模型（Claude 系，Bedrock 限制）刻意不送 temperature/
+    // top_p，滑桿顯示著只會讓使用者以為調了有效——整組收起來
+    document.getElementById('textTempGroup').style.display = modelInfo.no_sampling ? 'none' : '';
+    document.getElementById('textTopPGroup').style.display = modelInfo.no_sampling ? 'none' : '';
+
     // 圖片輸入只有視覺語言模型支援；切到不支援的模型時把已選的圖清掉，
     // 否則會靜默夾帶到不吃圖的模型上（那些模型會直接 400）
     const visionGroup = document.getElementById('textVisionGroup');
@@ -1294,10 +1299,11 @@ function onVidModelChange() {
         (taskType === 'animate') ? 'none' : '';
     if (taskType === 'animate') document.getElementById('vidWatermark').checked = false;
 
-    // 調整時長範圍（gemini-omni-flash-preview 等模型自行決定長度與解析度，不支援 duration/resolution 參數）
+    // 調整時長範圍。no_duration 與 no_resolution 是兩個獨立旗標：gemini-omni 兩者皆無、
+    // happyhorse-1.0-video-edit 官方沒有 duration 但有 resolution（720P/1080P）
     document.getElementById('vidDurationGroup').style.display = modelInfo.no_duration ? 'none' : '';
     document.getElementById('vidResolutionGroup').style.display =
-        (modelInfo.no_duration || taskType === 'animate') ? 'none' : '';
+        (modelInfo.no_resolution || taskType === 'animate') ? 'none' : '';
     const dur    = document.getElementById('videoDuration');
     const minD   = modelInfo.min_dur ?? 3;
     const maxD   = modelInfo.max_dur || 10;
@@ -1309,6 +1315,9 @@ function onVidModelChange() {
     if (curVal < minD) { curVal = minD; }
     if (curVal > maxD) { curVal = maxD; }
     curVal = minD + Math.round((curVal - minD) / stepD) * stepD;
+    // min_dur=0 的視頻編輯（wan2.7-videoedit）：0=保留原長，實際截斷範圍是 [2,max]，
+    // 1 是非法值——滑到 1 直接進位到 2，不讓非法值送得出去
+    if (minD === 0 && curVal === 1) { curVal = 2; }
     dur.value = curVal;
     document.getElementById('durVal').textContent = curVal;
     const rangeEl = document.getElementById('durRange');
@@ -1351,6 +1360,12 @@ function onVidModelChange() {
 
     // 放在最後：syncSmartDur 會依開關狀態隱藏時長滑桿，必須蓋過上面
     // 依 no_duration 重設 display 的那行，順序反了智能時長開啟時滑桿會跑回來
+    // 運鏡模式（shot_type，僅 wan2.6 系 t2v/i2v/r2v）：官方要求搭配 prompt_extend=true
+    const shotG = document.getElementById('vidShotTypeGroup');
+    if (shotG) {
+        shotG.style.display = modelInfo.shot_type ? '' : 'none';
+        if (!modelInfo.shot_type) document.getElementById('videoShotType').value = '';
+    }
     syncVidRatio();
     syncSmartDur();
 }
@@ -2108,6 +2123,11 @@ async function sendVideo() {
     const negPrompt = document.getElementById('videoNegPrompt').value.trim();
     const resolution= document.getElementById('videoResolution').value;
     let duration    = parseInt(document.getElementById('videoDuration').value);
+    const _vidInfo  = models.video.find(m => m.id === model && m.type === taskType) || {};
+    // no_duration（happyhorse-1.0-video-edit）：官方沒有 duration 參數，送 0 讓後端整個略過；
+    // min_dur=0（wan2.7-videoedit）：0=保留原長、截斷範圍 [2,max]，1 是非法值進位到 2
+    if (_vidInfo.no_duration) duration = 0;
+    else if (_vidInfo.min_dur === 0 && duration === 1) duration = 2;
     const audio         = document.getElementById('vidAudio').checked;
     const vidExtend     = document.getElementById('vidPromptExtend').checked;
     const vidWatermark  = document.getElementById('vidWatermark').checked;
@@ -2148,6 +2168,8 @@ async function sendVideo() {
                 const audioFile = document.getElementById('vidT2VAudioInput').files[0];
                 if (audioFile) fd.append('audio_file', audioFile);
             }
+            const _shot = document.getElementById('videoShotType').value;
+            if (_shot && _vidInfo.shot_type) fd.append('shot_type', _shot);
             res = await apiPostForm('/api/video/t2v', fd);
 
         } else if (taskType === 'i2v') {
@@ -2186,6 +2208,8 @@ async function sendVideo() {
                     if (audioFile) fd.append('driving_audio', audioFile);
                 }
             }
+            const _shot = document.getElementById('videoShotType').value;
+            if (_shot && _vidInfo.shot_type) fd.append('shot_type', _shot);
             res = await apiPostForm('/api/video/i2v', fd);
 
         } else if (taskType === 'vedit') {
@@ -2232,6 +2256,8 @@ async function sendVideo() {
                 if (bgmFile) fd.append('audio_file', bgmFile);
             }
             refFiles.forEach(f => fd.append('reference_files', f));
+            const _shot = document.getElementById('videoShotType').value;
+            if (_shot && _vidInfo.shot_type) fd.append('shot_type', _shot);
             res = await apiPostForm('/api/video/r2v', fd);
         }
 
@@ -3119,6 +3145,30 @@ function addVoiceResultCard(title) {
     return card;
 }
 
+
+// ASR 選填參數（語言提示/熱詞/熱詞表 ID）→ 後端約定的表單形狀：
+// language_hints 是 JSON 陣列字串（最多 4 個）、vocabulary 是 JSON 物件字串
+// （{"詞": 權重}，權重 1~5，50=超級熱詞，未標權重預設 4）、vocabulary_id 純字串
+function appendAsrExtraFields(fd) {
+    const hints = document.getElementById('voiceAsrLangHints').value.trim();
+    if (hints) {
+        const arr = hints.split(/[,，]/).map(s => s.trim()).filter(Boolean).slice(0, 4);
+        if (arr.length) fd.append('language_hints', JSON.stringify(arr));
+    }
+    const vocabRaw = document.getElementById('voiceAsrVocab').value.trim();
+    if (vocabRaw) {
+        const obj = {};
+        vocabRaw.split('\n').map(s => s.trim()).filter(Boolean).forEach(line => {
+            const m = line.match(/^(.+?)[\s:：]+(\d{1,2})$/);
+            if (m) obj[m[1].trim()] = parseInt(m[2]);
+            else obj[line] = 4;
+        });
+        if (Object.keys(obj).length) fd.append('vocabulary', JSON.stringify(obj));
+    }
+    const vocabId = document.getElementById('voiceAsrVocabId').value.trim();
+    if (vocabId) fd.append('vocabulary_id', vocabId);
+}
+
 async function sendVoiceAsr() {
     const model = document.getElementById('voiceModel').value;
     if (!voiceAsrFile) { toast('請先上傳音檔', 'error'); return; }
@@ -3138,6 +3188,7 @@ async function sendVoiceAsr() {
             const fd = new FormData();
             fd.append('model', model);
             fd.append('audio', voiceAsrFile);
+            appendAsrExtraFields(fd);
             const resp = await fetch('/api/voice/asr/stream', { method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}` }, body: fd });
             if (resp.status === 401) { handleLogout(); throw new Error('Unauthorized'); }
             const reader = resp.body.getReader();
@@ -3168,6 +3219,7 @@ async function sendVoiceAsr() {
             const fd = new FormData();
             fd.append('model', model);
             fd.append('audio', voiceAsrFile);
+            appendAsrExtraFields(fd);
             const res = await apiPostForm('/api/voice/asr', fd);
             if (res.success) {
                 textEl.textContent = res.text || '（無辨識結果）';

@@ -237,6 +237,8 @@ def test_models_fields_are_known_to_mcp():
         "fusion_edit", "no_negative_prompt", "no_prompt_extend", "no_ref_strength",
         "no_watermark",   # MCP 沒有 watermark 參數，這旗標只給 UI 用
         "no_ratio",       # MCP 沒有 ratio 參數；旗標供 UI 隱藏下拉＋後端剝除（PR #64 起閘道 422）
+        "shot_type",      # MCP 沒有 shot_type 參數；運鏡下拉僅 UI（wan2.6 系）
+        "no_resolution",  # gemini-omni 專用：UI 藏解析度下拉；MCP 的 resolution 驗證已由 resolutions 缺席涵蓋
         "no_size", "supports_gpt_params", "supports_sequential",
         "sequential_max_size", "image_input", "audio_only", "turn_modes",
         "reasoning_effort",

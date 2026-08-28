@@ -210,12 +210,12 @@
             </div>
             <div class="sidebar-section">
                 <div class="sidebar-section-title">參數</div>
-                <div class="form-group">
+                <div class="form-group" id="textTempGroup">
                     <label class="form-label" data-tip="控制輸出的隨機性與創造力。值越高（最大 2.0）輸出越多樣有創意，值越低（趨近 0）越保守精準。建議值：0.6～1.0">Temperature <span class="param-val" id="tempVal">0.7</span></label>
                     <input type="range" id="textTemperature" min="0" max="2" step="0.1" value="0.7"
                            oninput="document.getElementById('tempVal').textContent=this.value">
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="textTopPGroup">
                     <label class="form-label" data-tip="Nucleus Sampling：只從累積概率達到 P 的候選詞中取樣。0.8 代表只考慮前 80% 概率的詞，值越低輸出越集中。建議與 Temperature 二選一調整">Top P <span class="param-val" id="topPVal">0.8</span></label>
                     <input type="range" id="textTopP" min="0" max="1" step="0.05" value="0.8"
                            oninput="document.getElementById('topPVal').textContent=this.value">
@@ -581,6 +581,14 @@
                     <label data-tip="啟用後模型自動擴充提示詞，補充動作細節、場景描述、鏡頭語言等，通常能提升影片連貫性與畫面品質">Prompt Extend</label>
                     <label class="toggle"><input type="checkbox" id="vidPromptExtend"><span class="toggle-slider"></span></label>
                 </div>
+                <div class="form-group" id="vidShotTypeGroup" style="display:none">
+                    <label class="form-label" data-tip="單鏡頭：整段影片一鏡到底；多鏡頭：模型自動切分鏡頭、組合多個機位（需搭配 Prompt Extend 開啟）">運鏡模式</label>
+                    <select id="videoShotType" class="select-input">
+                        <option value="">自動（預設）</option>
+                        <option value="single">單鏡頭</option>
+                        <option value="multi">多鏡頭</option>
+                    </select>
+                </div>
                 <div class="toggle-row" id="vidWatermarkGroup">
                     <label data-tip="在生成的影片上嵌入 AI 生成浮水印（不影響視覺品質），主要用於版權標識與 AI 內容識別">Watermark</label>
                     <label class="toggle"><input type="checkbox" id="vidWatermark"><span class="toggle-slider"></span></label>
@@ -910,6 +918,18 @@
                     <p id="voiceAsrLabel">上傳音檔<br><span style="font-size:11px;color:var(--text-muted)">支援 WAV / MP3 / OGG 等常見格式</span></p>
                 </div>
                 <button class="btn btn-ghost btn-sm" id="voiceAsrClearBtn" style="display:none;margin-top:6px;width:100%" onclick="clearVoiceAsrFile()">清除音檔</button>
+                <div class="form-group" style="margin-top:10px">
+                    <label class="form-label" data-tip="指定音檔的語言可提升辨識準確率，最多 4 個，以逗號分隔（例如 zh, en）。留空由模型自動偵測">語言提示</label>
+                    <input type="text" id="voiceAsrLangHints" class="text-input" placeholder="例：zh, en（留空自動偵測）">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-tip="每行一個詞彙，可在詞後加空格與權重 1~5（預設 4），50 為超級熱詞。專有名詞、人名、術語加入後辨識更準確">熱詞</label>
+                    <textarea id="voiceAsrVocab" class="textarea-input" rows="3" placeholder="每行一個詞，可加權重：&#10;能雲科技 5&#10;NenAI"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" data-tip="已在服務商後台建立的熱詞表 ID，與上方臨時熱詞可擇一使用">熱詞表 ID</label>
+                    <input type="text" id="voiceAsrVocabId" class="text-input" placeholder="選填">
+                </div>
             </div>
 
             <div class="sidebar-section" id="voiceTtsSettingsSection" style="display:none">
@@ -1111,6 +1131,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=93"></script>
+<script src="/static/js/app.js?v=94"></script>
 </body>
 </html>

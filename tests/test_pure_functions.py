@@ -144,8 +144,13 @@ def test_edit_max_ref_reflects_models():
 
 
 def test_first_frame_only_models_derived():
-    """i2v 只讀 images[0] 的模型要限制成單一模式，否則尾幀會被靜默丟棄。"""
-    assert "wan2.7-i2v" in app._FIRST_FRAME_ONLY_I2V_MODELS
+    """i2v 只讀 images[0] 的模型要限制成單一模式，否則尾幀會被靜默丟棄。
+    wan2.7-i2v 自閘道 abc0a8b7b（2026-08-28 部署）起支援 audio_url→driving_audio
+    口型同步，開放 first_frame_audio 模式、不再是首幀限定。"""
+    assert "wan2.7-i2v" not in app._FIRST_FRAME_ONLY_I2V_MODELS
+    ff_audio = [m for m in app.MODELS["video"]
+                if m["id"] == "wan2.7-i2v" and m["type"] == "i2v"][0]
+    assert ff_audio["i2v_modes"] == ["first_frame", "first_frame_audio"]
     assert "happyhorse-1.1-i2v" in app._FIRST_FRAME_ONLY_I2V_MODELS
 
 

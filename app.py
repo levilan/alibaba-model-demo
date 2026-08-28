@@ -561,17 +561,17 @@ MODELS = {
         # ── Claude（實測過 enable_thinking 與 Anthropic 原生 thinking 參數在這個
         #    網關上都不會回傳任何思考過程，thinking 一律維持 False；temperature/
         #    top_p 也不能送，Bedrock 後端會直接回 400 "temperature is deprecated"）──
-        {"id": "claude-opus-5",               "name": "Claude Opus 5",     "group": "Claude", "desc": "最新旗艦",         "thinking": False},
-        {"id": "claude-opus-4-8",             "name": "Claude Opus 4.8",   "group": "Claude", "desc": "前代旗艦",         "thinking": False},
-        {"id": "claude-opus-4-7",             "name": "Claude Opus 4.7",   "group": "Claude", "desc": "前代旗艦",         "thinking": False},
-        {"id": "claude-opus-4-6",             "name": "Claude Opus 4.6",   "group": "Claude", "desc": "前代旗艦",         "thinking": False},
-        {"id": "claude-opus-4-5-20251101",    "name": "Claude Opus 4.5",   "group": "Claude", "desc": "前代旗艦",         "thinking": False},
-        {"id": "claude-opus-4-1-20250805",    "name": "Claude Opus 4.1",   "group": "Claude", "desc": "前代旗艦",         "thinking": False},
-        {"id": "claude-sonnet-5",             "name": "Claude Sonnet 5",   "group": "Claude", "desc": "最新均衡，推薦使用", "thinking": False},
-        {"id": "claude-sonnet-4-6",           "name": "Claude Sonnet 4.6", "group": "Claude", "desc": "前代均衡模型",     "thinking": False},
-        {"id": "claude-sonnet-4-5-20250929",  "name": "Claude Sonnet 4.5", "group": "Claude", "desc": "前代均衡模型",     "thinking": False},
-        {"id": "claude-haiku-4-5-20251001",   "name": "Claude Haiku 4.5",  "group": "Claude", "desc": "極速模型",         "thinking": False},
-        {"id": "claude-fable-5",              "name": "Claude Fable 5",    "group": "Claude", "desc": "創意寫作模型",     "thinking": False},
+        {"id": "claude-opus-5",               "name": "Claude Opus 5",     "group": "Claude", "desc": "最新旗艦",         "thinking": False, "no_sampling": True},
+        {"id": "claude-opus-4-8",             "name": "Claude Opus 4.8",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True},
+        {"id": "claude-opus-4-7",             "name": "Claude Opus 4.7",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True},
+        {"id": "claude-opus-4-6",             "name": "Claude Opus 4.6",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True},
+        {"id": "claude-opus-4-5-20251101",    "name": "Claude Opus 4.5",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True},
+        {"id": "claude-opus-4-1-20250805",    "name": "Claude Opus 4.1",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True},
+        {"id": "claude-sonnet-5",             "name": "Claude Sonnet 5",   "group": "Claude", "desc": "最新均衡，推薦使用", "thinking": False, "no_sampling": True},
+        {"id": "claude-sonnet-4-6",           "name": "Claude Sonnet 4.6", "group": "Claude", "desc": "前代均衡模型",     "thinking": False, "no_sampling": True},
+        {"id": "claude-sonnet-4-5-20250929",  "name": "Claude Sonnet 4.5", "group": "Claude", "desc": "前代均衡模型",     "thinking": False, "no_sampling": True},
+        {"id": "claude-haiku-4-5-20251001",   "name": "Claude Haiku 4.5",  "group": "Claude", "desc": "極速模型",         "thinking": False, "no_sampling": True},
+        {"id": "claude-fable-5",              "name": "Claude Fable 5",    "group": "Claude", "desc": "創意寫作模型",     "thinking": False, "no_sampling": True},
         # ── GPT（推理強度用 reasoning_effort 字串控制，不是 enable_thinking 布林值——
         #    實測過對 GPT 模型送 enable_thinking 會直接 400 "Unknown parameter"；
         #    reasoning_effort 這個網關接受的枚舉是 none/low/medium/high/xhigh（不是
@@ -977,7 +977,7 @@ MODELS = {
         # 預設值依 Levi 裁示為「無聲」（HTML checkbox 無 checked 屬性即預設不勾）。
         {"id": "wan3.0-video", "name": "萬相 3.0（文生影片）", "group": "萬相 3.0",
          "desc": "All-in-One 影片生成，最長 30 秒，音畫真實", "type": "t2v",
-         "audio": True, "min_dur": 2, "max_dur": 30, "smart_duration": True, "resolutions": ["480P", "720P", "1080P"]},
+         "audio": True, "min_dur": 2, "max_dur": 30, "smart_duration": True, "no_negative_prompt": True, "resolutions": ["480P", "720P", "1080P"]},
         # wan3.0-video-prime（2026-08-25 上架）：萬相 3.0 高速檔（平台倍率表註「高速版」，
         # 官方定價 480P $0.068/720P $0.14/1080P $0.28）。**只列實測過的 t2v**：
         # 480P 2 秒實測通過（99 秒完成、計費 68000 quota=0.068×2 分毫不差）、
@@ -986,29 +986,29 @@ MODELS = {
         # 供應商文件（Levi 將提供進 ../reference/）到位後再擴充，不要照家族推。
         {"id": "wan3.0-video-prime", "name": "萬相 3.0 Prime（文生影片）", "group": "萬相 3.0",
          "desc": "萬相 3.0 高速版，快速文生影片", "type": "t2v",
-         "audio": True, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"]},
+         "audio": True, "min_dur": 2, "max_dur": 30, "resolutions": ["480P", "720P", "1080P"], "no_negative_prompt": True},
         {"id": "wan3.0-video", "name": "萬相 3.0（圖生影片）", "group": "萬相 3.0",
          "desc": "首幀／首尾幀／驅動音訊／影片延伸", "type": "i2v",
-         "audio": True, "min_dur": 2, "max_dur": 30, "smart_duration": True, "resolutions": ["480P", "720P", "1080P"]},
+         "audio": True, "min_dur": 2, "max_dur": 30, "smart_duration": True, "no_negative_prompt": True, "resolutions": ["480P", "720P", "1080P"]},
         {"id": "wan3.0-video", "name": "萬相 3.0（參考生影片）", "group": "萬相 3.0",
          "desc": "多圖參考生影片，生產級角色一致性", "type": "r2v",
-         "audio": True, "min_dur": 2, "max_dur": 30, "smart_duration": True, "resolutions": ["480P", "720P", "1080P"]},
+         "audio": True, "min_dur": 2, "max_dur": 30, "smart_duration": True, "no_negative_prompt": True, "resolutions": ["480P", "720P", "1080P"]},
         {"id": "wan3.0-video", "name": "萬相 3.0（視頻編輯）", "group": "萬相 3.0",
          "desc": "統一支援參考／編輯／複刻／驅動", "type": "vedit",
-         "audio": True, "min_dur": 2, "max_dur": 30, "smart_duration": True, "resolutions": ["480P", "720P", "1080P"]},
+         "audio": True, "min_dur": 2, "max_dur": 30, "smart_duration": True, "no_negative_prompt": True, "resolutions": ["480P", "720P", "1080P"]},
         # ── 文生影片 ──────────────────────────────────────────────
         {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭，自動配音", "type": "t2v",   "audio": False,  "min_dur": 2, "max_dur": 15, "resolutions": ["720P", "1080P"]},
-        {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片（配音由模型自動決定）",     "type": "t2v",   "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["720P", "1080P"]},
+        {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片（配音由模型自動決定）",     "type": "t2v",   "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["720P", "1080P"], "shot_type": True},
         # ── 圖生影片 ──────────────────────────────────────────────
-        {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀生成", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"], "resolutions": ["720P", "1080P"], "no_ratio": True},
+        {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀生成，支援音訊驅動口型", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame", "first_frame_audio"], "resolutions": ["720P", "1080P"], "no_ratio": True},
         # wan2.6-i2v / wan2.6-i2v-flash 目前 NenAI 平台端 pipeline 故障（無論送任何欄位格式都回
         # "Field required: input.img_url"，已用直連 API 排除是本專案的請求格式問題），保留在清單中等待平台方修復
-        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片，含音頻",       "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"], "resolutions": ["720P", "1080P"]},
-        {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版，可關閉配音", "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"], "resolutions": ["720P", "1080P"]},
+        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片，含音頻",       "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"], "resolutions": ["720P", "1080P"], "shot_type": True},
+        {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版，可關閉配音", "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"], "resolutions": ["720P", "1080P"], "shot_type": True},
         # ── 參考生影片 ────────────────────────────────────────────
         {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片", "desc": "角色形象參考（僅接受圖片）",       "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True, "resolutions": ["720P", "1080P"]},
-        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片（僅接受圖片）",     "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True, "resolutions": ["720P", "1080P"]},
-        {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版（僅接受圖片）", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True, "resolutions": ["720P", "1080P"]},
+        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片（僅接受圖片）",     "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 10, "ref_images_only": True, "no_prompt_extend": True, "shot_type": True, "resolutions": ["720P", "1080P"]},
+        {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版（僅接受圖片），可關閉配音", "type": "r2v", "audio": True, "min_dur": 2, "max_dur": 10, "ref_images_only": True, "no_prompt_extend": True, "shot_type": True, "resolutions": ["720P", "1080P"]},
         # ── HappyHorse ────────────────────────────────────────────
          {"id": "happyhorse-1.1-t2v",        "name": "HappyHorse 1.1 T2V",        "group": "HappyHorse", "desc": "高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15, "no_prompt_extend": True, "resolutions": ["480P", "720P", "1080P"]},    
         {"id": "happyhorse-1.0-t2v",        "name": "HappyHorse 1.0 T2V",        "group": "HappyHorse", "desc": "前一代高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15, "no_prompt_extend": True, "resolutions": ["720P", "1080P"]},
@@ -1016,10 +1016,10 @@ MODELS = {
         {"id": "happyhorse-1.0-i2v",        "name": "HappyHorse 1.0 I2V",        "group": "HappyHorse", "desc": "前一代高還原度圖生影片（僅首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15, "i2v_modes": ["first_frame"], "no_prompt_extend": True, "resolutions": ["720P", "1080P"], "no_ratio": True},
         {"id": "happyhorse-1.1-r2v",        "name": "HappyHorse 1.1 R2V",        "group": "HappyHorse", "desc": "多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True, "max_ref": 9, "no_prompt_extend": True, "resolutions": ["480P", "720P", "1080P"]},
         {"id": "happyhorse-1.0-r2v",        "name": "HappyHorse 1.0 R2V",        "group": "HappyHorse", "desc": "前一代多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True, "max_ref": 9, "no_prompt_extend": True, "resolutions": ["720P", "1080P"]},
-        {"id": "happyhorse-1.0-video-edit", "name": "HappyHorse Video Edit 1.0", "group": "HappyHorse", "desc": "視頻編輯（最多 5 張參考圖）", "type": "vedit", "audio": False, "min_dur": 3, "max_dur": 15, "max_ref": 5, "no_prompt_extend": True, "resolutions": ["720P", "1080P"], "no_ratio": True},      
+        {"id": "happyhorse-1.0-video-edit", "name": "HappyHorse Video Edit 1.0", "group": "HappyHorse", "desc": "視頻編輯（最多 5 張參考圖）", "type": "vedit", "audio": False, "no_duration": True, "max_ref": 5, "no_prompt_extend": True, "resolutions": ["720P", "1080P"], "no_ratio": True},      
         # ── 視頻編輯 ──────────────────────────────────────────────
         {"id": "wan2.7-videoedit", "name": "萬相 2.7 視頻編輯", "group": "萬相視頻編輯",
-         "desc": "文字/參考圖驅動編輯", "type": "vedit", "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["720P", "1080P"]},
+         "desc": "文字/參考圖驅動編輯", "type": "vedit", "audio": False, "min_dur": 0, "max_dur": 10, "resolutions": ["720P", "1080P"]},
         # ── 動作動畫（視頻換人 / 圖生動作）──────────────────────────
         {"id": "wan2.2-animate-mix", "name": "萬相 2.2 視頻換人", "group": "萬相動作動畫",
          "desc": "將參考影片中的角色替換為人物圖片，保留原場景與動作", "type": "animate", "audio": False},
@@ -1148,11 +1148,11 @@ MODELS = {
          "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
         # ── Gemini Omni（走 /v1beta/interactions，模型自行決定長度/解析度，固定含原生配音）──
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview", "group": "Gemini",
-         "desc": "Google 多模態影片生成（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "t2v", "audio": False, "no_duration": True},
+         "desc": "Google 多模態影片生成（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "t2v", "audio": False, "no_duration": True, "no_resolution": True},
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview（圖生影片）", "group": "Gemini",
-         "desc": "Google 多模態圖生影片（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "i2v", "audio": False, "no_duration": True},
+         "desc": "Google 多模態圖生影片（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "i2v", "audio": False, "no_duration": True, "no_resolution": True},
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview（參考生影片）", "group": "Gemini",
-         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），最長約 10 秒，自動含原生配音（無需另設定）", "type": "r2v", "audio": False, "no_duration": True, "max_ref": 3},
+         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），最長約 10 秒，自動含原生配音（無需另設定）", "type": "r2v", "audio": False, "no_duration": True, "no_resolution": True, "max_ref": 3},
     ],
     "muleai": [
         {"id": "wan2.7-i2v-spicy",       "name": "Wan 2.7 I2V Spicy",  "group": "影片生成", "desc": "Spicy 模型 (支援文字/圖片)"},
@@ -2680,6 +2680,11 @@ _ADAPTIVE_RATIO_MODELS = _WAN30_ALLINONE_MODELS
 # ——防的是 AI Canvas 與直接呼叫方帶著舊參數進來。
 _VIDEO_NO_RATIO = {(m["id"], m["type"]) for m in MODELS["video"] if m.get("no_ratio")}
 
+# 支援 shot_type（single/multi 運鏡）的 (model, type)——僅 wan2.6 系 t2v/i2v/r2v，
+# 官方要求搭配 prompt_extend=true（閘道預設就送 true）。閘道 abc0a8b7b 起讀扁平
+# metadata.shot_type 轉發。
+_VIDEO_SHOT_TYPE = {(m["id"], m["type"]) for m in MODELS["video"] if m.get("shot_type")}
+
 
 def _default_ratio(model: str) -> str:
     """未指定 ratio 時的預設值（平台端 2026-08-25 實測確認的各代行為）：
@@ -3002,6 +3007,9 @@ async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
     meta: dict = {}
     _apply_res_and_duration(payload, meta, resolution, duration, ratio)
     _apply_video_extra_params(meta, model, seed, watermark, prompt_extend, negative_prompt)
+    _shot = form.get("shot_type", "")
+    if _shot in ("single", "multi") and (model, "t2v") in _VIDEO_SHOT_TYPE:
+        meta["shot_type"] = _shot
     if model in _VEO_MODELS: meta["person_generation"] = "allow_adult"
 
     # 上游未收到欄位時會自行判斷是否配音，不會視為「不要配音」——
@@ -3090,6 +3098,9 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
     meta: dict = {"i2v_mode": i2v_mode}
     _apply_res_and_duration(payload, meta, resolution, actual_duration, ratio)
     _apply_video_extra_params(meta, model, seed, watermark, prompt_extend, neg_prompt)
+    _shot = form.get("shot_type", "")
+    if _shot in ("single", "multi") and (model, "i2v") in _VIDEO_SHOT_TYPE:
+        meta["shot_type"] = _shot
     if model in _VEO_MODELS: meta["person_generation"] = "allow_adult"
     # 上游未收到欄位時會自行判斷是否配音，不會視為「不要配音」——
     # 使用者關閉開關時務必明確帶 False 覆蓋掉上游的預設行為
@@ -3298,6 +3309,9 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
 
     meta: dict = {}
     _apply_video_extra_params(meta, model, seed, watermark, prompt_extend)
+    _shot = form.get("shot_type", "")
+    if _shot in ("single", "multi") and (model, "r2v") in _VIDEO_SHOT_TYPE:
+        meta["shot_type"] = _shot
     if model in _VEO_MODELS: meta["person_generation"] = "allow_adult"
     payload: dict = {"model": model, "prompt": prompt,
                      "media": media_arr,
@@ -3479,6 +3493,27 @@ async def video_status_debug(task_id: str, api_key: str = Depends(get_api_key)):
 # ─── API: Voice (ASR / TTS) ─────────────────────────────────────────
 # NenAI 網關對音訊的支援走 OpenAI 相容的 /v1/audio/transcriptions（ASR）與
 # /v1/audio/speech（TTS），跟其他模型家族一樣用同一把 API key 直接轉發。
+
+def _asr_extra_fields(form, streaming: bool) -> dict:
+    """ASR 的選填參數（閘道 abc0a8b7b 起透傳；僅 qwen-audio-3.0-asr-flash 系支援）。
+
+    表單形狀依閘道約定：vocabulary_id 字串、vocabulary 為 JSON 物件字串
+    （{"術語": 5}，權重 1-5 或 50=超級熱詞）、language_hints 為 JSON 陣列字串
+    （Qwen 系最多 4 個，優先於 OpenAI 標準的 language 欄位）、sample_rate
+    僅非串流端點收。空值一律不送，交上游預設。
+    """
+    out: dict = {}
+    for key in ("vocabulary_id", "vocabulary", "language_hints"):
+        v = str(form.get(key, "") or "").strip()
+        if v:
+            out[key] = v
+    if not streaming:
+        sr = str(form.get("sample_rate", "") or "").strip()
+        if sr:
+            out["sample_rate"] = sr
+    return out
+
+
 @app.post("/api/voice/asr")
 async def voice_asr(request: Request, api_key: str = Depends(get_api_key)):
     form = await request.form()
@@ -3496,7 +3531,7 @@ async def voice_asr(request: Request, api_key: str = Depends(get_api_key)):
             resp = await client.post(
                 f"{NENAI_V1}/audio/transcriptions",
                 headers={"Authorization": f"Bearer {api_key}"},
-                data={"model": model},
+                data={"model": model, **_asr_extra_fields(form, streaming=False)},
                 files={"file": (filename, audio_bytes, content_type)},
             )
             rj = resp.json()
@@ -3521,6 +3556,7 @@ async def voice_asr_stream(request: Request, api_key: str = Depends(get_api_key)
     filename = getattr(audio_file, "filename", None) or "audio.wav"
     content_type = getattr(audio_file, "content_type", None) or mimetypes.guess_type(filename)[0] or "audio/wav"
     audio_bytes = await audio_file.read()
+    asr_extra = _asr_extra_fields(form, streaming=True)
 
     async def generate() -> AsyncGenerator[str, None]:
         try:
@@ -3528,7 +3564,7 @@ async def voice_asr_stream(request: Request, api_key: str = Depends(get_api_key)
                 async with client.stream(
                     "POST", f"{NENAI_V1}/audio/transcriptions",
                     headers={"Authorization": f"Bearer {api_key}"},
-                    data={"model": model, "stream": "true"},
+                    data={"model": model, "stream": "true", **asr_extra},
                     files={"file": (filename, audio_bytes, content_type)},
                 ) as resp:
                     if resp.status_code != 200:
