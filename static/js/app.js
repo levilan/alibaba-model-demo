@@ -621,6 +621,14 @@ function onTextModelChange() {
     document.getElementById('textTempGroup').style.display = modelInfo.no_sampling ? 'none' : '';
     document.getElementById('textTopPGroup').style.display = modelInfo.no_sampling ? 'none' : '';
 
+    // 百煉方言四參數：依 MODELS 旗標分家族顯示（適用清單見 reference §2.3.24）。
+    // clear_thinking（GLM）與 preserve_thinking（qwen3.7/3.6 系）是兩顆給不同家族的
+    // 參數，各自獨立顯示，不做三態選擇器
+    document.getElementById('textThinkingBudgetGroup').style.display = modelInfo.thinking_budget ? '' : 'none';
+    document.getElementById('textClearThinkingGroup').style.display = modelInfo.clear_thinking ? '' : 'none';
+    document.getElementById('textPreserveThinkingGroup').style.display = modelInfo.preserve_thinking ? '' : 'none';
+    document.getElementById('textRepPenaltyGroup').style.display = modelInfo.repetition_penalty ? '' : 'none';
+
     // 圖片輸入只有視覺語言模型支援；切到不支援的模型時把已選的圖清掉，
     // 否則會靜默夾帶到不吃圖的模型上（那些模型會直接 400）
     const visionGroup = document.getElementById('textVisionGroup');
@@ -1793,7 +1801,7 @@ async function sendText() {
     try {
         const body = {
             model, prompt, system_prompt: systemPrompt,
-            temperature, top_p: topP, max_tokens: maxTokens,
+            temperature, max_tokens: maxTokens,
             presence_penalty: presencePenalty, frequency_penalty: frequencyPenalty,
             stream: useStream,
             enable_thinking: enableThinking && !!modelInfo?.thinking,
@@ -1806,6 +1814,16 @@ async function sendText() {
         if (seed !== null) body.seed = seed;
         if (stop.length > 0) body.stop = stop;
         if (reasoningEffort && modelInfo?.reasoning_effort) body.reasoning_effort = reasoningEffort;
+        // top_p：勾「模型預設」就整個不送（不要替模型補預設值）
+        if (!document.getElementById('textTopPAuto').checked) body.top_p = topP;
+        const _tb = document.getElementById('textThinkingBudget').value.trim();
+        if (_tb && modelInfo?.thinking_budget) body.thinking_budget = parseInt(_tb);
+        const _ct = document.getElementById('textClearThinking').value;
+        if (_ct && modelInfo?.clear_thinking) body.clear_thinking = (_ct === 'true');
+        const _pt = document.getElementById('textPreserveThinking').value;
+        if (_pt && modelInfo?.preserve_thinking) body.preserve_thinking = (_pt === 'true');
+        const _rp = document.getElementById('textRepPenalty').value.trim();
+        if (_rp && modelInfo?.repetition_penalty) body.repetition_penalty = parseFloat(_rp);
         if (modelInfo?.vision && textVisionImages.length) body.images = textVisionImages.map(f => f.url);
 
         const startTime = Date.now();

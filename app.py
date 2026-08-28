@@ -488,29 +488,29 @@ _MAI_CUSTOM_SIZE = {
 MODELS = {
     "text": [
         # ── 旗艦 ──────────────────────────────────────────────────
-        {"id": "qwen3.8-max",        "name": "Qwen3.8 Max",      "group": "旗艦",   "desc": "最新旗艦，最強推理",     "thinking": True},
-        {"id": "qwen3.7-max",        "name": "Qwen3.7 Max",      "group": "旗艦",   "desc": "前代旗艦，強推理",       "thinking": True},
-        {"id": "qwen3.6-max-preview","name": "Qwen3.6 Max",     "group": "旗艦",   "desc": "新一代旗艦，強推理",     "thinking": True},
+        {"id": "qwen3.8-max",        "name": "Qwen3.8 Max",      "group": "旗艦",   "desc": "最新旗艦，最強推理",     "thinking": True, "thinking_budget": True, "repetition_penalty": True},
+        {"id": "qwen3.7-max",        "name": "Qwen3.7 Max",      "group": "旗艦",   "desc": "前代旗艦，強推理",       "thinking": True, "thinking_budget": True, "preserve_thinking": True, "repetition_penalty": True},
+        {"id": "qwen3.6-max-preview","name": "Qwen3.6 Max",     "group": "旗艦",   "desc": "新一代旗艦，強推理",     "thinking": True, "thinking_budget": True, "preserve_thinking": True, "repetition_penalty": True},
         # ── 均衡 ──────────────────────────────────────────────────
-        {"id": "qwen3.6-plus",       "name": "Qwen3.6 Plus",     "group": "均衡",   "desc": "1M context，性價比最佳", "thinking": True},
-        {"id": "qwen3.7-plus",       "name": "Qwen3.7 Plus",     "group": "均衡",   "desc": "最新均衡模型",           "thinking": True},
-        {"id": "qwen3.5-plus",       "name": "Qwen3.5 Plus",     "group": "均衡",   "desc": "前代均衡模型",           "thinking": True},
+        {"id": "qwen3.6-plus",       "name": "Qwen3.6 Plus",     "group": "均衡",   "desc": "1M context，性價比最佳", "thinking": True, "thinking_budget": True, "preserve_thinking": True, "repetition_penalty": True},
+        {"id": "qwen3.7-plus",       "name": "Qwen3.7 Plus",     "group": "均衡",   "desc": "最新均衡模型",           "thinking": True, "thinking_budget": True, "preserve_thinking": True, "repetition_penalty": True},
+        {"id": "qwen3.5-plus",       "name": "Qwen3.5 Plus",     "group": "均衡",   "desc": "前代均衡模型",           "thinking": True, "thinking_budget": True, "repetition_penalty": True},
         # ── 極速 ──────────────────────────────────────────────────
-        {"id": "qwen3.6-flash",      "name": "Qwen3.6 Flash",    "group": "極速",   "desc": "新一代極速模型",         "thinking": True},
-        {"id": "qwen3.5-flash",      "name": "Qwen3.5 Flash",    "group": "極速",   "desc": "速度快、成本低",         "thinking": True},
+        {"id": "qwen3.6-flash",      "name": "Qwen3.6 Flash",    "group": "極速",   "desc": "新一代極速模型",         "thinking": True, "thinking_budget": True, "preserve_thinking": True, "repetition_penalty": True},
+        {"id": "qwen3.5-flash",      "name": "Qwen3.5 Flash",    "group": "極速",   "desc": "速度快、成本低",         "thinking": True, "thinking_budget": True, "repetition_penalty": True},
         # ── 代碼（實測 enable_thinking 對這兩個 coder 模型完全沒有效果——true/false
         #    都不會有 reasoning_content，代碼生成場景本來就不需要思考過程，
         #    thinking 維持 False 避免顯示一個沒作用的開關）──────────────
-        {"id": "qwen3-coder-plus",   "name": "Qwen3 Coder Plus", "group": "代碼",   "desc": "代碼生成旗艦",           "thinking": False},
-        {"id": "qwen3-coder-flash",  "name": "Qwen3 Coder Flash","group": "代碼",   "desc": "代碼生成極速",           "thinking": False},
+        {"id": "qwen3-coder-plus",   "name": "Qwen3 Coder Plus", "group": "代碼",   "desc": "代碼生成旗艦",           "thinking": False, "repetition_penalty": True},
+        {"id": "qwen3-coder-flash",  "name": "Qwen3 Coder Flash","group": "代碼",   "desc": "代碼生成極速",           "thinking": False, "repetition_penalty": True},
         # ── 角色 ──────────────────────────────────────────────────
-        {"id": "qwen-plus-character", "name": "Qwen Plus Character","group": "角色", "desc": "角色扮演，Plus 品質",   "thinking": False},
+        {"id": "qwen-plus-character", "name": "Qwen Plus Character","group": "角色", "desc": "角色扮演，Plus 品質",   "thinking": False, "repetition_penalty": True},
         # ── 第三方 ────────────────────────────────────────────────
         # DeepSeek/GLM 實測都支援 enable_thinking 開關（會回傳獨立的 reasoning_content
         # 思考過程），DeepSeek V4 系列預設就是思考模式開啟，enable_thinking:false 可關閉
-        {"id": "deepseek-v4-pro",    "name": "DeepSeek V4 Pro",  "group": "第三方", "desc": "最新旗艦推理",           "thinking": True},
-        {"id": "deepseek-v4-flash",  "name": "DeepSeek V4 Flash","group": "第三方", "desc": "最新極速推理",           "thinking": True},
-        {"id": "deepseek-v3.2",      "name": "DeepSeek V3.2",    "group": "第三方", "desc": "前代深度推理",           "thinking": True},
+        {"id": "deepseek-v4-pro",    "name": "DeepSeek V4 Pro",  "group": "第三方", "desc": "最新旗艦推理",           "thinking": True, "repetition_penalty": True},
+        {"id": "deepseek-v4-flash",  "name": "DeepSeek V4 Flash","group": "第三方", "desc": "最新極速推理",           "thinking": True, "repetition_penalty": True},
+        {"id": "deepseek-v3.2",      "name": "DeepSeek V3.2",    "group": "第三方", "desc": "前代深度推理",           "thinking": True, "repetition_penalty": True},
         # GLM 5.x 除了布林的 enable_thinking，另外支援字串的 reasoning_effort 分段推理
         # 強度（實測 2026-08-10，各段的 reasoning_tokens：none/minimal → 0、low 182、
         # medium 198、high 202、xhigh 239、max 208）。兩者可同時送，enable_thinking:false
@@ -518,9 +518,9 @@ MODELS = {
         # reasoning_effort:none 仍然不會思考，也就是「關」的那一方永遠贏。
         # 支援的枚舉各型號不同，送錯值會回 400 並列出正確清單，故以 reasoning_efforts 標明。
         {"id": "glm-5.1",            "name": "GLM 5.1",          "group": "第三方", "desc": "智譜 GLM 前一版",        "thinking": True,
-         "reasoning_effort": True, "reasoning_efforts": ["none", "minimal", "low", "medium", "high", "xhigh"]},
+         "reasoning_effort": True, "reasoning_efforts": ["none", "minimal", "low", "medium", "high", "xhigh"], "thinking_budget": True, "clear_thinking": True, "repetition_penalty": True},
         {"id": "glm-5.2",            "name": "GLM 5.2",          "group": "第三方", "desc": "智譜 GLM 最新版（1M context）", "thinking": True,
-         "reasoning_effort": True, "reasoning_efforts": ["none", "minimal", "low", "medium", "high", "xhigh", "max"]},
+         "reasoning_effort": True, "reasoning_efforts": ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "thinking_budget": True, "clear_thinking": True, "repetition_penalty": True},
         # ── ByteDance Seed（字節跳動豆包大模型；seed-2.0 系列無條件會回思考過程
         #    reasoning_content，實測過 enable_thinking:false 對它們沒有效果
         #    （跟 Gemini 3.x 系列同樣「關不掉」），thinking 維持 False 不顯示
@@ -557,7 +557,7 @@ MODELS = {
         # 剛開通時的短暫狀態，被推導成協定層級的限制）。這是「單一次失敗 ≠ 不支援」
         # 的又一個實例，見 memory.md 4d。
         # 影片輸入只有公網 URL 被驗過，data URI 未驗，所以不宣稱支援影片。
-        {"id": "kimi/kimi-k3", "name": "Kimi K3", "group": "月之暗面", "desc": "深度推理，百萬字上下文，支援看圖", "thinking": False, "vision": True},
+        {"id": "kimi/kimi-k3", "name": "Kimi K3", "group": "月之暗面", "desc": "深度推理，百萬字上下文，支援看圖", "thinking": False, "vision": True, "repetition_penalty": True},
         # ── Claude（實測過 enable_thinking 與 Anthropic 原生 thinking 參數在這個
         #    網關上都不會回傳任何思考過程，thinking 一律維持 False；temperature/
         #    top_p 也不能送，Bedrock 後端會直接回 400 "temperature is deprecated"）──
@@ -642,8 +642,8 @@ MODELS = {
         {"id": "grok-4-1-fast-non-reasoning", "name": "Grok 4.1 Fast",               "group": "xAI Grok", "desc": "極速，不推理", "thinking": False},
         # ── 千問 VL（視覺語言，可在對話中帶入圖片；用標準 OpenAI image_url 格式，
         #    實測 data URI 可用）。vision: True 讓前端顯示圖片上傳欄位 ──
-        {"id": "qwen3-vl-plus",               "name": "Qwen3 VL Plus",               "group": "視覺語言", "desc": "看圖對話，Plus 品質", "thinking": False, "vision": True},
-        {"id": "qwen3-vl-flash",              "name": "Qwen3 VL Flash",              "group": "視覺語言", "desc": "看圖對話，極速", "thinking": False, "vision": True},
+        {"id": "qwen3-vl-plus",               "name": "Qwen3 VL Plus",               "group": "視覺語言", "desc": "看圖對話，Plus 品質", "thinking": False, "vision": True, "thinking_budget": True, "repetition_penalty": True},
+        {"id": "qwen3-vl-flash",              "name": "Qwen3 VL Flash",              "group": "視覺語言", "desc": "看圖對話，極速", "thinking": False, "vision": True, "thinking_budget": True, "repetition_penalty": True},
     ],
     "image": [
         # ── 千問文生圖 ────────────────────────────────────────────
@@ -1231,6 +1231,14 @@ MODELS = {
     },
 }
 
+# 百煉 Chat 方言參數的適用模型（閘道 PR #65 起透傳；適用清單取自
+# reference/api-params-official.md §2.3.24，kimi/kimi-k3 官方明列不支援
+# thinking_budget）。單一真實來源是 MODELS 的旗標，這裡只做衍生集合
+_TEXT_THINKING_BUDGET    = {m["id"] for m in MODELS["text"] if m.get("thinking_budget")}
+_TEXT_CLEAR_THINKING     = {m["id"] for m in MODELS["text"] if m.get("clear_thinking")}
+_TEXT_PRESERVE_THINKING  = {m["id"] for m in MODELS["text"] if m.get("preserve_thinking")}
+_TEXT_REPETITION_PENALTY = {m["id"] for m in MODELS["text"] if m.get("repetition_penalty")}
+
 
 # ─── Auth: API Key per user ────────────────────────────────────────
 def get_api_key(request: Request) -> str:
@@ -1480,7 +1488,9 @@ class TextGenerateRequest(BaseModel):
     prompt: str = ""
     system_prompt: str = "You are a helpful assistant."
     temperature: float = 0.7
-    top_p: float = 0.8
+    # None＝不送 top_p、交模型預設。不要在這層補預設值——閘道曾把「未帶」硬補成
+    # 0.001（近貪婪取樣），2026-08-28（PR #65）修掉後「沒填就不送」才是正確語意
+    top_p: Optional[float] = None
     top_k: Optional[int] = None
     max_tokens: int = 4096
     presence_penalty: float = 0.0
@@ -1490,6 +1500,12 @@ class TextGenerateRequest(BaseModel):
     stream: bool = True
     enable_thinking: bool = False
     reasoning_effort: Optional[str] = None  # 僅 GPT 系列支援：none/low/medium/high/xhigh
+    # 百煉 Chat 方言參數（閘道 PR #65，2026-08-28 部署後透傳；適用模型見 MODELS 旗標，
+    # 後端依旗標閘控、不對不支援的模型送出）。皆為 Optional：None＝不送、交上游預設
+    thinking_budget: Optional[int] = None       # 思考 token 上限；過小會截斷思考
+    clear_thinking: Optional[bool] = None       # 僅 GLM 5.x
+    preserve_thinking: Optional[bool] = None    # 僅 qwen3.7/3.6 系
+    repetition_penalty: Optional[float] = None  # 百煉文字模型通用
     history: List[Dict[str, str]] = []  # 多輪對話歷史，[{"role": "user"/"assistant", "content": "..."}]
     images: List[str] = []              # 視覺語言模型（qwen3-vl-*）用：data URI 或公開網址
 
@@ -1653,9 +1669,10 @@ def _build_gemini_body(data: "TextGenerateRequest", messages: list) -> dict:
 
     gen: dict = {
         "temperature": data.temperature,
-        "topP": data.top_p,
         "maxOutputTokens": data.max_tokens,
     }
+    if data.top_p is not None:
+        gen["topP"] = data.top_p
     if data.top_k is not None and data.top_k > 0:
         gen["topK"] = data.top_k
     if data.stop:
@@ -1822,6 +1839,18 @@ async def text_generate(request: Request, data: TextGenerateRequest, api_key: st
     if not data.model.startswith("gpt-") and data.model not in _NO_ENABLE_THINKING_MODELS:
         extra_body["enable_thinking"] = data.enable_thinking
 
+    # 百煉方言四參數：依 MODELS 旗標閘控，不支援的模型即使帶了也不送（防 Canvas 與
+    # 直接呼叫方；閘道會透傳、上游對不認識的欄位多半靜默忽略——與其讓客戶以為有效，
+    # 不如在這層就不送）。bool 類顯式 False 照送（Rule 6 語意）
+    if data.thinking_budget is not None and data.model in _TEXT_THINKING_BUDGET:
+        extra_body["thinking_budget"] = data.thinking_budget
+    if data.clear_thinking is not None and data.model in _TEXT_CLEAR_THINKING:
+        extra_body["clear_thinking"] = data.clear_thinking
+    if data.preserve_thinking is not None and data.model in _TEXT_PRESERVE_THINKING:
+        extra_body["preserve_thinking"] = data.preserve_thinking
+    if data.repetition_penalty is not None and data.model in _TEXT_REPETITION_PENALTY:
+        extra_body["repetition_penalty"] = data.repetition_penalty
+
     create_kwargs = dict(
         model=data.model,
         messages=messages,
@@ -1835,7 +1864,8 @@ async def text_generate(request: Request, data: TextGenerateRequest, api_key: st
     # 部分模型不允許兩者同時指定），一律不送這兩個參數，讓後端使用預設取樣設定
     if not data.model.startswith("claude-"):
         create_kwargs["temperature"] = data.temperature
-        create_kwargs["top_p"] = data.top_p
+        if data.top_p is not None:
+            create_kwargs["top_p"] = data.top_p
     if data.top_k is not None and data.top_k > 0:
         create_kwargs["extra_body"] = {**(extra_body or {}), "top_k": data.top_k}
     if data.seed is not None:

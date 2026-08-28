@@ -216,7 +216,10 @@
                            oninput="document.getElementById('tempVal').textContent=this.value">
                 </div>
                 <div class="form-group" id="textTopPGroup">
-                    <label class="form-label" data-tip="Nucleus Sampling：只從累積概率達到 P 的候選詞中取樣。0.8 代表只考慮前 80% 概率的詞，值越低輸出越集中。建議與 Temperature 二選一調整">Top P <span class="param-val" id="topPVal">0.8</span></label>
+                    <label class="form-label" data-tip="Nucleus Sampling：只從累積概率達到 P 的候選詞中取樣。0.8 代表只考慮前 80% 概率的詞，值越低輸出越集中。建議與 Temperature 二選一調整。勾選「模型預設」則不指定，由模型使用自己的預設值">Top P <span class="param-val" id="topPVal">0.8</span></label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px">
+                        <input type="checkbox" id="textTopPAuto" onchange="document.getElementById('textTopP').disabled=this.checked;document.getElementById('topPVal').textContent=this.checked?'預設':document.getElementById('textTopP').value">模型預設
+                    </label>
                     <input type="range" id="textTopP" min="0" max="1" step="0.05" value="0.8"
                            oninput="document.getElementById('topPVal').textContent=this.value">
                 </div>
@@ -284,6 +287,30 @@
                     <select id="textReasoningEffort" class="select-input">
                         <option value="">預設</option>
                     </select>
+                </div>
+                <div class="form-group" id="textThinkingBudgetGroup" style="display:none">
+                    <label class="form-label" data-tip="思考過程的 token 上限，需搭配思考模式開啟。留空使用模型預設（不設上限時模型自行決定思考長度）。注意：設定過小的預算會把思考硬生生截斷，可能導致回答異常">思考預算 (thinking_budget)</label>
+                    <input type="number" id="textThinkingBudget" class="number-input" min="1" placeholder="留空使用模型預設">
+                </div>
+                <div class="form-group" id="textClearThinkingGroup" style="display:none">
+                    <label class="form-label" data-tip="開啟後回應中不包含思考過程內容，只回傳最終答案，可節省傳輸與閱讀成本；思考本身照常進行與計費">精簡輸出 (clear_thinking)</label>
+                    <select id="textClearThinking" class="select-input">
+                        <option value="">預設</option>
+                        <option value="true">開啟（不回傳思考過程）</option>
+                        <option value="false">關閉（回傳思考過程）</option>
+                    </select>
+                </div>
+                <div class="form-group" id="textPreserveThinkingGroup" style="display:none">
+                    <label class="form-label" data-tip="多輪對話時是否保留先前輪次的思考內容一併送給模型。保留可提升連貫性，但會增加輸入 token 消耗">保留思考 (preserve_thinking)</label>
+                    <select id="textPreserveThinking" class="select-input">
+                        <option value="">預設</option>
+                        <option value="true">保留</option>
+                        <option value="false">不保留</option>
+                    </select>
+                </div>
+                <div class="form-group" id="textRepPenaltyGroup" style="display:none">
+                    <label class="form-label" data-tip="重複懲罰。大於 1.0 降低重複用詞的機率，小於 1.0 則提高；留空使用模型預設。內容明顯繞圈重複時可調高嘗試">重複懲罰 (repetition_penalty)</label>
+                    <input type="number" id="textRepPenalty" class="number-input" min="0" step="0.05" placeholder="留空使用模型預設">
                 </div>
                 <div class="toggle-row">
                     <label data-tip="啟用後文字逐步顯示（如打字效果），可即時看到生成過程；停用則等待完整回應後一次顯示">串流輸出 (Stream)</label>
@@ -1131,6 +1158,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=94"></script>
+<script src="/static/js/app.js?v=95"></script>
 </body>
 </html>

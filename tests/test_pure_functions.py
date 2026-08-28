@@ -619,3 +619,28 @@ def test_video_no_ratio_set():
         ("happyhorse-1.0-i2v", "i2v"),
         ("happyhorse-1.0-video-edit", "vedit"),
     }
+
+
+# ── 百煉 Chat 方言四參數的適用集合（閘道 PR #65 起透傳；reference §2.3.24）─────
+
+def test_bailian_dialect_param_sets():
+    """適用清單鎖定：thinking_budget 對 kimi/kimi-k3 不開（官方明列不支援）、
+    clear_thinking 僅 GLM、preserve_thinking 僅 qwen3.7/3.6 系（不含 GLM 與 3.8）、
+    repetition_penalty 僅百煉文字家族（Claude/GPT/Gemini/Grok/Seed 都不送）。"""
+    assert "kimi/kimi-k3" not in app._TEXT_THINKING_BUDGET
+    assert "glm-5.2" in app._TEXT_THINKING_BUDGET
+    assert "qwen3.8-max" in app._TEXT_THINKING_BUDGET
+    assert app._TEXT_CLEAR_THINKING == {"glm-5.1", "glm-5.2"}
+    assert app._TEXT_PRESERVE_THINKING == {
+        "qwen3.7-max", "qwen3.7-plus", "qwen3.6-max-preview", "qwen3.6-plus", "qwen3.6-flash"}
+    assert "glm-5.2" not in app._TEXT_PRESERVE_THINKING
+    assert "kimi/kimi-k3" in app._TEXT_REPETITION_PENALTY
+    for outsider in ("claude-opus-5", "gpt-5.5", "grok-4.3", "dola-seed-2.1-turbo"):
+        assert outsider not in app._TEXT_REPETITION_PENALTY, outsider
+
+
+def test_text_top_p_is_optional():
+    """top_p 未帶＝不送（None），不要在請求層補預設——閘道曾把未帶硬補成 0.001，
+    修掉後「沒填就不送」才是正確語意，這條防止之後有人把預設值加回來。"""
+    req = app.TextGenerateRequest(model="qwen3.5-flash", prompt="hi")
+    assert req.top_p is None
