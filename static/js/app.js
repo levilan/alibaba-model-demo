@@ -1223,7 +1223,10 @@ function syncVidRatio() {
     const sel   = document.getElementById('videoRatio');
     const isWan30  = model.startsWith('wan3.0');
     const isFamily = isWan30 || model.startsWith('wan2.7') || model.startsWith('happyhorse');
-    const show = (isFamily && t !== 'animate') || (t === 'vedit');
+    // no_ratio：該接口官方沒有 ratio 參數（wan2.7-i2v／happyhorse i2v／
+    // happyhorse-1.0-video-edit，比例跟隨輸入素材），顯式送出會被閘道 422 拒絕
+    const noRatio = !!(models.video.find(m => m.id === model && m.type === t) || {}).no_ratio;
+    const show = !noRatio && ((isFamily && t !== 'animate') || (t === 'vedit'));
     group.style.display = show ? '' : 'none';
     if (!show) { sel.value = ''; return; }
     const prev = sel.value;

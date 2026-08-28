@@ -236,6 +236,7 @@ def test_models_fields_are_known_to_mcp():
         # 行為開關（轉譯層內部使用，agent 不需要知道）
         "fusion_edit", "no_negative_prompt", "no_prompt_extend", "no_ref_strength",
         "no_watermark",   # MCP 沒有 watermark 參數，這旗標只給 UI 用
+        "no_ratio",       # MCP 沒有 ratio 參數；旗標供 UI 隱藏下拉＋後端剝除（PR #64 起閘道 422）
         "no_size", "supports_gpt_params", "supports_sequential",
         "sequential_max_size", "image_input", "audio_only", "turn_modes",
         "reasoning_effort",

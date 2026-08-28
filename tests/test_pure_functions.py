@@ -576,3 +576,41 @@ def test_official_doc_flags_wan27_image_and_happyhorse():
     for m in app.MODELS["video"]:
         if m["id"].startswith("happyhorse"):
             assert m.get("no_prompt_extend"), m["name"]
+
+
+# ── 阿里影片解析度白名單與 no_ratio（閘道 PR #64 起顯式非法值 422）─────────
+
+def test_ali_video_resolution_whitelists_match_official():
+    """依 reference/api-params-official.md §2.3.13~2.3.16：wan2.6/2.7 全接口與
+    happyhorse-1.0 系只有 720P/1080P（1.0 的 480P 由閘道刻意擋下）；
+    happyhorse-1.1 系才有 480P。閘道 2026-08-28 起對非法檔位回 422，
+    這條鎖住 MODELS 白名單不被之後的新條目照「480/720/1080 直覺」誤加。"""
+    import app
+    two_tier = {
+        "wan2.7-t2v", "wan2.7-i2v", "wan2.7-r2v", "wan2.7-videoedit",
+        "wan2.6-t2v", "wan2.6-i2v", "wan2.6-i2v-flash", "wan2.6-r2v", "wan2.6-r2v-flash",
+        "happyhorse-1.0-t2v", "happyhorse-1.0-i2v", "happyhorse-1.0-r2v",
+        "happyhorse-1.0-video-edit",
+    }
+    three_tier = {"happyhorse-1.1-t2v", "happyhorse-1.1-i2v", "happyhorse-1.1-r2v"}
+    seen = set()
+    for m in app.MODELS["video"]:
+        if m["id"] in two_tier:
+            assert m.get("resolutions") == ["720P", "1080P"], m["id"]
+            seen.add(m["id"])
+        elif m["id"] in three_tier:
+            assert m.get("resolutions") == ["480P", "720P", "1080P"], m["id"]
+            seen.add(m["id"])
+    assert seen == two_tier | three_tier
+
+
+def test_video_no_ratio_set():
+    """官方沒有 ratio 的接口（wan2.7-i2v／happyhorse i2v／happyhorse-1.0-video-edit）
+    必須標 no_ratio：UI 藏下拉、後端剝除，顯式送出會被閘道 422。"""
+    import app
+    assert app._VIDEO_NO_RATIO == {
+        ("wan2.7-i2v", "i2v"),
+        ("happyhorse-1.1-i2v", "i2v"),
+        ("happyhorse-1.0-i2v", "i2v"),
+        ("happyhorse-1.0-video-edit", "vedit"),
+    }

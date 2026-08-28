@@ -997,29 +997,29 @@ MODELS = {
          "desc": "統一支援參考／編輯／複刻／驅動", "type": "vedit",
          "audio": True, "min_dur": 2, "max_dur": 30, "smart_duration": True, "resolutions": ["480P", "720P", "1080P"]},
         # ── 文生影片 ──────────────────────────────────────────────
-        {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭，自動配音", "type": "t2v",   "audio": False,  "min_dur": 2, "max_dur": 15},
-        {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片（配音由模型自動決定）",     "type": "t2v",   "audio": False, "min_dur": 2, "max_dur": 15},
+        {"id": "wan2.7-t2v", "name": "萬相 2.7 T2V", "group": "文生影片",   "desc": "多鏡頭，自動配音", "type": "t2v",   "audio": False,  "min_dur": 2, "max_dur": 15, "resolutions": ["720P", "1080P"]},
+        {"id": "wan2.6-t2v", "name": "萬相 2.6 T2V", "group": "文生影片",   "desc": "前代文生影片（配音由模型自動決定）",     "type": "t2v",   "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["720P", "1080P"]},
         # ── 圖生影片 ──────────────────────────────────────────────
-        {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀生成", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"]},
+        {"id": "wan2.7-i2v", "name": "萬相 2.7 I2V", "group": "圖生影片",   "desc": "首幀生成", "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"], "resolutions": ["720P", "1080P"], "no_ratio": True},
         # wan2.6-i2v / wan2.6-i2v-flash 目前 NenAI 平台端 pipeline 故障（無論送任何欄位格式都回
         # "Field required: input.img_url"，已用直連 API 排除是本專案的請求格式問題），保留在清單中等待平台方修復
-        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片，含音頻",       "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"]},
-        {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版，可關閉配音", "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"]},
+        {"id": "wan2.6-i2v", "name": "萬相 2.6 I2V", "group": "圖生影片",   "desc": "前代圖生影片，含音頻",       "type": "i2v", "audio": False, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"], "resolutions": ["720P", "1080P"]},
+        {"id": "wan2.6-i2v-flash", "name": "萬相 2.6 I2V Flash", "group": "圖生影片", "desc": "前代圖生影片極速版，可關閉配音", "type": "i2v", "audio": True, "min_dur": 2, "max_dur": 15, "i2v_modes": ["first_frame"], "resolutions": ["720P", "1080P"]},
         # ── 參考生影片 ────────────────────────────────────────────
-        {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片", "desc": "角色形象參考（僅接受圖片）",       "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True},
-        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片（僅接受圖片）",     "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True},
-        {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版（僅接受圖片）", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True},
+        {"id": "wan2.7-r2v", "name": "萬相 2.7 R2V", "group": "參考生影片", "desc": "角色形象參考（僅接受圖片）",       "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True, "resolutions": ["720P", "1080P"]},
+        {"id": "wan2.6-r2v", "name": "萬相 2.6 R2V", "group": "參考生影片", "desc": "前代參考生影片（僅接受圖片）",     "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True, "resolutions": ["720P", "1080P"]},
+        {"id": "wan2.6-r2v-flash", "name": "萬相 2.6 R2V Flash", "group": "參考生影片", "desc": "前代參考生影片極速版（僅接受圖片）", "type": "r2v", "audio": False, "min_dur": 2, "max_dur": 15, "ref_images_only": True, "resolutions": ["720P", "1080P"]},
         # ── HappyHorse ────────────────────────────────────────────
-         {"id": "happyhorse-1.1-t2v",        "name": "HappyHorse 1.1 T2V",        "group": "HappyHorse", "desc": "高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15, "no_prompt_extend": True},    
-        {"id": "happyhorse-1.0-t2v",        "name": "HappyHorse 1.0 T2V",        "group": "HappyHorse", "desc": "前一代高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15, "no_prompt_extend": True},
-        {"id": "happyhorse-1.1-i2v",        "name": "HappyHorse 1.1 I2V",        "group": "HappyHorse", "desc": "高還原度圖生影片（僅首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15, "i2v_modes": ["first_frame"], "no_prompt_extend": True},
-        {"id": "happyhorse-1.0-i2v",        "name": "HappyHorse 1.0 I2V",        "group": "HappyHorse", "desc": "前一代高還原度圖生影片（僅首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15, "i2v_modes": ["first_frame"], "no_prompt_extend": True},
-        {"id": "happyhorse-1.1-r2v",        "name": "HappyHorse 1.1 R2V",        "group": "HappyHorse", "desc": "多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True, "max_ref": 9, "no_prompt_extend": True},
-        {"id": "happyhorse-1.0-r2v",        "name": "HappyHorse 1.0 R2V",        "group": "HappyHorse", "desc": "前一代多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True, "max_ref": 9, "no_prompt_extend": True},
-        {"id": "happyhorse-1.0-video-edit", "name": "HappyHorse Video Edit 1.0", "group": "HappyHorse", "desc": "視頻編輯（最多 5 張參考圖）", "type": "vedit", "audio": False, "min_dur": 3, "max_dur": 15, "max_ref": 5, "no_prompt_extend": True},      
+         {"id": "happyhorse-1.1-t2v",        "name": "HappyHorse 1.1 T2V",        "group": "HappyHorse", "desc": "高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15, "no_prompt_extend": True, "resolutions": ["480P", "720P", "1080P"]},    
+        {"id": "happyhorse-1.0-t2v",        "name": "HappyHorse 1.0 T2V",        "group": "HappyHorse", "desc": "前一代高還原度文生影片",          "type": "t2v",   "audio": False, "min_dur": 3, "max_dur": 15, "no_prompt_extend": True, "resolutions": ["720P", "1080P"]},
+        {"id": "happyhorse-1.1-i2v",        "name": "HappyHorse 1.1 I2V",        "group": "HappyHorse", "desc": "高還原度圖生影片（僅首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15, "i2v_modes": ["first_frame"], "no_prompt_extend": True, "resolutions": ["480P", "720P", "1080P"], "no_ratio": True},
+        {"id": "happyhorse-1.0-i2v",        "name": "HappyHorse 1.0 I2V",        "group": "HappyHorse", "desc": "前一代高還原度圖生影片（僅首幀）",   "type": "i2v",   "audio": False, "min_dur": 3, "max_dur": 15, "i2v_modes": ["first_frame"], "no_prompt_extend": True, "resolutions": ["720P", "1080P"], "no_ratio": True},
+        {"id": "happyhorse-1.1-r2v",        "name": "HappyHorse 1.1 R2V",        "group": "HappyHorse", "desc": "多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True, "max_ref": 9, "no_prompt_extend": True, "resolutions": ["480P", "720P", "1080P"]},
+        {"id": "happyhorse-1.0-r2v",        "name": "HappyHorse 1.0 R2V",        "group": "HappyHorse", "desc": "前一代多圖參考生影片（最多 9 張，僅接受圖片）", "type": "r2v",   "audio": False, "min_dur": 3, "max_dur": 15, "ref_images_only": True, "max_ref": 9, "no_prompt_extend": True, "resolutions": ["720P", "1080P"]},
+        {"id": "happyhorse-1.0-video-edit", "name": "HappyHorse Video Edit 1.0", "group": "HappyHorse", "desc": "視頻編輯（最多 5 張參考圖）", "type": "vedit", "audio": False, "min_dur": 3, "max_dur": 15, "max_ref": 5, "no_prompt_extend": True, "resolutions": ["720P", "1080P"], "no_ratio": True},      
         # ── 視頻編輯 ──────────────────────────────────────────────
         {"id": "wan2.7-videoedit", "name": "萬相 2.7 視頻編輯", "group": "萬相視頻編輯",
-         "desc": "文字/參考圖驅動編輯", "type": "vedit", "audio": False, "min_dur": 2, "max_dur": 15},
+         "desc": "文字/參考圖驅動編輯", "type": "vedit", "audio": False, "min_dur": 2, "max_dur": 15, "resolutions": ["720P", "1080P"]},
         # ── 動作動畫（視頻換人 / 圖生動作）──────────────────────────
         {"id": "wan2.2-animate-mix", "name": "萬相 2.2 視頻換人", "group": "萬相動作動畫",
          "desc": "將參考影片中的角色替換為人物圖片，保留原場景與動作", "type": "animate", "audio": False},
@@ -2674,6 +2674,12 @@ _WAN30_ALLINONE_MODELS = {"wan3.0-video"}
 # ratio 與 resolution 是兩個互相獨立的參數
 _ADAPTIVE_RATIO_MODELS = _WAN30_ALLINONE_MODELS
 
+# 官方接口沒有 ratio 參數的 (model, type) 組合（wan2.7-i2v／happyhorse i2v／
+# happyhorse-1.0-video-edit：比例跟隨輸入素材）。閘道 2026-08-28 起（PR #64）對這些
+# 接口顯式送 ratio 會在預扣費前回 422，所以除了 UI 隱藏下拉，端點層也把 ratio 剝掉
+# ——防的是 AI Canvas 與直接呼叫方帶著舊參數進來。
+_VIDEO_NO_RATIO = {(m["id"], m["type"]) for m in MODELS["video"] if m.get("no_ratio")}
+
 
 def _default_ratio(model: str) -> str:
     """未指定 ratio 時的預設值（平台端 2026-08-25 實測確認的各代行為）：
@@ -3030,6 +3036,8 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
     neg_prompt    = form.get("negative_prompt", "")
     resolution    = form.get("resolution", "720P")
     ratio         = form.get("ratio") or _default_ratio(model)
+    if (model, "i2v") in _VIDEO_NO_RATIO:
+        ratio = ""            # 官方 i2v 無 ratio，顯式送出會被閘道 422（比例跟隨首幀）
     duration      = int(form.get("duration", 5))
     i2v_mode      = form.get("i2v_mode", "first_frame")
     prompt_extend = str(form.get("prompt_extend", "false")).lower() in ("true", "1", "yes")
@@ -3169,6 +3177,8 @@ async def video_vedit(request: Request, api_key: str = Depends(get_api_key)):
     neg_prompt    = form.get("negative_prompt", "")
     resolution    = form.get("resolution", "1080P")
     ratio         = form.get("ratio", "")
+    if (model, "vedit") in _VIDEO_NO_RATIO:
+        ratio = ""            # happyhorse-1.0-video-edit 官方無 ratio，送了會被閘道 422
     duration_str  = str(form.get("duration", "0"))
     duration      = int(duration_str) if duration_str.strip() else 0
     audio_setting = form.get("audio_setting", "auto")
