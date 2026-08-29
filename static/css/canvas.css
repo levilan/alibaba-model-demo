@@ -480,3 +480,5 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
     width: 100%; border: 1px solid var(--cv-border, #3a3a3a); border-radius: 8px;
     background: #000; cursor: crosshair; touch-action: none; display: block;
 }
+.cv-pose-canvas { height: auto; }
+.cv-pose-editor { margin-top: 2px; }

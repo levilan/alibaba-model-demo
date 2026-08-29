@@ -1261,37 +1261,47 @@
     // 2026-08-29 實測（wan2.7-image ×3、qwen-image-3.0 ×3，同一不對稱姿勢，
     // 提示詞只說「依照骨架圖」不用文字描述姿勢）6/6 全數遵循。單一姿勢樣本，
     // 複雜姿勢／多人場景未測——UI 文案維持「參考」語氣，不承諾嚴格遵循。
+    //
+    // 版面（Levi 2026-08-29 回饋修正）：編輯畫布直接放在**節點本體**、隨時可拖曳，
+    // 不再另外掛輸出預覽（同一張骨架出現兩次）；畫布比例可切直式/橫式/方形，
+    // 四足動物範本自動用橫式。
     const POSE_COLORS = ['#ff5500', '#ffaa00', '#ffff00', '#aaff00', '#00ff00', '#00ffaa',
                          '#00aaff', '#0055ff', '#5500ff', '#aa00ff', '#ff00aa', '#ff0055'];
+    // 編輯座標空間依畫布比例而異（寬固定 276，好塞進節點寬度）；輸出放大到 1K 級
+    const POSE_DIMS = {
+        '3:4': { w: 276, h: 368, outW: 768,  outH: 1024 },
+        '4:3': { w: 276, h: 207, outW: 1024, outH: 768 },
+        '1:1': { w: 276, h: 276, outW: 1024, outH: 1024 },
+    };
     const POSE_PRESETS = {
-        stand: { label: '站立', topo: 'human', joints: {
+        stand: { label: '站立', topo: 'human', ratio: '3:4', joints: {
             head: [138, 52], neck: [138, 88],
             shL: [112, 94], elbL: [98, 150], wrL: [92, 205],
             shR: [164, 94], elbR: [178, 150], wrR: [184, 205],
             hipL: [122, 190], hipR: [154, 190],
             kneeL: [116, 265], ankL: [112, 338], kneeR: [160, 265], ankR: [164, 338] } },
-        raise: { label: '單手高舉', topo: 'human', joints: {
+        raise: { label: '單手高舉', topo: 'human', ratio: '3:4', joints: {
             head: [138, 64], neck: [138, 95],
             shL: [116, 98], elbL: [106, 58], wrL: [102, 20],
             shR: [160, 98], elbR: [205, 98], wrR: [245, 98],
             hipL: [124, 195], hipR: [152, 195],
             kneeL: [106, 270], ankL: [96, 340], kneeR: [170, 270], ankR: [180, 340] } },
-        run: { label: '奔跑', topo: 'human', joints: {
+        run: { label: '奔跑', topo: 'human', ratio: '3:4', joints: {
             head: [150, 58], neck: [146, 92],
             shL: [124, 98], elbL: [96, 122], wrL: [80, 86],
             shR: [168, 96], elbR: [196, 122], wrR: [216, 152],
             hipL: [130, 190], hipR: [154, 188],
             kneeL: [100, 242], ankL: [78, 302], kneeR: [186, 236], ankR: [202, 310] } },
-        sit: { label: '坐姿', topo: 'human', joints: {
+        sit: { label: '坐姿', topo: 'human', ratio: '3:4', joints: {
             head: [138, 78], neck: [138, 112],
             shL: [114, 118], elbL: [104, 168], wrL: [110, 212],
             shR: [162, 118], elbR: [172, 168], wrR: [166, 212],
             hipL: [122, 215], hipR: [154, 215],
             kneeL: [92, 226], ankL: [92, 302], kneeR: [184, 226], ankR: [184, 302] } },
-        quad: { label: '四足動物', topo: 'quad', joints: {
-            head: [56, 118], neck: [92, 140], spine: [150, 150], hip: [208, 148], tail: [246, 122],
-            fk1: [96, 222], fp1: [94, 292], fk2: [112, 226], fp2: [114, 294],
-            bk1: [202, 222], bp1: [200, 292], bk2: [222, 220], bp2: [226, 290] } },
+        quad: { label: '四足動物', topo: 'quad', ratio: '4:3', joints: {
+            head: [46, 62], neck: [84, 82], spine: [140, 90], hip: [196, 88], tail: [238, 60],
+            fk1: [86, 138], fp1: [84, 192], fk2: [102, 140], fp2: [104, 194],
+            bk1: [190, 138], bp1: [188, 192], bk2: [212, 136], bp2: [216, 190] } },
     };
     const POSE_BONES = {
         human: [['neck', 'shL'], ['shL', 'elbL'], ['elbL', 'wrL'],
@@ -1302,11 +1312,10 @@
                 ['neck', 'fk1'], ['fk1', 'fp1'], ['neck', 'fk2'], ['fk2', 'fp2'],
                 ['hip', 'bk1'], ['bk1', 'bp1'], ['hip', 'bk2'], ['bk2', 'bp2']],
     };
-    const POSE_EDIT_W = 276, POSE_EDIT_H = 368;   // 3:4，輸出放大到 768×1024
 
-    function drawPoseSkeleton(ctx, joints, topo, scale, lineW, jointR) {
+    function drawPoseSkeleton(ctx, joints, topo, dims, scale, lineW, jointR) {
         ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, POSE_EDIT_W * scale, POSE_EDIT_H * scale);
+        ctx.fillRect(0, 0, dims.w * scale, dims.h * scale);
         ctx.lineCap = 'round';
         POSE_BONES[topo].forEach(([a, b], i) => {
             ctx.strokeStyle = POSE_COLORS[i % POSE_COLORS.length];
@@ -1316,7 +1325,6 @@
             ctx.lineTo(joints[b][0] * scale, joints[b][1] * scale);
             ctx.stroke();
         });
-        // 頭：紅圈（人形以 head 點為中心；四足畫小一點）
         ctx.strokeStyle = '#ff0000';
         ctx.lineWidth = lineW * 0.85;
         ctx.beginPath();
@@ -1331,106 +1339,144 @@
         });
     }
 
+    const POSE_PANEL_EXTRA = 46;   // 節點本體：編輯畫布上方的提示列高度餘裕
+
     function PoseNode() {
         this.addOutput('image', 'image');
-        this._contentHeight = 300;
-        this.size = [300, 300];
+        this.size = [300, 100];
         this.color = '#2f2a3a'; this.bgcolor = '#2a2a2a';
-        this.properties = { preset: 'raise', topo: 'human',
+        this.properties = { preset: 'raise', topo: 'human', ratio: '3:4',
                             joints: JSON.parse(JSON.stringify(POSE_PRESETS.raise.joints)) };
         this.imageUrl = null;
 
+        // 節點本體＝編輯器（隨時可拖，不用先選取節點）；設定浮層只放範本與比例
         const panel = el('div');
         panel.innerHTML = `
             <div class="cv-controls">
                 <label>姿勢範本</label>
                 <div class="cv-pose-preset-slot"></div>
-                <label>骨架編輯<span class="cv-hint">（拖曳白色關節調整姿勢）</span></label>
-                <canvas class="cv-pose-canvas" width="${POSE_EDIT_W}" height="${POSE_EDIT_H}"></canvas>
+                <label>畫布比例</label>
+                <div class="cv-pose-ratio-slot"></div>
                 <div class="cv-hint" style="margin-top:6px">把輸出接到圖片節點的「參考圖」，並在提示詞加一句：「參考圖是姿勢骨架圖，人物姿勢請依照骨架」。姿勢為參考性質，實際生成以模型理解為準</div>
-                <div class="cv-status"></div>
+            </div>
+            <div class="cv-pose-editor">
+                <div class="cv-hint" style="margin:6px 0 4px">拖曳白色關節調整姿勢</div>
+                <canvas class="cv-pose-canvas"></canvas>
             </div>`;
         attachDomPanel(this, panel);
 
         const presetSel = buildSelect(Object.keys(POSE_PRESETS), this.properties.preset,
             (v) => this._applyPreset(v));
-        // 下拉顯示中文名稱
         Array.from(presetSel.options).forEach(o => { o.textContent = POSE_PRESETS[o.value].label; });
         panel.querySelector('.cv-pose-preset-slot').appendChild(presetSel);
         this.presetSel = presetSel;
+        this.ratioSlot = panel.querySelector('.cv-pose-ratio-slot');
+        this._rebuildRatioPicker();
 
         this.editCanvas = panel.querySelector('.cv-pose-canvas');
         const ec = this.editCanvas;
         ec.addEventListener('mousedown', (e) => e.stopPropagation());
         let dragKey = null;
         const toLocal = (e) => {
+            const d = POSE_DIMS[this.properties.ratio];
             const r = ec.getBoundingClientRect();
-            return [(e.clientX - r.left) * (POSE_EDIT_W / r.width),
-                    (e.clientY - r.top) * (POSE_EDIT_H / r.height)];
+            return [(e.clientX - r.left) * (d.w / r.width),
+                    (e.clientY - r.top) * (d.h / r.height)];
         };
         ec.addEventListener('pointerdown', (e) => {
             e.stopPropagation();
             const [x, y] = toLocal(e);
             const j = this.properties.joints;
             dragKey = Object.keys(j).find(k =>
-                (j[k][0] - x) ** 2 + (j[k][1] - y) ** 2 < 12 * 12) || null;
+                (j[k][0] - x) ** 2 + (j[k][1] - y) ** 2 < 14 * 14) || null;
             if (dragKey) ec.setPointerCapture(e.pointerId);
         });
         ec.addEventListener('pointermove', (e) => {
             if (!dragKey) return;
+            const d = POSE_DIMS[this.properties.ratio];
             const [x, y] = toLocal(e);
             this.properties.joints[dragKey] = [
-                Math.max(4, Math.min(POSE_EDIT_W - 4, x)),
-                Math.max(4, Math.min(POSE_EDIT_H - 4, y))];
+                Math.max(4, Math.min(d.w - 4, x)),
+                Math.max(4, Math.min(d.h - 4, y))];
             this._redraw();
         });
         ec.addEventListener('pointerup', () => {
             if (dragKey) { dragKey = null; this._refreshOutput(); }
         });
 
-        panel.appendChild(buildPreview(this));
         wireConfigOverlay(this, panel);
         attachNodeChrome(this);
-        this._redraw();
+        this._syncCanvasSize();
         this._refreshOutput();
     }
     PoseNode.title = '姿勢 Pose';
+    PoseNode.prototype._rebuildRatioPicker = function () {
+        this.ratioSlot.innerHTML = '';
+        this.ratioSlot.appendChild(buildRatioPicker(
+            [{ value: '3:4', rw: 3, rh: 4, label: '直式' },
+             { value: '4:3', rw: 4, rh: 3, label: '橫式' },
+             { value: '1:1', rw: 10, rh: 10, label: '方形' }],
+            this.properties.ratio, (v) => this._setRatio(v)));
+    };
+    PoseNode.prototype._setRatio = function (ratio) {
+        // 切換比例時把關節等比例映射到新空間，姿勢形狀盡量保留
+        const from = POSE_DIMS[this.properties.ratio], to = POSE_DIMS[ratio];
+        const j = this.properties.joints;
+        Object.keys(j).forEach(k => {
+            j[k] = [j[k][0] * to.w / from.w, j[k][1] * to.h / from.h];
+        });
+        this.properties.ratio = ratio;
+        this._syncCanvasSize();
+        this._refreshOutput();
+    };
+    PoseNode.prototype._syncCanvasSize = function () {
+        const d = POSE_DIMS[this.properties.ratio];
+        this.editCanvas.width = d.w;
+        this.editCanvas.height = d.h;
+        // 節點高度跟著畫布比例走：頂部插槽區約 40 ＋ 提示列 ＋ 畫布顯示高
+        this._contentHeight = d.h + POSE_PANEL_EXTRA + 40;
+        this.size = [300, this._contentHeight];
+        this._redraw();
+        if (typeof lgCanvas !== 'undefined' && lgCanvas) lgCanvas.setDirty(true, true);
+    };
     PoseNode.prototype._applyPreset = function (key) {
         const p = POSE_PRESETS[key];
         this.properties.preset = key;
         this.properties.topo = p.topo;
+        this.properties.ratio = p.ratio;
         this.properties.joints = JSON.parse(JSON.stringify(p.joints));
-        this._redraw();
+        this._rebuildRatioPicker();
+        this._syncCanvasSize();
         this._refreshOutput();
     };
     PoseNode.prototype._redraw = function () {
-        const ctx = this.editCanvas.getContext('2d');
-        drawPoseSkeleton(ctx, this.properties.joints, this.properties.topo, 1, 5, 4);
+        const d = POSE_DIMS[this.properties.ratio];
+        drawPoseSkeleton(this.editCanvas.getContext('2d'),
+                         this.properties.joints, this.properties.topo, d, 1, 5, 5);
     };
     PoseNode.prototype._refreshOutput = function () {
-        // 輸出張大圖（768×1024）——線條粗細照實測用的骨架圖比例
+        const d = POSE_DIMS[this.properties.ratio];
         const off = document.createElement('canvas');
-        const scale = 768 / POSE_EDIT_W;
-        off.width = POSE_EDIT_W * scale; off.height = POSE_EDIT_H * scale;
+        const scale = d.outW / d.w;
+        off.width = d.outW; off.height = d.outH;
         drawPoseSkeleton(off.getContext('2d'), this.properties.joints, this.properties.topo,
-                         scale, 14, 11);
+                         d, scale, 14, 11);
         this.imageUrl = off.toDataURL('image/png');
-        setPreviewImage(this, this.imageUrl);
         this.setOutputData(0, this.imageUrl);
     };
     PoseNode.prototype.onExecute = function () {
         this.setOutputData(0, this.imageUrl);
     };
     PoseNode.prototype.onConfigure = function () {
-        // properties（preset/topo/joints）由 LiteGraph 自動還原；joints 可能是舊值，
-        // 防禦性補齊缺欄位後重畫並重建輸出
         const p = POSE_PRESETS[this.properties.preset] || POSE_PRESETS.raise;
         if (!this.properties.joints || !POSE_BONES[this.properties.topo]) {
             this.properties.topo = p.topo;
             this.properties.joints = JSON.parse(JSON.stringify(p.joints));
         }
+        if (!POSE_DIMS[this.properties.ratio]) this.properties.ratio = p.ratio || '3:4';
         if (this.presetSel) this.presetSel.value = this.properties.preset;
-        this._redraw();
+        this._rebuildRatioPicker();
+        this._syncCanvasSize();
         this._refreshOutput();
     };
     PoseNode.prototype.onRemoved = sharedOnRemoved;
