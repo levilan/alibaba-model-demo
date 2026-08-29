@@ -1274,34 +1274,93 @@
         '1:1': { w: 276, h: 276, outW: 1024, outH: 1024 },
     };
     const POSE_PRESETS = {
+        // ── 人形（直式為主）──
         stand: { label: '站立', topo: 'human', ratio: '3:4', joints: {
             head: [138, 52], neck: [138, 88],
             shL: [112, 94], elbL: [98, 150], wrL: [92, 205],
             shR: [164, 94], elbR: [178, 150], wrR: [184, 205],
             hipL: [122, 190], hipR: [154, 190],
             kneeL: [116, 265], ankL: [112, 338], kneeR: [160, 265], ankR: [164, 338] } },
+        wave: { label: '揮手', topo: 'human', ratio: '3:4', joints: {
+            head: [138, 60], neck: [138, 94],
+            shL: [114, 98], elbL: [100, 150], wrL: [96, 202],
+            shR: [162, 98], elbR: [196, 74], wrR: [206, 30],
+            hipL: [124, 192], hipR: [152, 192],
+            kneeL: [118, 264], ankL: [114, 336], kneeR: [158, 264], ankR: [162, 336] } },
         raise: { label: '單手高舉', topo: 'human', ratio: '3:4', joints: {
             head: [138, 64], neck: [138, 95],
             shL: [116, 98], elbL: [106, 58], wrL: [102, 20],
             shR: [160, 98], elbR: [205, 98], wrR: [245, 98],
             hipL: [124, 195], hipR: [152, 195],
             kneeL: [106, 270], ankL: [96, 340], kneeR: [170, 270], ankR: [180, 340] } },
+        both_up: { label: '雙手高舉', topo: 'human', ratio: '3:4', joints: {
+            head: [138, 66], neck: [138, 98],
+            shL: [114, 102], elbL: [96, 64], wrL: [88, 24],
+            shR: [162, 102], elbR: [180, 64], wrR: [188, 24],
+            hipL: [124, 196], hipR: [152, 196],
+            kneeL: [118, 268], ankL: [114, 340], kneeR: [158, 268], ankR: [162, 340] } },
+        tpose: { label: 'T 字姿', topo: 'human', ratio: '3:4', joints: {
+            head: [138, 58], neck: [138, 92],
+            shL: [112, 96], elbL: [66, 96], wrL: [20, 96],
+            shR: [164, 96], elbR: [210, 96], wrR: [256, 96],
+            hipL: [124, 192], hipR: [152, 192],
+            kneeL: [120, 264], ankL: [118, 336], kneeR: [156, 264], ankR: [158, 336] } },
         run: { label: '奔跑', topo: 'human', ratio: '3:4', joints: {
             head: [150, 58], neck: [146, 92],
             shL: [124, 98], elbL: [96, 122], wrL: [80, 86],
             shR: [168, 96], elbR: [196, 122], wrR: [216, 152],
             hipL: [130, 190], hipR: [154, 188],
             kneeL: [100, 242], ankL: [78, 302], kneeR: [186, 236], ankR: [202, 310] } },
+        jump: { label: '跳躍', topo: 'human', ratio: '3:4', joints: {
+            head: [138, 44], neck: [138, 78],
+            shL: [114, 82], elbL: [92, 52], wrL: [76, 18],
+            shR: [162, 82], elbR: [184, 52], wrR: [200, 18],
+            hipL: [126, 172], hipR: [150, 172],
+            kneeL: [104, 224], ankL: [120, 282], kneeR: [172, 224], ankR: [156, 282] } },
+        punch: { label: '出拳', topo: 'human', ratio: '3:4', joints: {
+            head: [130, 64], neck: [132, 98],
+            shL: [108, 104], elbL: [96, 146], wrL: [112, 120],
+            shR: [158, 102], elbR: [206, 100], wrR: [252, 96],
+            hipL: [120, 196], hipR: [150, 198],
+            kneeL: [102, 262], ankL: [92, 332], kneeR: [172, 258], ankR: [196, 320] } },
+        kick: { label: '踢腿', topo: 'human', ratio: '3:4', joints: {
+            head: [132, 60], neck: [134, 94],
+            shL: [110, 100], elbL: [88, 130], wrL: [70, 158],
+            shR: [160, 98], elbR: [186, 120], wrR: [210, 140],
+            hipL: [122, 196], hipR: [150, 194],
+            kneeL: [120, 268], ankL: [118, 340],
+            kneeR: [196, 180], ankR: [244, 150] } },
+        squat: { label: '蹲姿', topo: 'human', ratio: '3:4', joints: {
+            head: [138, 120], neck: [138, 152],
+            shL: [114, 158], elbL: [96, 196], wrL: [112, 232],
+            shR: [162, 158], elbR: [180, 196], wrR: [164, 232],
+            hipL: [124, 252], hipR: [152, 252],
+            kneeL: [92, 268], ankL: [102, 340], kneeR: [184, 268], ankR: [174, 340] } },
         sit: { label: '坐姿', topo: 'human', ratio: '3:4', joints: {
             head: [138, 78], neck: [138, 112],
             shL: [114, 118], elbL: [104, 168], wrL: [110, 212],
             shR: [162, 118], elbR: [172, 168], wrR: [166, 212],
             hipL: [122, 215], hipR: [154, 215],
             kneeL: [92, 226], ankL: [92, 302], kneeR: [184, 226], ankR: [184, 302] } },
-        quad: { label: '四足動物', topo: 'quad', ratio: '4:3', joints: {
+        lie: { label: '躺臥', topo: 'human', ratio: '4:3', joints: {
+            head: [44, 98], neck: [72, 102],
+            shL: [78, 94], elbL: [112, 90], wrL: [146, 88],
+            shR: [78, 112], elbR: [112, 116], wrR: [146, 120],
+            hipL: [150, 96], hipR: [150, 112],
+            kneeL: [196, 92], ankL: [242, 90], kneeR: [196, 116], ankR: [242, 118] } },
+        // ── 四足動物（橫式為主）──
+        quad: { label: '四足站立', topo: 'quad', ratio: '4:3', joints: {
             head: [46, 62], neck: [84, 82], spine: [140, 90], hip: [196, 88], tail: [238, 60],
             fk1: [86, 138], fp1: [84, 192], fk2: [102, 140], fp2: [104, 194],
             bk1: [190, 138], bp1: [188, 192], bk2: [212, 136], bp2: [216, 190] } },
+        quad_run: { label: '四足奔跑', topo: 'quad', ratio: '4:3', joints: {
+            head: [42, 70], neck: [82, 88], spine: [140, 92], hip: [198, 86], tail: [242, 62],
+            fk1: [64, 138], fp1: [36, 178], fk2: [84, 142], fp2: [60, 186],
+            bk1: [216, 134], bp1: [248, 172], bk2: [200, 140], bp2: [232, 184] } },
+        quad_sit: { label: '四足坐姿', topo: 'quad', ratio: '4:3', joints: {
+            head: [96, 44], neck: [112, 74], spine: [150, 120], hip: [178, 158], tail: [220, 166],
+            fk1: [108, 130], fp1: [106, 188], fk2: [122, 132], fp2: [120, 190],
+            bk1: [196, 150], bp1: [186, 192], bk2: [210, 146], bp2: [202, 190] } },
     };
     const POSE_BONES = {
         human: [['neck', 'shL'], ['shL', 'elbL'], ['elbL', 'wrL'],
