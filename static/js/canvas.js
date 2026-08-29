@@ -98,10 +98,14 @@
     function applyVideoLimits(node, type) {
         const lim = videoLimits(node.properties.model, type);
 
-        if (node.resSelect) {
+        if (node.resPicker || node.resSelect) {
             if (!lim.resolutions.includes(node.properties.resolution)) {
                 node.properties.resolution = lim.resolutions[0];
             }
+        }
+        if (node.resPicker) {
+            node.resPicker.rebuild(lim.resolutions, node.properties.resolution);
+        } else if (node.resSelect) {
             node.resSelect.innerHTML = lim.resolutions
                 .map(r => `<option value="${r}">${r}</option>`).join('');
             node.resSelect.value = node.properties.resolution;
@@ -124,6 +128,7 @@
         }
         if (node.durRow) node.durRow.style.display = lim.noDuration ? 'none' : '';
         if (node.durRangeEl) node.durRangeEl.textContent = `（${lim.minDur} ~ ${lim.maxDur} 秒）`;
+        if (node._syncRatioPicker) node._syncRatioPicker(type);
         return lim;
     }
 
@@ -242,6 +247,68 @@
         sel.addEventListener('mousedown', (e) => e.stopPropagation());
         sel.addEventListener('change', () => onChange(sel.value));
         return sel;
+    }
+
+    // ── 視覺化比例鈕／檔位 pills（Levi 2026-08-29：尺寸選擇要一眼看出橫/直/方）──
+    // 比例鈕的圖示直接照比例畫一個小方框；options = [{value, rw, rh, label}]。
+    // 回傳容器，掛 setActive(value) 供外部同步高亮。
+    function buildRatioPicker(options, current, onPick) {
+        const row = el('div', 'cv-ratio-row');
+        row.addEventListener('mousedown', (e) => e.stopPropagation());
+        const btns = new Map();
+        options.forEach(o => {
+            const b = el('button', 'cv-ratio-btn');
+            b.type = 'button';
+            const icon = el('span', 'cv-ratio-icon');
+            const s = 20 / Math.max(o.rw, o.rh);
+            icon.style.width  = Math.max(7, Math.round(o.rw * s)) + 'px';
+            icon.style.height = Math.max(7, Math.round(o.rh * s)) + 'px';
+            b.appendChild(icon);
+            b.appendChild(el('span', 'cv-ratio-label', o.label));
+            b.addEventListener('click', () => { row.setActive(o.value); onPick(o.value); });
+            btns.set(o.value, b); row.appendChild(b);
+        });
+        row.setActive = (v) => btns.forEach((b, val) => b.classList.toggle('active', val === v));
+        row.setActive(current);
+        return row;
+    }
+    function buildPillRow(values, current, onPick) {
+        const row = el('div', 'cv-pill-row');
+        row.addEventListener('mousedown', (e) => e.stopPropagation());
+        const btns = new Map();
+        values.forEach(v => {
+            const b = el('button', 'cv-pill', v);
+            b.type = 'button';
+            b.addEventListener('click', () => { row.setActive(v); onPick(v); });
+            btns.set(v, b); row.appendChild(b);
+        });
+        row.setActive = (v) => btns.forEach((b, val) => b.classList.toggle('active', val === v));
+        row.setActive(current);
+        return row;
+    }
+    // "1024*1024" / "1360x768" → 簡化比例。1360x768 這類約分後是 85:48 沒人看得懂，
+    // 對常見比例做 2% 內的近似吸附，其餘照實約分
+    function parseSizeRatio(s) {
+        const m = String(s).match(/^(\d+)\s*[*xX×]\s*(\d+)$/);
+        if (!m) return null;
+        const w = parseInt(m[1]), h = parseInt(m[2]);
+        const COMMON = [[1,1],[16,9],[9,16],[4,3],[3,4],[3,2],[2,3],[21,9],[9,21],[5,4],[4,5]];
+        for (const [cw, ch] of COMMON) {
+            if (Math.abs(w / h - cw / ch) / (cw / ch) < 0.02) return { rw: cw, rh: ch, label: cw + ':' + ch };
+        }
+        const g = (a, b) => b ? g(b, a % b) : a;
+        const d = g(w, h);
+        return { rw: w / d, rh: h / d, label: (w / d) + ':' + (h / d) };
+    }
+    // 解析度 pills 的掛載器：applyVideoLimits 會呼叫 rebuild() 換選項
+    function makeResPicker(node, slot) {
+        const holder = el('div');
+        holder.rebuild = (values, cur) => {
+            holder.innerHTML = '';
+            holder.appendChild(buildPillRow(values, cur, (v) => { node.properties.resolution = v; }));
+        };
+        slot.appendChild(holder);
+        return holder;
     }
 
     // ── 進階參數：Negative Prompt / 生成張數 / Seed ─────────────────────────────
@@ -486,6 +553,7 @@
         text: { type: 'nenai/text', label: '文字 Text' },
         camera_angle: { type: 'nenai/camera_angle', label: '相機角度 Camera Angle' },
         load_image: { type: 'nenai/load_image', label: '上傳圖片 Load Image' },
+        pose: { type: 'nenai/pose', label: '姿勢 Pose' },
         image: { type: 'nenai/image', label: '圖片 Image' },
         video: { type: 'nenai/video', label: '影片 Video' },
         video_edit: { type: 'nenai/video_edit', label: '影片編輯 Video Edit' },
@@ -1188,6 +1256,185 @@
         sharedOnRemoved.call(this);
     };
 
+    // ── Node: Pose（姿勢骨架編輯器，輸出 OpenPose 風格骨架圖當參考圖）────────
+    // 上游沒有 ControlNet 條件化通道，這是「骨架圖作為參考圖」的軟引導：
+    // 2026-08-29 實測（wan2.7-image ×3、qwen-image-3.0 ×3，同一不對稱姿勢，
+    // 提示詞只說「依照骨架圖」不用文字描述姿勢）6/6 全數遵循。單一姿勢樣本，
+    // 複雜姿勢／多人場景未測——UI 文案維持「參考」語氣，不承諾嚴格遵循。
+    const POSE_COLORS = ['#ff5500', '#ffaa00', '#ffff00', '#aaff00', '#00ff00', '#00ffaa',
+                         '#00aaff', '#0055ff', '#5500ff', '#aa00ff', '#ff00aa', '#ff0055'];
+    const POSE_PRESETS = {
+        stand: { label: '站立', topo: 'human', joints: {
+            head: [138, 52], neck: [138, 88],
+            shL: [112, 94], elbL: [98, 150], wrL: [92, 205],
+            shR: [164, 94], elbR: [178, 150], wrR: [184, 205],
+            hipL: [122, 190], hipR: [154, 190],
+            kneeL: [116, 265], ankL: [112, 338], kneeR: [160, 265], ankR: [164, 338] } },
+        raise: { label: '單手高舉', topo: 'human', joints: {
+            head: [138, 64], neck: [138, 95],
+            shL: [116, 98], elbL: [106, 58], wrL: [102, 20],
+            shR: [160, 98], elbR: [205, 98], wrR: [245, 98],
+            hipL: [124, 195], hipR: [152, 195],
+            kneeL: [106, 270], ankL: [96, 340], kneeR: [170, 270], ankR: [180, 340] } },
+        run: { label: '奔跑', topo: 'human', joints: {
+            head: [150, 58], neck: [146, 92],
+            shL: [124, 98], elbL: [96, 122], wrL: [80, 86],
+            shR: [168, 96], elbR: [196, 122], wrR: [216, 152],
+            hipL: [130, 190], hipR: [154, 188],
+            kneeL: [100, 242], ankL: [78, 302], kneeR: [186, 236], ankR: [202, 310] } },
+        sit: { label: '坐姿', topo: 'human', joints: {
+            head: [138, 78], neck: [138, 112],
+            shL: [114, 118], elbL: [104, 168], wrL: [110, 212],
+            shR: [162, 118], elbR: [172, 168], wrR: [166, 212],
+            hipL: [122, 215], hipR: [154, 215],
+            kneeL: [92, 226], ankL: [92, 302], kneeR: [184, 226], ankR: [184, 302] } },
+        quad: { label: '四足動物', topo: 'quad', joints: {
+            head: [56, 118], neck: [92, 140], spine: [150, 150], hip: [208, 148], tail: [246, 122],
+            fk1: [96, 222], fp1: [94, 292], fk2: [112, 226], fp2: [114, 294],
+            bk1: [202, 222], bp1: [200, 292], bk2: [222, 220], bp2: [226, 290] } },
+    };
+    const POSE_BONES = {
+        human: [['neck', 'shL'], ['shL', 'elbL'], ['elbL', 'wrL'],
+                ['neck', 'shR'], ['shR', 'elbR'], ['elbR', 'wrR'],
+                ['neck', 'hipL'], ['neck', 'hipR'],
+                ['hipL', 'kneeL'], ['kneeL', 'ankL'], ['hipR', 'kneeR'], ['kneeR', 'ankR']],
+        quad:  [['head', 'neck'], ['neck', 'spine'], ['spine', 'hip'], ['hip', 'tail'],
+                ['neck', 'fk1'], ['fk1', 'fp1'], ['neck', 'fk2'], ['fk2', 'fp2'],
+                ['hip', 'bk1'], ['bk1', 'bp1'], ['hip', 'bk2'], ['bk2', 'bp2']],
+    };
+    const POSE_EDIT_W = 276, POSE_EDIT_H = 368;   // 3:4，輸出放大到 768×1024
+
+    function drawPoseSkeleton(ctx, joints, topo, scale, lineW, jointR) {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, POSE_EDIT_W * scale, POSE_EDIT_H * scale);
+        ctx.lineCap = 'round';
+        POSE_BONES[topo].forEach(([a, b], i) => {
+            ctx.strokeStyle = POSE_COLORS[i % POSE_COLORS.length];
+            ctx.lineWidth = lineW;
+            ctx.beginPath();
+            ctx.moveTo(joints[a][0] * scale, joints[a][1] * scale);
+            ctx.lineTo(joints[b][0] * scale, joints[b][1] * scale);
+            ctx.stroke();
+        });
+        // 頭：紅圈（人形以 head 點為中心；四足畫小一點）
+        ctx.strokeStyle = '#ff0000';
+        ctx.lineWidth = lineW * 0.85;
+        ctx.beginPath();
+        ctx.arc(joints.head[0] * scale, joints.head[1] * scale,
+                (topo === 'human' ? 16 : 11) * scale, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        Object.keys(joints).forEach(k => {
+            ctx.beginPath();
+            ctx.arc(joints[k][0] * scale, joints[k][1] * scale, jointR, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    }
+
+    function PoseNode() {
+        this.addOutput('image', 'image');
+        this._contentHeight = 300;
+        this.size = [300, 300];
+        this.color = '#2f2a3a'; this.bgcolor = '#2a2a2a';
+        this.properties = { preset: 'raise', topo: 'human',
+                            joints: JSON.parse(JSON.stringify(POSE_PRESETS.raise.joints)) };
+        this.imageUrl = null;
+
+        const panel = el('div');
+        panel.innerHTML = `
+            <div class="cv-controls">
+                <label>姿勢範本</label>
+                <div class="cv-pose-preset-slot"></div>
+                <label>骨架編輯<span class="cv-hint">（拖曳白色關節調整姿勢）</span></label>
+                <canvas class="cv-pose-canvas" width="${POSE_EDIT_W}" height="${POSE_EDIT_H}"></canvas>
+                <div class="cv-hint" style="margin-top:6px">把輸出接到圖片節點的「參考圖」，並在提示詞加一句：「參考圖是姿勢骨架圖，人物姿勢請依照骨架」。姿勢為參考性質，實際生成以模型理解為準</div>
+                <div class="cv-status"></div>
+            </div>`;
+        attachDomPanel(this, panel);
+
+        const presetSel = buildSelect(Object.keys(POSE_PRESETS), this.properties.preset,
+            (v) => this._applyPreset(v));
+        // 下拉顯示中文名稱
+        Array.from(presetSel.options).forEach(o => { o.textContent = POSE_PRESETS[o.value].label; });
+        panel.querySelector('.cv-pose-preset-slot').appendChild(presetSel);
+        this.presetSel = presetSel;
+
+        this.editCanvas = panel.querySelector('.cv-pose-canvas');
+        const ec = this.editCanvas;
+        ec.addEventListener('mousedown', (e) => e.stopPropagation());
+        let dragKey = null;
+        const toLocal = (e) => {
+            const r = ec.getBoundingClientRect();
+            return [(e.clientX - r.left) * (POSE_EDIT_W / r.width),
+                    (e.clientY - r.top) * (POSE_EDIT_H / r.height)];
+        };
+        ec.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            const [x, y] = toLocal(e);
+            const j = this.properties.joints;
+            dragKey = Object.keys(j).find(k =>
+                (j[k][0] - x) ** 2 + (j[k][1] - y) ** 2 < 12 * 12) || null;
+            if (dragKey) ec.setPointerCapture(e.pointerId);
+        });
+        ec.addEventListener('pointermove', (e) => {
+            if (!dragKey) return;
+            const [x, y] = toLocal(e);
+            this.properties.joints[dragKey] = [
+                Math.max(4, Math.min(POSE_EDIT_W - 4, x)),
+                Math.max(4, Math.min(POSE_EDIT_H - 4, y))];
+            this._redraw();
+        });
+        ec.addEventListener('pointerup', () => {
+            if (dragKey) { dragKey = null; this._refreshOutput(); }
+        });
+
+        panel.appendChild(buildPreview(this));
+        wireConfigOverlay(this, panel);
+        attachNodeChrome(this);
+        this._redraw();
+        this._refreshOutput();
+    }
+    PoseNode.title = '姿勢 Pose';
+    PoseNode.prototype._applyPreset = function (key) {
+        const p = POSE_PRESETS[key];
+        this.properties.preset = key;
+        this.properties.topo = p.topo;
+        this.properties.joints = JSON.parse(JSON.stringify(p.joints));
+        this._redraw();
+        this._refreshOutput();
+    };
+    PoseNode.prototype._redraw = function () {
+        const ctx = this.editCanvas.getContext('2d');
+        drawPoseSkeleton(ctx, this.properties.joints, this.properties.topo, 1, 5, 4);
+    };
+    PoseNode.prototype._refreshOutput = function () {
+        // 輸出張大圖（768×1024）——線條粗細照實測用的骨架圖比例
+        const off = document.createElement('canvas');
+        const scale = 768 / POSE_EDIT_W;
+        off.width = POSE_EDIT_W * scale; off.height = POSE_EDIT_H * scale;
+        drawPoseSkeleton(off.getContext('2d'), this.properties.joints, this.properties.topo,
+                         scale, 14, 11);
+        this.imageUrl = off.toDataURL('image/png');
+        setPreviewImage(this, this.imageUrl);
+        this.setOutputData(0, this.imageUrl);
+    };
+    PoseNode.prototype.onExecute = function () {
+        this.setOutputData(0, this.imageUrl);
+    };
+    PoseNode.prototype.onConfigure = function () {
+        // properties（preset/topo/joints）由 LiteGraph 自動還原；joints 可能是舊值，
+        // 防禦性補齊缺欄位後重畫並重建輸出
+        const p = POSE_PRESETS[this.properties.preset] || POSE_PRESETS.raise;
+        if (!this.properties.joints || !POSE_BONES[this.properties.topo]) {
+            this.properties.topo = p.topo;
+            this.properties.joints = JSON.parse(JSON.stringify(p.joints));
+        }
+        if (this.presetSel) this.presetSel.value = this.properties.preset;
+        this._redraw();
+        this._refreshOutput();
+    };
+    PoseNode.prototype.onRemoved = sharedOnRemoved;
+
     // ── Node: Image（文生圖，t2i 模型） ─────────────────────────
     // 圖片節點依「是否連接參考圖」自動切換 t2i（純文生圖）/ i2i（拿參考圖做
     // 圖像生成，實際呼叫 /api/image/edit）——這樣使用者可以直接把一個圖片節點
@@ -1315,9 +1562,37 @@
         const container = this._configOverlay || this._domPanel;
         const slot = container.querySelector('.cv-size-slot');
         if (!sizes.includes(this.properties.size)) this.properties.size = sizes[0];
-        slot.innerHTML = '';
-        this.sizeSelect = buildSelect(sizes, this.properties.size, (v) => { this.properties.size = v; });
-        slot.appendChild(this.sizeSelect);
+        // 視覺化選法：先按比例分組出「形狀鈕」，同比例有多個尺寸（1K/2K/4K…）時
+        // 才出第二排尺寸 pills。properties.size 仍是唯一真實來源，選比例＝
+        // 選定該組的某個確切尺寸，送出內容與舊下拉完全相同。
+        const groups = [];
+        sizes.forEach(s => {
+            const r = parseSizeRatio(s) || { rw: 1, rh: 1, label: s };
+            let g = groups.find(x => x.label === r.label);
+            if (!g) { g = { label: r.label, rw: r.rw, rh: r.rh, sizes: [] }; groups.push(g); }
+            g.sizes.push(s);
+        });
+        const render = () => {
+            slot.innerHTML = '';
+            const curR = parseSizeRatio(this.properties.size);
+            const curLabel = (curR && groups.some(g => g.label === curR.label))
+                ? curR.label : groups[0].label;
+            slot.appendChild(buildRatioPicker(
+                groups.map(g => ({ value: g.label, rw: g.rw, rh: g.rh, label: g.label })),
+                curLabel,
+                (label) => {
+                    const g = groups.find(x => x.label === label);
+                    if (!g.sizes.includes(this.properties.size)) this.properties.size = g.sizes[0];
+                    render();
+                }));
+            const g = groups.find(x => x.label === curLabel) || groups[0];
+            if (g.sizes.length > 1) {
+                slot.appendChild(buildPillRow(g.sizes, this.properties.size,
+                    (v) => { this.properties.size = v; }));
+            }
+        };
+        render();
+        this.sizeSelect = null;
     };
     // Gemini 的「圖片比例」、萬相 2.7 的「組圖模式」、GPT Image 的 quality/
     // background/output_format 都是依目前選到的模型（且部分僅限 T2I）才顯示，
@@ -1337,8 +1612,13 @@
             if (!aspectRatios.includes(this.properties.aspect_ratio)) this.properties.aspect_ratio = aspectRatios[0];
             const slot = container.querySelector('.cv-ar-slot');
             slot.innerHTML = '';
-            this.arSelect = buildSelect(aspectRatios, this.properties.aspect_ratio, (v) => { this.properties.aspect_ratio = v; });
-            slot.appendChild(this.arSelect);
+            const arOpts = aspectRatios.map(v => {
+                const p = v.split(':').map(Number);
+                return { value: v, rw: p[0] || 1, rh: p[1] || 1, label: v };
+            });
+            slot.appendChild(buildRatioPicker(arOpts, this.properties.aspect_ratio,
+                (v) => { this.properties.aspect_ratio = v; }));
+            this.arSelect = null;
         }
 
         const supportsSeq = mode === 't2i' && !!modelInfo.supports_sequential;
@@ -1502,7 +1782,7 @@
         this._addRefSlot();
         const models = getModelsFor('video', 't2v');
         this.properties = {
-            model: (models[0] && models[0].id) || '', prompt: '', resolution: '720P', duration: 5, status: '',
+            model: (models[0] && models[0].id) || '', prompt: '', resolution: '720P', duration: 5, ratio: '', status: '',
             negative_prompt: '', seed: null,
         };
         this.videoUrl = null;
@@ -1525,6 +1805,10 @@
                 <div class="cv-dur-row">
                     <label>時長（秒）<span class="cv-dur-val">5</span><span class="cv-hint cv-dur-range"></span></label>
                     <input type="range" class="cv-dur-slider">
+                </div>
+                <div class="cv-vid-ratio-group" style="display:none">
+                    <label>畫面比例</label>
+                    <div class="cv-vid-ratio-slot"></div>
                 </div>
                 ${VIDEO_EXTEND_ENABLED ? `
                 <label>影片延伸<span class="cv-hint">（接影片節點輸出或上傳片段，取代首幀圖片；上游片段需 ≤9.9 秒）</span></label>
@@ -1560,8 +1844,7 @@
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
         wireModelIntro(this, 'video');
 
-        this.resSelect = buildSelect([], this.properties.resolution, (v) => { this.properties.resolution = v; });
-        panel.querySelector('.cv-res-slot').appendChild(this.resSelect);
+        this.resPicker = makeResPicker(this, panel.querySelector('.cv-res-slot'));
         this.resRow = panel.querySelector('.cv-res-row');
 
         this.durRow = panel.querySelector('.cv-dur-row');
@@ -1579,6 +1862,29 @@
         attachNodeChrome(this);
     }
     VideoGenNode.title = '影片 Video';
+    // 畫面比例鈕：僅 wan3.0／wan2.7／happyhorse 的 t2v/r2v 顯示（i2v 官方無 ratio、
+    // 其餘家族的 canvas 節點維持不送——與主測試台一致）。applyVideoLimits 收尾會呼叫。
+    VideoGenNode.prototype._syncRatioPicker = function (mode) {
+        const container = this._configOverlay || this._domPanel;
+        if (!container) return;
+        const grp = container.querySelector('.cv-vid-ratio-group');
+        if (!grp) return;
+        const model = this.properties.model || '';
+        const isWan30 = model.startsWith('wan3.0');
+        const fam = isWan30 || model.startsWith('wan2.7') || model.startsWith('happyhorse');
+        const show = fam && (mode === 't2v' || mode === 'r2v');
+        grp.style.display = show ? '' : 'none';
+        if (!show) { this.properties.ratio = ''; return; }
+        const opts = [{ value: isWan30 ? 'adaptive' : '', rw: 5, rh: 5, label: '自動' }];
+        [['16:9', 16, 9], ['9:16', 9, 16], ['1:1', 10, 10], ['4:3', 4, 3], ['3:4', 3, 4]]
+            .forEach(([v, w, h]) => opts.push({ value: v, rw: w, rh: h, label: v }));
+        if (isWan30 && !this.properties.ratio) this.properties.ratio = 'adaptive';
+        if (!opts.some(o => o.value === this.properties.ratio)) this.properties.ratio = opts[0].value;
+        const slot = grp.querySelector('.cv-vid-ratio-slot');
+        slot.innerHTML = '';
+        slot.appendChild(buildRatioPicker(opts, this.properties.ratio,
+            (v) => { this.properties.ratio = v; }));
+    };
     VideoGenNode.prototype._addRefSlot = function () {
         if (this.refSlots.length >= VIDEO_MAX_REF_SLOTS) { showToast(`最多 ${VIDEO_MAX_REF_SLOTS} 張參考圖`); return; }
         const w = this.size[0];
@@ -1669,6 +1975,7 @@
                 fd.append('resolution', this.properties.resolution);
                 fd.append('duration', String(this.properties.duration));
             }
+            if (this.properties.ratio && (mode === 't2v' || mode === 'r2v')) fd.append('ratio', this.properties.ratio);
             // r2v 不吃 negative_prompt（見 onConnectionsChange 的註解），不要白送
             appendAdvancedParams(fd, this.properties, { negative: mode !== 'r2v' });
             let endpoint = '/api/video/t2v';
@@ -1797,8 +2104,7 @@
 
         // 解析度先前寫死成 1080P、連選單都沒有；時長雖然在 properties 裡卻從來沒送出。
         // 兩者都依模型的限制動態產生（萬相 3.0 的視頻編輯支援 480P，那是它的基準價位）
-        this.resSelect = buildSelect([], this.properties.resolution, (v) => { this.properties.resolution = v; });
-        panel.querySelector('.cv-res-slot').appendChild(this.resSelect);
+        this.resPicker = makeResPicker(this, panel.querySelector('.cv-res-slot'));
         this.resRow = panel.querySelector('.cv-res-row');
         this.durRow = panel.querySelector('.cv-dur-row');
         this.durSlider = panel.querySelector('.cv-dur-slider');
@@ -1833,8 +2139,7 @@
             this.properties.resolution = lim.resolutions.includes('1080P')
                 ? '1080P' : lim.resolutions[lim.resolutions.length - 1];
         }
-        this.resSelect.innerHTML = lim.resolutions.map(r => `<option value="${r}">${r}</option>`).join('');
-        this.resSelect.value = this.properties.resolution;
+        this.resPicker.rebuild(lim.resolutions, this.properties.resolution);
 
         this.durSlider.min = 0;
         this.durSlider.max = lim.maxDur;
@@ -2247,8 +2552,8 @@
         panel.querySelector('.cv-select-slot').appendChild(this.modelSelect);
         wireModelIntro(this, 'muleai');
 
-        this.resSelect = buildSelect(['1080P', '720P'], this.properties.resolution, (v) => { this.properties.resolution = v; });
-        panel.querySelector('.cv-res-slot').appendChild(this.resSelect);
+        this.resPicker = makeResPicker(this, panel.querySelector('.cv-res-slot'));
+        this.resPicker.rebuild(['1080P', '720P'], this.properties.resolution);
 
         this.imgResSelect = buildSelect(['1024*1536', '1536*1024', '1024*1024'], this.properties.imgResolution, (v) => { this.properties.imgResolution = v; });
         panel.querySelector('.cv-imgres-slot').appendChild(this.imgResSelect);
@@ -2353,7 +2658,7 @@
         restoreAdvancedParams(this);
         this.textarea.value = this.properties.prompt || '';
         if (this.modelSelect) this.modelSelect.value = this.properties.model;
-        if (this.resSelect) this.resSelect.value = this.properties.resolution;
+        if (this.resPicker) this.resPicker.rebuild(['1080P', '720P'], this.properties.resolution);
         if (this.imgResSelect) this.imgResSelect.value = this.properties.imgResolution;
         if (this.durSlider) { this.durSlider.value = this.properties.duration; this.durValEl.textContent = this.properties.duration; }
         // _syncUiForModel() 會把 resultUrl 重置為 null 並清空預覽，必須先呼叫
@@ -2624,6 +2929,7 @@
         LiteGraph.registerNodeType('nenai/text', TextPromptNode);
         LiteGraph.registerNodeType('nenai/camera_angle', CameraAngleNode);
         LiteGraph.registerNodeType('nenai/load_image', LoadImageNode);
+        LiteGraph.registerNodeType('nenai/pose', PoseNode);
         LiteGraph.registerNodeType('nenai/image', ImageGenNode);
         LiteGraph.registerNodeType('nenai/video', VideoGenNode);
         LiteGraph.registerNodeType('nenai/video_edit', VideoEditNode);
@@ -2712,7 +3018,7 @@
     // ⚠️ 新增節點類型時這裡跟 NODE_TYPE_LABELS **兩張表都要加**：這張給工具列的
     // 「+ 新增節點」選單（HTML 裡的 data-type 是短鍵），NODE_TYPE_LABELS 給輸出插槽
     // 旁的快速新增選單。只加一邊的話按鈕會出現但點下去沒有反應（type 查不到就 return）。
-    const NODE_MENU_TYPES = { text: 'nenai/text', camera_angle: 'nenai/camera_angle', load_image: 'nenai/load_image', image: 'nenai/image', video: 'nenai/video', video_edit: 'nenai/video_edit', video_animate: 'nenai/video_animate', edit: 'nenai/edit', audio: 'nenai/audio', asr: 'nenai/asr', muleai: 'nenai/muleai' };
+    const NODE_MENU_TYPES = { text: 'nenai/text', camera_angle: 'nenai/camera_angle', load_image: 'nenai/load_image', pose: 'nenai/pose', image: 'nenai/image', video: 'nenai/video', video_edit: 'nenai/video_edit', video_animate: 'nenai/video_animate', edit: 'nenai/edit', audio: 'nenai/audio', asr: 'nenai/asr', muleai: 'nenai/muleai' };
 
     // ── 範本庫：一鍵套用常見組合，省去手動拉線 ─────────────────────
     // 每個範本只描述「節點類型 + 相對座標 + 要接的線」，實際節點是套用當下用

@@ -443,3 +443,40 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
     padding: 2px 8px; font-size: 10.5px; color: var(--cv-text);
 }
 .cv-model-intro .cv-intro-chips:empty { display: none; }
+
+/* ── 視覺化比例鈕／檔位 pills（尺寸選擇直覺化，2026-08-29）─────────────
+   注意：.cv-node-panel button／.cv-config-overlay button 的通用樣式是
+   display:block; width:100%（整行直排），這裡要用同等以上的特定度蓋回來 */
+.cv-node-panel .cv-ratio-btn, .cv-config-overlay .cv-ratio-btn,
+.cv-node-panel .cv-pill, .cv-config-overlay .cv-pill {
+    display: inline-flex; width: auto;
+}
+.cv-node-panel .cv-ratio-btn, .cv-config-overlay .cv-ratio-btn { flex-direction: column; }
+
+.cv-ratio-row { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 6px; }
+.cv-ratio-btn {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; min-width: 42px; padding: 6px 5px 4px;
+    background: var(--cv-panel-2, #2a2a2a); border: 1px solid var(--cv-border, #3a3a3a);
+    border-radius: 8px; cursor: pointer; color: var(--cv-text-sub, #9a9a9a);
+    font: inherit;
+}
+.cv-ratio-btn:hover { border-color: var(--cv-text-sub, #9a9a9a); }
+.cv-ratio-btn.active { border-color: var(--cv-accent-2, #4f8cff); color: var(--cv-text, #e8e8e8); }
+.cv-ratio-icon { display: block; border: 1.5px solid currentColor; border-radius: 3px; }
+.cv-ratio-label { font-size: 10px; line-height: 1; }
+.cv-pill-row { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 6px; }
+.cv-pill {
+    padding: 3px 10px; border-radius: 999px;
+    background: var(--cv-panel-2, #2a2a2a); border: 1px solid var(--cv-border, #3a3a3a);
+    color: var(--cv-text-sub, #9a9a9a); font-size: 11px; cursor: pointer; font-family: inherit;
+}
+.cv-pill:hover { border-color: var(--cv-text-sub, #9a9a9a); }
+.cv-pill.active { border-color: var(--cv-accent-2, #4f8cff); color: var(--cv-text, #e8e8e8); }
+.cv-vid-ratio-group label { display: block; }
+
+/* 姿勢骨架編輯器 */
+.cv-pose-canvas {
+    width: 100%; border: 1px solid var(--cv-border, #3a3a3a); border-radius: 8px;
+    background: #000; cursor: crosshair; touch-action: none; display: block;
+}
