@@ -4,6 +4,9 @@ NenAI（nen.com.tw）模型測試平台。只要一把 NenAI API Key，就能在
 
 後端是 FastAPI 單檔應用（`app.py`），前端是原生 JavaScript，沒有資料庫、沒有 build 流程，開箱即用。
 
+> 🎨 介面美學規範見 [`DESIGN-AESTHETIC.md`](DESIGN-AESTHETIC.md)——與 NEN 官網同一套
+> 色料與紀律。目前只是規範、尚未實作：現有的阿里雲 demo 配色維持原狀。
+
 > 工程細節、參數驗證紀錄與踩坑歷史不在本文件——見 `update.md`（更新紀錄）與 `memory.md`（跨專案協作與驗證原則）。
 
 ---
