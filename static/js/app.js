@@ -2596,6 +2596,33 @@ function addVideoResult(model, prompt, src, isHistory = false, elapsed = null) {
     cont.insertBefore(card, cont.firstChild);
 }
 
+// ── Gemini Omni 場景延長 ──────────────────────────────────────
+// 只有 Omni 家族有這條路（走 /v1beta/interactions，用上一次的 interaction id
+// 接著往下演）。後端會回 can_extend／chain_len，前端不自己推算段數。
+function omniExtendBtn(taskId, data) {
+    if (!data.can_extend) return '';
+    const n = data.chain_len || 1;
+    return `<button class="btn btn-ghost btn-sm" onclick="extendOmniVideo('${taskId}')">＋ 延長場景（第 ${n + 1} 段）</button>`;
+}
+
+async function extendOmniVideo(taskId) {
+    const fd = new FormData();
+    fd.append('task_id', taskId);
+    const p = document.getElementById('videoPrompt')?.value.trim();
+    if (p) fd.append('prompt', p);
+    toast('已送出延長請求…');
+    try {
+        // apiPostForm 已經幫忙 parse 過了，回傳的是資料不是 Response
+        const data = await apiPostForm('/api/video/omni/extend', fd);
+        if (!data || !data.success) throw new Error((data && (data.error || data.detail)) || '延長失敗');
+        const model = data.model || 'gemini-omni';
+        // addVideoTask 內部就會開始輪詢，不要再自己呼叫一次 pollVideo（會變兩條輪詢）
+        addVideoTask(data.task_id, model, p || 'Continue the scene.', 'PENDING', null);
+    } catch (e) {
+        toast('延長失敗：' + e.message, 'error');
+    }
+}
+
 async function pollVideo(taskId, startTime, model, costInfo) {
     let tries = 0;
     const maxTries = 360; // 30 min max (5s * 360) — video-edit/重型任務常超過 15 min
@@ -2626,6 +2653,7 @@ async function pollVideo(taskId, startTime, model, costInfo) {
                         <div class="video-card-actions">
                             <a href="${data.local_path}" download class="img-dl">下載影片</a>
                             <button class="btn btn-ghost btn-sm" onclick="openLightbox('${data.local_path}', 'video')">展開預覽</button>
+                            ${omniExtendBtn(taskId, data)}
                         </div>`;
                     if (data.actual_prompt) {
                         const extEl = el('div', { className: 'img-actual-prompt' });
@@ -2637,6 +2665,7 @@ async function pollVideo(taskId, startTime, model, costInfo) {
                         <div class="video-card-actions">
                             <a href="${data.video_url}" download target="_blank" rel="noopener noreferrer" class="img-dl">下載影片</a>
                             <button class="btn btn-ghost btn-sm" onclick="openLightbox('${data.video_url}', 'video')">展開預覽</button>
+                            ${omniExtendBtn(taskId, data)}
                         </div>`;
                     if (data.actual_prompt) {
                         const extEl = el('div', { className: 'img-actual-prompt' });

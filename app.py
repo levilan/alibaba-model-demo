@@ -3115,6 +3115,18 @@ async def _save_video_bytes(data: bytes) -> Optional[str]:
 # 列出來卻做不到的選項比沒有更糟（MAI 尺寸那次的教訓）。
 _OMNI_RESOLUTIONS = {"360p", "720p"}
 
+# 📄發布文章：延長以 10 秒為單位、**累計最長 40 秒**，所以最多 4 段。
+# 這個上限我們自己擋——超過之後上游會怎麼回應未驗證，不要讓使用者用錢去試。
+_OMNI_MAX_SEGMENTS = 4
+
+# ⛔ 場景延長目前**在本平台走不通**：帶 previous_interaction_id 會被擋下——
+#   400 `gemini-omni-1.1-flash-preview on this path do not support previous_interaction_id.`
+#   （2026-09-02 對正式站實測，用真實的 interaction id，不計費）
+# 平台端讀碼認為這個欄位是具名欄位、會原樣透傳，但**實際行為與讀碼結論不符**，
+# 已回報。程式與端點都留著，等閘道支援後把這個旗標改成 True 即可——
+# 在那之前不要讓「延長」按鈕出現，客戶點了只會拿到錯誤。
+_OMNI_EXTEND_ENABLED = False
+
 
 def _omni_resolution(model: str, raw: Optional[str]) -> Optional[str]:
     """只有在 MODELS 明確給了 `resolutions` 的 omni 型號才送 response_format。
@@ -3135,7 +3147,9 @@ def _omni_resolution(model: str, raw: Optional[str]) -> Optional[str]:
 
 async def _generate_omni_video(model: str, prompt: str, api_key: str,
                                 image_files: Optional[list] = None,
-                                resolution: Optional[str] = None) -> dict:
+                                resolution: Optional[str] = None,
+                                previous_interaction_id: Optional[str] = None,
+                                chain_len: int = 1) -> dict:
     content: list = [{"type": "text", "text": prompt}]
     for fbytes, ftype in (image_files or []):
         b64 = base64.b64encode(fbytes).decode()
@@ -3151,6 +3165,10 @@ async def _generate_omni_video(model: str, prompt: str, api_key: str,
     # integer/object/image/text/string/array/audio。
     if resolution:
         payload["response_format"] = {"type": "video", "resolution": resolution}
+    # 場景延長：帶上一次 interaction 的 id，上游會分析前段脈絡接著演下去
+    # （📄發布文章：10 秒為單位、累計最長 40 秒，分析前 10 秒的脈絡）
+    if previous_interaction_id:
+        payload["previous_interaction_id"] = previous_interaction_id
     async with httpx.AsyncClient(timeout=180.0) as client:
         resp = await client.post(
             f"{NENAI_BASE}/v1beta/interactions",
@@ -3175,7 +3193,15 @@ async def _generate_omni_video(model: str, prompt: str, api_key: str,
             return JSONResponse(status_code=500, content={"error": f"No video in response: {rj}"})
         local_path = await _save_video_bytes(video_bytes)
         task_id = f"omni_{uuid.uuid4().hex}"
-        _OMNI_TASK_CACHE[task_id] = {"status": "SUCCEEDED", "local_path": local_path, "video_url": local_path}
+        # 存下 interaction id 才能接著延長；chain_len 用來擋在 40 秒（4 段）上限
+        _OMNI_TASK_CACHE[task_id] = {
+            "status": "SUCCEEDED", "local_path": local_path, "video_url": local_path,
+            "interaction_id": rj.get("id"), "model": model,
+            "resolution": resolution,
+            "chain_len": chain_len,
+            "can_extend": (_OMNI_EXTEND_ENABLED and bool(rj.get("id"))
+                           and chain_len < _OMNI_MAX_SEGMENTS),
+        }
         return {"success": True, "task_id": task_id, "status": "queued", "model": model}
 
 # ─── API: Video T2V ───────────────────────────────────────────────
@@ -3596,6 +3622,40 @@ async def video_animate(request: Request, api_key: str = Depends(get_api_key)):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ─── API: Video Status ────────────────────────────────────────────
+# ─── API: Gemini Omni 場景延長 ────────────────────────────────────
+# 用上一次 interaction 的 id 接著往下演。這條路徑**只有 Omni 家族有**（走
+# /v1beta/interactions），其他影片模型沒有對應機制。
+#
+# ⚠️ 回傳的是「新的一段」還是「累積後的完整影片」，取決於上游行為——前端不要
+# 假設，一律以實際取回的檔案長度為準（這也是為什麼 chain_len 只用來擋段數上限，
+# 不拿來推算總長度）。
+@app.post("/api/video/omni/extend")
+async def video_omni_extend(request: Request, api_key: str = Depends(get_api_key)):
+    form = await request.form()
+    task_id = form.get("task_id", "")
+    prompt = form.get("prompt", "") or "Continue the scene."
+    prev = _OMNI_TASK_CACHE.get(task_id)
+    if not prev:
+        return JSONResponse(status_code=404, content={"error": "找不到這個任務，或服務重啟後已經失效——請重新生成一次再延長。"})
+    if not _OMNI_EXTEND_ENABLED:
+        return JSONResponse(status_code=400, content={
+            "error": "這個模型目前不支援場景延長。"})
+    if not prev.get("interaction_id"):
+        return JSONResponse(status_code=400, content={"error": "這個任務沒有可延長的來源。"})
+    chain_len = int(prev.get("chain_len") or 1)
+    if chain_len >= _OMNI_MAX_SEGMENTS:
+        return JSONResponse(status_code=400, content={
+            "error": f"已達延長上限（{_OMNI_MAX_SEGMENTS} 段）。"})
+    model = prev.get("model") or "gemini-omni-1.1-flash-preview"
+    request.state.model = model
+    return await _generate_omni_video(
+        model, prompt, api_key,
+        resolution=prev.get("resolution"),
+        previous_interaction_id=prev["interaction_id"],
+        chain_len=chain_len + 1,
+    )
+
+
 @app.get("/api/video/status/{task_id}")
 async def video_status(task_id: str, api_key: str = Depends(get_api_key)):
     if task_id in _OMNI_TASK_CACHE:
