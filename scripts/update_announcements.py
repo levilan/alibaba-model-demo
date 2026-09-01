@@ -61,13 +61,28 @@ PREFIX_ZH = "模型上線："
 NEN_ENV_PATH = Path("/Users/levi/nen_ai_project/.env")
 
 
-def _load_env() -> dict:
+# 那份 env 是 INI 風格的分區檔，而且**不同區塊有同名的鍵**（`endpoint`／`model_apikey`
+# 在正式站與測試站各有一份）。先前這裡是整份平讀、後出現的蓋掉先出現的，等於「最後
+# 一個區塊贏」——2026-09-01 新增 `[nen ai test site]` 區塊之後，`endpoint` 就被解析成
+# 測試網關，公告會寫錯地方，而 `NEN_TOKEN` 只有正式站區塊有，等於**拿正式站的管理員
+# token 去打測試網關**。所以改成分區解析，只認 `[nen ai product]` 這一區。
+NEN_ENV_SECTION = "nen ai product"
+
+
+def _load_env(section: str = NEN_ENV_SECTION) -> dict:
     if not NEN_ENV_PATH.exists():
         return {}
-    out = {}
+    out: dict = {}
+    current = None
     for line in NEN_ENV_PATH.read_text(encoding="utf-8").splitlines():
         line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("["):
+            # 區塊標頭偶爾有多餘的結尾括號（`[nen ai test site]]`），一律剝掉
+            current = line.strip("[]").strip()
+            continue
+        if "=" not in line or current != section:
             continue
         k, v = line.split("=", 1)
         out[k.strip()] = v.strip().strip("\"'")
