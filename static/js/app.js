@@ -1108,6 +1108,9 @@ function estimateVideoPerSecond(modelId, resolution) {
 // （Veo 標準版 $0.2），但同一行的文案寫「含原生配音」，一行之內自相矛盾；而且各家族
 // 表上的基準價含意本來就不同（萬相 2.6 i2v 的 $0.05 是**含**音訊、Veo 的 $0.2 是
 // **不含**），並排等於在比不同的東西。統一成含配音之後兩者才是同一個基準。
+// 後加進選單、只有部分模型支援的解析度選項（見下方 o.hidden 的判斷）
+const OPT_IN_RESOLUTIONS = ['360P', '4K'];
+
 const PRICE_BASELINE_RESOLUTION = '720P';
 
 // 價格會隨配音變動的模型，標上「含配音」才知道這個數字的基準是什麼；其餘模型
@@ -1539,11 +1542,15 @@ function onVidModelChange() {
     // 480P，那是它的基準價位，不該被 vedit 的通則擋掉）
     const allowedRes = modelInfo.resolutions;
     Array.from(resEl.options).forEach(o => {
-        // 360P 目前只有 Gemini Omni 支援，是 2026-09-02 才加進選單的新選項。
-        // 沒有 resolutions 清單的模型走「顯示全部」那條路，若不特別擋，這個新選項
+        // 360P／4K 目前只有 Gemini Omni 支援，是 2026-09-02 才加進選單的新選項。
+        // 沒有 resolutions 清單的模型走「顯示全部」那條路，若不特別擋，這些新選項
         // 會憑空出現在它們身上（實際不支援、送出去只會被上游拒或靜默忽略）。
-        // 所以 360P 一律**只在模型明確列出時**才顯示。
-        if (o.value === '360P') { o.hidden = !(allowedRes && allowedRes.includes('360P')); return; }
+        // 所以這兩個一律**只在模型明確列出時**才顯示。往後再加新的解析度選項，
+        // 記得也加進這個清單，否則就會重演一次「憑空出現」。
+        if (OPT_IN_RESOLUTIONS.includes(o.value)) {
+            o.hidden = !(allowedRes && allowedRes.includes(o.value));
+            return;
+        }
         o.hidden = allowedRes ? !allowedRes.includes(o.value)
                               : (taskType === 'vedit' && o.value === '480P');
     });

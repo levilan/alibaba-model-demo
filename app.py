@@ -1157,11 +1157,11 @@ MODELS = {
         # （輸入 $1.50/1M、文字輸出 $9、影片輸出 $17.50）。同樣走 /v1beta/interactions，
         # 模型自行決定長度與解析度，聲音隨影片產出。
         {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview", "group": "Gemini",
-         "desc": "Google 多模態影片生成（預覽版），約 10 秒、可選 360P 或 720P，自動含原生配音", "type": "t2v", "audio": False, "no_duration": True, "resolutions": ["360P", "720P"]},
+         "desc": "Google 多模態影片生成（預覽版），約 10 秒、可選 360P／720P／1080P／4K，自動含原生配音", "type": "t2v", "audio": False, "no_duration": True, "resolutions": ["360P", "720P", "1080P", "4K"]},
         {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview（圖生影片）", "group": "Gemini",
-         "desc": "Google 多模態圖生影片（預覽版），約 10 秒、可選 360P 或 720P，自動含原生配音", "type": "i2v", "audio": False, "no_duration": True, "resolutions": ["360P", "720P"]},
+         "desc": "Google 多模態圖生影片（預覽版），約 10 秒、可選 360P／720P／1080P／4K，自動含原生配音", "type": "i2v", "audio": False, "no_duration": True, "resolutions": ["360P", "720P", "1080P", "4K"]},
         {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview（參考生影片）", "group": "Gemini",
-         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），約 10 秒、可選 360P 或 720P，自動含原生配音", "type": "r2v", "audio": False, "no_duration": True, "max_ref": 3, "resolutions": ["360P", "720P"]},
+         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），約 10 秒、可選 360P／720P／1080P／4K，自動含原生配音", "type": "r2v", "audio": False, "no_duration": True, "max_ref": 3, "resolutions": ["360P", "720P", "1080P", "4K"]},
     ],
     "muleai": [
         # ── w3.0 影片四顆（2026-09-01 上架）────────────────────────────
@@ -3113,7 +3113,9 @@ async def _save_video_bytes(data: bytes) -> Optional[str]:
 # omni 的解析度只放行**我們自己驗證過**的值。發布文章另外提到可以 upscale 到
 # 1080p／4K，但那段的措辭是「upscale」、未必是同一個欄位的值域，沒驗過就不列——
 # 列出來卻做不到的選項比沒有更糟（MAI 尺寸那次的教訓）。
-_OMNI_RESOLUTIONS = {"360p", "720p"}
+# 上游自己列出來的完整值域（送非法值時回的：Supported values: '360p', '720p',
+# '1080p', '4k'）——2026-09-02 實測，400、不計費。比文件可靠。
+_OMNI_RESOLUTIONS = {"360p", "720p", "1080p", "4k"}
 
 # 📄發布文章：延長以 10 秒為單位、**累計最長 40 秒**，所以最多 4 段。
 # 這個上限我們自己擋——超過之後上游會怎麼回應未驗證，不要讓使用者用錢去試。

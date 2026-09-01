@@ -530,8 +530,11 @@
                         <option value="720P">720P</option>
                         <option value="1080P">1080P</option>
                         <option value="480P">480P</option>
-                        <!-- 360P 目前只有 Gemini Omni 有（其餘模型由 MODELS 的 resolutions 隱藏） -->
+                        <!-- 360P／4K 目前只有 Gemini Omni 有。這兩個是後加的選項，
+                             沒有 resolutions 清單的模型走「顯示全部」那條路，所以在
+                             app.js 裡做成「只有模型明確列出才顯示」，避免憑空出現。 -->
                         <option value="360P">360P</option>
+                        <option value="4K">4K</option>
                     </select>
                 </div>
                 <!-- 服務模式（animate 專用） -->
@@ -1209,6 +1212,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=99"></script>
+<script src="/static/js/app.js?v=100"></script>
 </body>
 </html>
