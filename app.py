@@ -2014,6 +2014,18 @@ async def analyze_image(request: Request, data: AnalyzeImageRequest, api_key: st
 
 
 # ─── API: MuleAI Video/Image Generation ───────────────────────────────────────
+# 參考素材的欄位是 reference_image_1、reference_image_2……這種帶序號的形式（沿用
+# /api/video/r2v 既有的命名）。中間有缺號也照收，不要在第一個空號就停——前端刪掉
+# 中間一張之後重編號是常見情況，早停會靜默少送素材。
+def _collect_uploads(form, prefix: str, limit: int) -> list:
+    out = []
+    for i in range(1, limit + 1):
+        f = form.get(f"{prefix}{i}")
+        if f is not None and getattr(f, "filename", ""):
+            out.append(f)
+    return out
+
+
 @app.post("/api/muleai/generate")
 async def muleai_generate(
     request: Request,
@@ -2028,6 +2040,7 @@ async def muleai_generate(
     seed: Optional[int] = Form(None),
     enable_audio: bool = Form(False),
     image: Optional[UploadFile] = File(None),
+    last_frame: Optional[UploadFile] = File(None),
     face_image: Optional[UploadFile] = File(None),
     audio: Optional[UploadFile] = File(None),
     api_key: str = Depends(get_api_key)
@@ -2037,6 +2050,9 @@ async def muleai_generate(
     is_img_edit     = model == "qwen-image-edit-spicy"
     is_image_model  = "z-image" in model or is_img_edit or is_face_swap
     is_w3_video     = model.startswith("w3.0-video")
+    # 參考素材是不定數量的欄位（reference_image_1..10 等），沒辦法用具名參數宣告，
+    # 只能從原始 form 撈；FastAPI 已經解析過一次，這裡再取一次不會重讀 body
+    form = await request.form() if is_w3_video else None
 
     if not prompt and not is_face_swap:
         raise HTTPException(status_code=400, detail="Prompt is required")
@@ -2113,9 +2129,53 @@ async def muleai_generate(
             meta["ratio"] = ratio
         if seed is not None:
             meta["seed"] = seed
-        # 首幀圖選填；有圖就是 keyframe 模式（與 reference 模式互斥，閘道會擋）
-        if image and image.filename:
-            meta["first_frame"] = await _to_data_uri(image)
+
+        # ── 兩種素材模式，互斥 ───────────────────────────────────
+        # keyframe（first_frame／last_frame）與 reference（reference_images／
+        # _videos／_audios）不能混送，閘道會回 422
+        # 「first_frame/last_frame cannot be mixed with reference_images/...」。
+        # 這裡先擋是為了給出看得懂的訊息，並且**在上傳影片到雲端儲存之前**就攔下來
+        # ——那一步會真的寫檔案／打雲端 API，讓一個必定失敗的請求走到那裡沒有意義。
+        form_ref_images = _collect_uploads(form, "reference_image_", 10)
+        form_ref_videos = _collect_uploads(form, "reference_video_", 5)
+        form_ref_audios = _collect_uploads(form, "reference_audio_", 5)
+        has_keyframe = bool((image and image.filename) or
+                            (last_frame and getattr(last_frame, "filename", "")))
+        has_reference = bool(form_ref_images or form_ref_videos or form_ref_audios)
+        if has_keyframe and has_reference:
+            return JSONResponse(status_code=400, content={
+                "success": False,
+                "error": "首尾幀與參考素材不能同時使用，請擇一：要嘛給首幀／尾幀圖，要嘛給參考圖／影片／音訊。"})
+
+        if has_keyframe:
+            if image and image.filename:
+                meta["first_frame"] = await _to_data_uri(image)
+            if last_frame and getattr(last_frame, "filename", ""):
+                meta["last_frame"] = await _to_data_uri(last_frame)
+        elif has_reference:
+            # 參考圖收 base64；參考影片與音訊**只收 http(s) URL**，送 data URI 會被
+            # 閘道以「reference_videos accepts public http/https URLs only」擋下，
+            # 所以要先上傳取得可下載的網址（雲端儲存，或退回本站 /outputs 公開路徑）
+            if form_ref_images:
+                meta["reference_images"] = [await _to_data_uri(f) for f in form_ref_images]
+            ref_video_urls = []
+            for f in form_ref_videos:
+                raw = await f.read()
+                url, err = await _upload_video_for_url(raw, f.filename or "ref.mp4", request)
+                if err:
+                    return JSONResponse(status_code=400, content={"success": False, "error": f"參考影片上傳失敗：{err}"})
+                ref_video_urls.append(url)
+            if ref_video_urls:
+                meta["reference_videos"] = ref_video_urls
+            ref_audio_urls = []
+            for f in form_ref_audios:
+                url, err = await _upload_audio_for_url(f, request)
+                if err:
+                    return JSONResponse(status_code=400, content={"success": False, "error": f"參考音訊上傳失敗：{err}"})
+                ref_audio_urls.append(url)
+            if ref_audio_urls:
+                meta["reference_audios"] = ref_audio_urls
+
         payload = {
             "model": model,
             "prompt": prompt,

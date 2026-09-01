@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-09-02
+
+- feat(muleai/canvas)：**w3.0 的 reference 模式（主測試台）＋ Canvas 節點補齊**。①**後端**：`/api/muleai/generate` 的 w3 分支加上 `last_frame` 與 `reference_image_1..10`／`reference_video_1..5`／`reference_audio_1..5`；**兩種素材模式互斥的檢查放在最前面**（keyframe 與 reference 混送閘道會 422），而且刻意擋在**上傳影片到雲端儲存之前**——那一步會真的寫檔／打雲端 API，讓一個必定失敗的請求走到那裡沒有意義。參考圖走 base64，參考影片與音訊**只收 http(s) URL**（送 data URI 會被閘道以「accepts public http/https URLs only」擋下），所以先過 `_upload_video_for_url()`／`_upload_audio_for_url()` 取得可下載網址。新增 `_collect_uploads()`：**中間有缺號也照收**，不在第一個空號就停（前端刪掉中間一張後重新編號是常見情況，早停會靜默少送素材）。②**前端**：素材模式下拉（首尾幀／參考素材）、三種素材的多檔清單與上限（10／5／5）、以及**時長檢查**——參考影片總長 ≤15 秒、且「輸入總長 ＋ 輸出時長 ≤30 秒」。最後那條**閘道不擋**（要先抓回素材才知道長度），由上游拒絕，所以用 `<video>.duration` 在送出前自己算；讀不到長度的檔案一律當「不確定」而不是 0，否則總長會被低估、檢查形同虛設。③**Canvas**：MuleAI 節點補上畫面比例、智能時長、以及**「參考影片」輸入插槽**（接上游影片節點的輸出，提示詞裡用「Video 1」指涉）；同時接了參考影片與首幀圖時，前端會丟掉首幀圖並明說（後端也擋）。舊存檔只有 3 個插槽，`onConfigure` 補回第 4 個。④**驗證**：互斥檢查在本機擋下（400，沒打上游）、參考圖路徑送得到上游（拿到解析度 422）、尾幀圖路徑同樣送得到、舊的 `wan2.7-i2v-spicy` 不受影響；`_upload_video_for_url` 在本機無雲端憑證時回出可讀的錯誤訊息。**未驗證**：`reference_videos`／`reference_audios` 的實際生成（需要可公開下載的網址，本機環境拿不到，只能在部署後驗）、「Video 1」指涉行為、新 UI 沒跑瀏覽器冒煙。**本輪沒有做真實生成**（Levi 指示只寫程式、免費 422 探測為止）。
+
 ## 2026-09-01
 
 - fix(canvas)：**修掉今天上架 w3.0 時一併帶出的 Canvas 回歸**（已部署，故列為修正）。`MuleAiGenNode` 的模型分類是**寫死的 id 比對**（`_isVideo()` 只認 `wan2.7-i2v-spicy`），而四顆 w3.0 被排在 `MODELS["muleai"]` 第一個、成為節點的預設模型——結果 `_isVideo()` 回 false：輸出插槽變成 `image`、不送解析度與時長、強制要求連來源圖（w3.0 首幀圖其實選填），最後從 `result.images[0]` 取結果而 w3.0 回的是 `videos[]`，拿到 `undefined`。改成**讀 MODELS 的中繼資料**（`type`／`image_optional`／`resolutions`／`min_dur`／`max_dur`）：影片判定、首幀圖選填、解析度檔次與時長上限逐顆套用，之後再加同類模型不必再改這裡。舊的四顆沒有這些欄位，走原本的預設值不受影響。**驗證程度照實記**：語法檢查＋`/api/models` 實際回傳的欄位逐顆核對過（四顆 type=video／image_optional=True／檔次與 2–30 秒都正確），但**沒有跑瀏覽器冒煙測試**——Canvas 要有效金鑰才載得到模型清單，不想把正式站金鑰放進測試流程。Canvas 的 w3.0 仍**沒有** ratio 與智能時長（沿用上游預設 adaptive），reference 模式也還沒做。

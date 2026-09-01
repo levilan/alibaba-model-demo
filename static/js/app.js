@@ -449,12 +449,100 @@ function _muleaiMeta(modelId) {
     return (models.muleai || []).find(m => m.id === modelId) || {};
 }
 
+// ── w3.0 參考素材 ─────────────────────────────────────────────
+// 上限：圖片 10、影片 5、音訊 5；影片總長 ≤15 秒；有影片輸入時「輸入總長 ＋ 輸出
+// 時長 ≤30 秒」。最後那條**閘道不擋**（它要先把每支素材抓回來才知道長度），會由
+// 上游拒絕——所以在送出前自己用 <video>.duration 算，否則使用者要等任務失敗才知道。
+const MULEAI_REF_LIMITS = { image: 10, video: 5, audio: 5 };
+const MULEAI_REF_VIDEO_TOTAL_SEC = 15;
+const MULEAI_REF_TOTAL_WITH_OUTPUT_SEC = 30;
+let muleaiRefFiles = { image: [], video: [], audio: [] };
+
+// 讀本機檔案的長度（秒）。讀不到就回 null，呼叫端一律當成「不確定」而不是 0，
+// 否則一個讀不到長度的檔案會讓總長被低估、檢查形同虛設
+function probeMediaDuration(file) {
+    return new Promise((resolve) => {
+        const isVideo = file.type.startsWith('video');
+        const el = document.createElement(isVideo ? 'video' : 'audio');
+        const url = URL.createObjectURL(file);
+        const done = (v) => { URL.revokeObjectURL(url); resolve(v); };
+        el.preload = 'metadata';
+        el.onloadedmetadata = () => done(Number.isFinite(el.duration) ? el.duration : null);
+        el.onerror = () => done(null);
+        el.src = url;
+    });
+}
+
+async function onMuleaiRefAdd(kind, files) {
+    const cap = MULEAI_REF_LIMITS[kind];
+    const room = cap - muleaiRefFiles[kind].length;
+    const toAdd = Array.from(files).slice(0, room);
+    if (files.length > room) toast(`${kind === 'image' ? '參考圖' : kind === 'video' ? '參考影片' : '參考音訊'}最多 ${cap} 個`, 'error');
+    for (const f of toAdd) {
+        f._dur = (kind === 'image') ? 0 : await probeMediaDuration(f);
+        muleaiRefFiles[kind].push(f);
+    }
+    document.getElementById(`muleaiRef${kind === 'image' ? 'Img' : kind === 'video' ? 'Vid' : 'Aud'}Input`).value = '';
+    renderMuleaiRefLists();
+}
+
+function removeMuleaiRef(kind, idx) { muleaiRefFiles[kind].splice(idx, 1); renderMuleaiRefLists(); }
+
+function renderMuleaiRefLists() {
+    const map = { image: ['Img', '10'], video: ['Vid', '5'], audio: ['Aud', '5'] };
+    Object.entries(map).forEach(([kind, [tag, cap]]) => {
+        const list = document.getElementById(`muleaiRef${tag}List`);
+        const cnt = document.getElementById(`muleaiRef${tag}Count`);
+        if (!list) return;
+        list.innerHTML = muleaiRefFiles[kind].map((f, i) => {
+            const d = f._dur == null ? '長度未知' : (kind === 'image' ? '' : `${f._dur.toFixed(1)}s`);
+            return `<div class="ref-item"><span>${i + 1}. ${f.name}${d ? ' · ' + d : ''}</span>` +
+                   `<button onclick="removeMuleaiRef('${kind}',${i})">✕</button></div>`;
+        }).join('');
+        if (cnt) cnt.textContent = `${muleaiRefFiles[kind].length} / ${cap}`;
+    });
+    updateMuleaiRefDurHint();
+}
+
+// 回傳 null 代表沒問題，否則回傳要顯示給使用者的錯誤字串
+function checkMuleaiRefDurations() {
+    const vids = muleaiRefFiles.video;
+    if (!vids.length) return null;
+    if (vids.some(f => f._dur == null)) return '有參考影片讀不出長度，無法確認是否超過限制';
+    const total = vids.reduce((a, f) => a + f._dur, 0);
+    if (total > MULEAI_REF_VIDEO_TOTAL_SEC)
+        return `參考影片總長 ${total.toFixed(1)} 秒，超過 ${MULEAI_REF_VIDEO_TOTAL_SEC} 秒上限`;
+    const out = document.getElementById('muleaiSmartDur')?.checked
+        ? null : parseInt(document.getElementById('muleaiVidDuration').value);
+    if (out != null && total + out > MULEAI_REF_TOTAL_WITH_OUTPUT_SEC)
+        return `參考影片總長 ${total.toFixed(1)} 秒 ＋ 輸出 ${out} 秒 = ${(total + out).toFixed(1)} 秒，超過 ${MULEAI_REF_TOTAL_WITH_OUTPUT_SEC} 秒上限`;
+    return null;
+}
+
+function updateMuleaiRefDurHint() {
+    const el = document.getElementById('muleaiRefDurHint');
+    if (!el) return;
+    const err = checkMuleaiRefDurations();
+    el.textContent = err || '';
+    el.style.color = err ? 'var(--danger, #B3574F)' : '';
+}
+
+function onMuleaiW3ModeChange() {
+    const isRef = document.getElementById('muleaiW3Mode').value === 'reference';
+    document.getElementById('muleaiRefSection').style.display = isRef ? '' : 'none';
+    document.getElementById('muleaiLastFrameSection').style.display = isRef ? 'none' : '';
+    // 首幀圖屬於 keyframe 模式，切到參考模式就收起來（送出時也不會帶）
+    document.getElementById('muleaiImgUploadSection').style.display = isRef ? 'none' : '';
+    if (isRef) renderMuleaiRefLists();
+}
+
 function onMuleaiSmartDurToggle() {
     const on = document.getElementById('muleaiSmartDur').checked;
     const slider = document.getElementById('muleaiVidDuration');
     slider.disabled = on;
     // 智能時長由模型自行決定長度，事前算不出秒數，所以不顯示估價（顯示了會嚴重低估）
     document.getElementById('muleaiVidDurVal').textContent = on ? '由模型決定' : slider.value;
+    updateMuleaiRefDurHint();
 }
 
 function onMuleaiModelChange() {
@@ -536,6 +624,16 @@ function onMuleaiModelChange() {
         document.getElementById('muleaiAudioUploadSection').style.display = 'none';
     }
     if (isW3) document.getElementById('muleaiAudioUploadSection').style.display = 'none';
+
+    // 素材模式（首尾幀／參考）只有 w3.0 有；切到別的模型要把這幾區收乾淨，
+    // 並且把首幀圖上傳區還原回來（參考模式會把它藏起來）
+    document.getElementById('muleaiW3ModeSection').style.display = isW3 ? '' : 'none';
+    if (isW3) {
+        onMuleaiW3ModeChange();
+    } else {
+        document.getElementById('muleaiRefSection').style.display = 'none';
+        document.getElementById('muleaiLastFrameSection').style.display = 'none';
+    }
 
     const promptInput = document.getElementById('muleaiVidPrompt');
     if (promptInput) {
@@ -3739,8 +3837,21 @@ async function sendMuleAIVideo() {
 
     } else if (isW3SpicyVideo(model)) {
         // w3.0：首幀圖選填（沒有就是文生影片）；智能時長送 -1
-        const firstFrameFile = document.getElementById('muleaiFirstFrameInput').files[0];
-        if (firstFrameFile) fd.append('image', firstFrameFile);
+        const isRefMode = document.getElementById('muleaiW3Mode').value === 'reference';
+        if (isRefMode) {
+            const durErr = checkMuleaiRefDurations();
+            if (durErr) { toast(durErr, 'error'); return; }
+            const total = muleaiRefFiles.image.length + muleaiRefFiles.video.length + muleaiRefFiles.audio.length;
+            if (!total && !prompt) { toast('參考模式請至少提供一個素材或提示詞', 'error'); return; }
+            muleaiRefFiles.image.forEach((f, i) => fd.append(`reference_image_${i + 1}`, f));
+            muleaiRefFiles.video.forEach((f, i) => fd.append(`reference_video_${i + 1}`, f));
+            muleaiRefFiles.audio.forEach((f, i) => fd.append(`reference_audio_${i + 1}`, f));
+        } else {
+            const firstFrameFile = document.getElementById('muleaiFirstFrameInput').files[0];
+            if (firstFrameFile) fd.append('image', firstFrameFile);
+            const lastFrameFile = document.getElementById('muleaiLastFrameInput').files[0];
+            if (lastFrameFile) fd.append('last_frame', lastFrameFile);
+        }
         fd.append('prompt', prompt);
         fd.append('resolution', resolution);
         fd.append('ratio', document.getElementById('muleaiVidRatio').value);

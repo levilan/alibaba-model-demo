@@ -2601,11 +2601,15 @@
         this.addInput('image', 'image');
         this.addInput('換臉參考圖', 'image');
         this.addInput('prompt', 'string');
+        // w3.0 的參考模式：接一支影片當運鏡／動態參考（提示詞裡用「Video 1」指涉）。
+        // 只有 w3.0 會用到，其他模型忽略這個插槽。
+        this.addInput('參考影片', 'video');
         this.addOutput('output', 'image');
         const models = getModelsFor('muleai');
         this.properties = {
             model: (models[0] && models[0].id) || MULEAI_VIDEO_MODEL,
             prompt: '', resolution: '1080P', imgResolution: '1024*1536', duration: 5, status: '',
+            ratio: 'adaptive', smartDuration: false,
             negative_prompt: '', seed: null,
         };
         this.resultUrl = null;
@@ -2630,9 +2634,16 @@
                     <label>圖片尺寸</label>
                     <div class="cv-imgres-slot"></div>
                 </div>
+                <div class="cv-mu-ratio-group">
+                    <label>畫面比例</label>
+                    <div class="cv-ratio-slot"></div>
+                </div>
                 <div class="cv-mu-dur-group">
                     <label>時長（秒）<span class="cv-dur-val">5</span></label>
                     <input type="range" class="cv-dur-slider" min="2" max="15" step="1" value="5">
+                    <label class="cv-smartdur-row" style="display:none">
+                        <input type="checkbox" class="cv-smartdur"> 智能時長（由模型決定長度）
+                    </label>
                 </div>
                 ${advancedParamsHtml({ negative: true })}
                 <button class="cv-generate">▶ 生成</button>
@@ -2662,6 +2673,17 @@
 
         this.imgResSelect = buildSelect(['1024*1536', '1536*1024', '1024*1024'], this.properties.imgResolution, (v) => { this.properties.imgResolution = v; });
         panel.querySelector('.cv-imgres-slot').appendChild(this.imgResSelect);
+
+        this.ratioGroup = panel.querySelector('.cv-mu-ratio-group');
+        this.ratioSelect = buildSelect(['adaptive', '16:9', '4:3', '1:1', '3:4', '9:16'],
+                                       this.properties.ratio, (v) => { this.properties.ratio = v; });
+        panel.querySelector('.cv-ratio-slot').appendChild(this.ratioSelect);
+        this.smartDurRow = panel.querySelector('.cv-smartdur-row');
+        this.smartDurCb = panel.querySelector('.cv-smartdur');
+        this.smartDurCb.addEventListener('change', () => {
+            this.properties.smartDuration = this.smartDurCb.checked;
+            this.durSlider.disabled = this.smartDurCb.checked;
+        });
 
         this.durSlider = panel.querySelector('.cv-dur-slider');
         this.durValEl = panel.querySelector('.cv-dur-val');
@@ -2714,6 +2736,13 @@
         }
         this.inputs[0].name = !isVideo ? '來源圖'
             : (meta.image_optional ? '首幀圖片（選填）' : '首幀圖片');
+        // ratio 與智能時長只有 w3.0 有；參考影片插槽也只有它會讀
+        const isW3 = !!meta.ratios;
+        if (this.ratioGroup) this.ratioGroup.style.display = isW3 ? '' : 'none';
+        if (this.smartDurRow) {
+            this.smartDurRow.style.display = (isW3 && meta.smart_duration) ? '' : 'none';
+            if (!isW3) { this.smartDurCb.checked = false; this.properties.smartDuration = false; this.durSlider.disabled = false; }
+        }
         this.modeHintEl.textContent =
             isVideo ? (this._meta().image_optional ? '（文生／圖生影片）' : '（圖生影片 + 配音）')
             : isFaceSwap ? '（來源圖 + 換臉參考圖）' : isT2i ? '（純文生圖）' : '（來源圖 + Prompt）';
@@ -2750,6 +2779,12 @@
             const imgUrl = this.getInputData(0, true);
             if (imgUrl) imageBlob = await fetchAsBlob(imgUrl);
         }
+        const isW3 = !!this._meta().ratios;
+        let refVideoBlob = null;
+        if (isW3) {
+            const refVidUrl = this.getInputData(3, true);
+            if (refVidUrl) refVideoBlob = await fetchAsBlob(refVidUrl);
+        }
         if (isFaceSwap) {
             const faceUrl = this.getInputData(1, true);
             if (!faceUrl) { showToast('請先連接換臉參考圖'); return; }
@@ -2764,6 +2799,16 @@
             if (isVideo) {
                 fd.append('resolution', this.properties.resolution);
                 fd.append('duration', String(this.properties.duration));
+            }
+            if (isW3) {
+                fd.append('ratio', this.properties.ratio || 'adaptive');
+                if (this.properties.smartDuration) fd.set('duration', '-1');
+                if (refVideoBlob) {
+                    // 參考模式與首尾幀模式互斥（後端也會擋），這裡把首幀圖丟掉並說明，
+                    // 免得使用者以為兩個都送出去了
+                    if (imageBlob) { imageBlob = null; showToast('已接參考影片，首幀圖這次不會送出（兩種模式不能混用）'); }
+                    fd.append('reference_video_1', refVideoBlob, 'ref.mp4');
+                }
             }
             if (this._isT2i()) fd.append('img_resolution', this.properties.imgResolution);
             // 換臉沒有 prompt，也就沒有 negative prompt 可言（後端 face-swap 分支不讀）
@@ -2798,6 +2843,14 @@
         if (this.resPicker) this.resPicker.rebuild(['1080P', '720P'], this.properties.resolution);
         if (this.imgResSelect) this.imgResSelect.value = this.properties.imgResolution;
         if (this.durSlider) { this.durSlider.value = this.properties.duration; this.durValEl.textContent = this.properties.duration; }
+        if (this.ratioSelect) this.ratioSelect.value = this.properties.ratio || 'adaptive';
+        if (this.smartDurCb) {
+            this.smartDurCb.checked = !!this.properties.smartDuration;
+            this.durSlider.disabled = !!this.properties.smartDuration;
+        }
+        // 這個節點在 2026-09-02 之前只有 3 個輸入插槽，舊存檔還原後不會有「參考影片」，
+        // 缺了就補回來（LiteGraph 是照序列化的 inputs 重建的，不會自己補新插槽）
+        if (this.inputs.length < 4) this.addInput('參考影片', 'video');
         // _syncUiForModel() 會把 resultUrl 重置為 null 並清空預覽，必須先呼叫
         // 校正插槽名稱/顯示區塊，再把還原的結果蓋回去
         this._syncUiForModel();

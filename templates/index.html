@@ -788,7 +788,7 @@
                 <div class="form-group" id="muleaiVidDurGroup">
                     <label class="form-label">時長 (秒) <span class="param-val" id="muleaiVidDurVal">5</span></label>
                     <input type="range" id="muleaiVidDuration" min="2" max="15" step="1" value="5"
-                           oninput="document.getElementById('muleaiVidDurVal').textContent=this.value">
+                           oninput="document.getElementById('muleaiVidDurVal').textContent=this.value;updateMuleaiRefDurHint()">
                     <div class="toggle-row" id="muleaiSmartDurGroup" style="display:none;margin-top:8px">
                         <span>智能時長</span>
                         <label class="toggle"><input type="checkbox" id="muleaiSmartDur" onchange="onMuleaiSmartDurToggle()"><span class="toggle-slider"></span></label>
@@ -805,6 +805,47 @@
                     <p>上傳圖片<br><span style="font-size:11px;color:var(--text-muted)">支援 JPG, PNG, WEBP</span></p>
                     <img id="muleaiFirstFramePreview" class="upload-preview hidden" alt="preview">
                 </div>
+            </div>
+
+            <!-- w3.0 專用：尾幀圖（首尾幀模式）與參考素材（參考模式），兩種模式互斥 -->
+            <div class="sidebar-section" id="muleaiW3ModeSection" style="display:none">
+                <div class="sidebar-section-title">素材模式</div>
+                <select id="muleaiW3Mode" class="select-input" onchange="onMuleaiW3ModeChange()">
+                    <option value="keyframe">首幀／尾幀圖</option>
+                    <option value="reference">參考素材（圖片／影片／音訊）</option>
+                </select>
+                <p class="param-hint" style="margin-top:6px">兩種模式不能混用。參考模式可在提示詞裡用「Image 1」「Video 1」指涉素材。</p>
+            </div>
+
+            <div class="sidebar-section" id="muleaiLastFrameSection" style="display:none">
+                <div class="sidebar-section-title">尾幀圖片（選填）</div>
+                <div class="upload-zone" id="muleaiLastFrameUpZone">
+                    <input type="file" id="muleaiLastFrameInput" accept="image/jpeg, image/png, image/webp"
+                           onchange="previewImg(event,'muleaiLastFramePreview','muleaiLastFrameUpZone')">
+                    <div class="upload-zone-icon">🏁</div>
+                    <p>上傳尾幀<br><span style="font-size:11px;color:var(--text-muted)">支援 JPG, PNG, WEBP</span></p>
+                    <img id="muleaiLastFramePreview" class="upload-preview hidden" alt="preview">
+                </div>
+            </div>
+
+            <div class="sidebar-section" id="muleaiRefSection" style="display:none">
+                <div class="sidebar-section-title">參考素材</div>
+                <label class="form-label">參考圖片 <span class="param-hint" id="muleaiRefImgCount">0 / 10</span></label>
+                <input type="file" id="muleaiRefImgInput" accept="image/jpeg, image/png, image/webp" multiple
+                       onchange="onMuleaiRefAdd('image', this.files)">
+                <div id="muleaiRefImgList" class="ref-list"></div>
+
+                <label class="form-label" style="margin-top:10px">參考影片 <span class="param-hint" id="muleaiRefVidCount">0 / 5</span></label>
+                <input type="file" id="muleaiRefVidInput" accept="video/mp4,video/quicktime" multiple
+                       onchange="onMuleaiRefAdd('video', this.files)">
+                <div id="muleaiRefVidList" class="ref-list"></div>
+
+                <label class="form-label" style="margin-top:10px">參考音訊 <span class="param-hint" id="muleaiRefAudCount">0 / 5</span></label>
+                <input type="file" id="muleaiRefAudInput" accept="audio/*" multiple
+                       onchange="onMuleaiRefAdd('audio', this.files)">
+                <div id="muleaiRefAudList" class="ref-list"></div>
+
+                <p class="param-hint" id="muleaiRefDurHint" style="margin-top:8px"></p>
             </div>
 
             <div class="sidebar-section" id="muleaiFaceImgSection" style="display:none">
@@ -1166,6 +1207,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=96"></script>
+<script src="/static/js/app.js?v=97"></script>
 </body>
 </html>
