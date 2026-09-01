@@ -3191,12 +3191,41 @@
         return { shapes, errors };
     }
 
+    // 用提示詞產場景：把自然語言轉成上面那套 DSL。規則寫死在系統提示詞裡，
+    // 因為這個格式是我們自己定的，模型不可能知道；例子比規則管用，所以給了完整範例。
+    // 產出一律再過 parseGreyboxSpec() 過濾——模型很常多寫解釋文字或 markdown 圍欄，
+    // 直接塞進場景會整批解析失敗，過濾後只留合法的行並回報丟掉幾行。
+    const GREYBOX_SYSTEM_PROMPT = [
+        'You convert a scene description into a 3D blockout (greybox) spec.',
+        'Output ONLY spec lines. No prose, no markdown, no code fences, no comments.',
+        '',
+        'Grammar (one volume per line):',
+        '  box <width> <height> <depth> at <x> <y> <z> [rot <deg>]',
+        '  cyl <radius> <height> at <x> <y> <z> [rot <deg>]',
+        '  cone <radius> <height> at <x> <y> <z> [rot <deg>]',
+        '  sphere <radius> at <x> <y> <z> [rot <deg>]',
+        '',
+        'Coordinate system: Y is up, the ground plane is Y=0, the camera looks down -Z.',
+        'Put the subject around z = -6 to -20. y is the CENTRE of the volume, so a box',
+        'of height 10 sitting on the ground has y = 5.',
+        'Use 4-12 volumes. Keep it coarse: this is a blockout for camera framing,',
+        'not a detailed model. Represent people/animals with simple stacked volumes.',
+        '',
+        'Example for "a narrow alley with a figure standing at the end":',
+        'box 4 12 20 at -6 6 -14',
+        'box 4 12 20 at 6 6 -14',
+        'cyl 0.4 1.7 at 0 0.85 -16',
+        'sphere 0.28 at 0 1.95 -16',
+    ].join('\n');
+
     function GreyboxNode() {
-        this.addInput('場景描述', 'string');
+        // 這個插槽吃兩種東西：已經是量體 DSL 就直接用，是自然語言就帶進提示詞欄位
+        this.addInput('場景描述／提示詞', 'string');
         this.addOutput('image', 'image');
         this.addOutput('video', 'video');
         this.properties = {
             preset: 'street', spec: GREYBOX_PRESETS.street.spec, move: 'dolly_in',
+            scenePrompt: '', textModel: '',
             ratio: '16:9', duration: 3, distance: 14, height: 3, status: '',
         };
         this.imageUrl = null; this.videoUrl = null;
@@ -3211,6 +3240,10 @@
         const panel = el('div');
         panel.innerHTML = `
             <div class="cv-controls">
+                <label>用提示詞生成場景<span class="cv-hint">（用文字描述場景，由模型轉成量體）</span></label>
+                <textarea class="cv-gb-prompt" rows="2" placeholder="例：黃昏的街口，左邊一棟高樓、右邊兩棟矮樓，路中央停一台車"></textarea>
+                <div class="cv-gb-model-slot"></div>
+                <button class="cv-generate cv-gb-ai">✦ 生成場景</button>
                 <label>場景範本</label>
                 <div class="cv-gb-preset-slot"></div>
                 <label>場景描述<span class="cv-hint">（一行一個量體；接文字節點可由 AI 產生）</span></label>
@@ -3244,6 +3277,16 @@
             this._rebuildScene();
         });
 
+        this.promptEl = panel.querySelector('.cv-gb-prompt');
+        this.promptEl.value = this.properties.scenePrompt || '';
+        this.promptEl.addEventListener('input', () => { this.properties.scenePrompt = this.promptEl.value; });
+        const textModels = getModelsFor('text');
+        if (!this.properties.textModel) this.properties.textModel = (textModels[0] && textModels[0].id) || '';
+        this.textModelSel = buildSelect(textModels.map(m => m.id), this.properties.textModel,
+                                        (v) => { this.properties.textModel = v; });
+        panel.querySelector('.cv-gb-model-slot').appendChild(this.textModelSel);
+        panel.querySelector('.cv-gb-ai').addEventListener('click', () => this.generateSceneFromPrompt());
+
         this.presetSel = buildSelect(Object.keys(GREYBOX_PRESETS), this.properties.preset, (v) => {
             this.properties.preset = v;
             this.properties.spec = GREYBOX_PRESETS[v].spec;
@@ -3273,8 +3316,10 @@
             return s;
         };
         this.durSlider = bindSlider('.cv-gb-dur', '.cv-gb-dur-val', 'duration');
-        bindSlider('.cv-gb-dist', '.cv-gb-dist-val', 'distance');
-        bindSlider('.cv-gb-h', '.cv-gb-h-val', 'height');
+        this._distSlider = bindSlider('.cv-gb-dist', '.cv-gb-dist-val', 'distance');
+        this._hSlider = bindSlider('.cv-gb-h', '.cv-gb-h-val', 'height');
+        this._distVal = panel.querySelector('.cv-gb-dist-val');
+        this._hVal = panel.querySelector('.cv-gb-h-val');
 
         panel.querySelector('.cv-gb-render').addEventListener('click', () => this.renderVideo());
         wireConfigOverlay(this, panel);
@@ -3337,6 +3382,27 @@
         this._renderPreview();
     };
 
+    // AI 產的場景尺度不固定（有時是 3 公尺的房間、有時是 24 公尺的高樓），固定的
+    // 相機距離常常框不下或離太遠。生成場景後自動依包圍盒調一次距離與高度——
+    // 只在「生成場景」之後跑，不在每次重建時跑，否則使用者手動調的滑桿會被蓋掉。
+    GreyboxNode.prototype._autoFrame = function () {
+        if (!this.group || !this.group.children.length) return;
+        const box = new THREE.Box3().setFromObject(this.group);
+        const size = box.getSize(new THREE.Vector3());
+        const centre = box.getCenter(new THREE.Vector3());
+        // 用最大邊長估一個能框得下的距離：視角 40 度，留約三成餘裕
+        const extent = Math.max(size.x, size.y, size.z);
+        const dist = Math.round(Math.min(40, Math.max(4,
+            extent / (2 * Math.tan(40 * Math.PI / 360)) * 1.3 + Math.abs(centre.z))));
+        const height = Math.round(Math.min(20, Math.max(1, size.y * 0.45)));
+        this.properties.distance = dist;
+        this.properties.height = height;
+        if (this._distSlider) { this._distSlider.value = dist; }
+        if (this._hSlider) { this._hSlider.value = height; }
+        if (this._distVal) this._distVal.textContent = dist;
+        if (this._hVal) this._hVal.textContent = height;
+    };
+
     GreyboxNode.prototype._applyCamera = function (t) {
         const mv = (GREYBOX_MOVES[this.properties.move] || GREYBOX_MOVES.dolly_in).fn;
         const { pos, look } = mv(t, this.properties.distance, this.properties.height);
@@ -3352,6 +3418,42 @@
         this.renderer.render(this.scene, this.camera);
         this.imageUrl = this.viewCanvas.toDataURL('image/png');
         this.setOutputData(0, this.imageUrl);
+    };
+
+    // 提示詞 → 場景 DSL。也吃「場景描述」輸入插槽上游來的文字當提示詞，
+    // 這樣可以「文字節點寫需求 → 灰模節點轉成量體」。
+    GreyboxNode.prototype.generateSceneFromPrompt = async function () {
+        const prompt = (this.properties.scenePrompt || '').trim();
+        if (!prompt) { showToast('請先描述你要的場景'); return; }
+        if (!this.properties.textModel) { showToast('請選擇文字模型'); return; }
+        this.statusEl.textContent = '生成場景中…';
+        try {
+            const res = await apiFetch('/api/text/generate', {
+                method: 'POST',
+                body: JSON.stringify({
+                    model: this.properties.textModel,
+                    system_prompt: GREYBOX_SYSTEM_PROMPT,
+                    prompt, stream: false, temperature: 0.4,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || '生成失敗');
+            const raw = (data.content || '').trim();
+            // 模型常常包 markdown 圍欄或先講一段解釋，先剝掉圍欄再逐行過濾
+            const body = raw.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/, '');
+            const kept = body.split('\n').filter(l => parseGreyboxSpec(l).shapes.length === 1);
+            if (!kept.length) throw new Error('模型沒有回傳可用的量體，換個描述或換模型再試');
+            const dropped = body.split('\n').filter(l => l.trim()).length - kept.length;
+            this.properties.spec = kept.join('\n');
+            this.specEl.value = this.properties.spec;
+            this._rebuildScene();
+            this._autoFrame();
+            this._renderPreview();
+            this.statusEl.textContent = `已生成 ${kept.length} 個量體` + (dropped ? `（略過 ${dropped} 行非量體內容）` : '');
+        } catch (e) {
+            this.statusEl.textContent = '錯誤：' + e.message;
+            showToast('場景生成失敗：' + e.message);
+        }
     };
 
     GreyboxNode.prototype.renderVideo = async function () {
@@ -3400,19 +3502,29 @@
     };
 
     GreyboxNode.prototype.onExecute = function () {
-        // 上游文字節點可以直接餵場景描述（讓 AI 產生量體配置）
-        const inSpec = this.getInputData(0);
-        if (inSpec && inSpec !== this._lastInSpec) {
-            this._lastInSpec = inSpec;
-            this.properties.spec = inSpec;
-            this.specEl.value = inSpec;
-            this._rebuildScene();
+        // 上游文字節點餵進來的東西有兩種可能：已經是量體 DSL，或是一段自然語言。
+        // 解析得出量體就直接當場景用；解析不出來就當成提示詞塞進提示詞欄位，
+        // **不自動呼叫模型**——onExecute 每一幀都會跑，自動呼叫等於無限計費。
+        const inText = this.getInputData(0);
+        if (inText && inText !== this._lastInSpec) {
+            this._lastInSpec = inText;
+            if (parseGreyboxSpec(inText).shapes.length) {
+                this.properties.spec = inText;
+                this.specEl.value = inText;
+                this._rebuildScene();
+            } else {
+                this.properties.scenePrompt = inText;
+                this.promptEl.value = inText;
+                this.statusEl.textContent = '已帶入上游文字，按「生成場景」轉成量體';
+            }
         }
         this.setOutputData(0, this.imageUrl);
         this.setOutputData(1, this.videoUrl);
     };
     GreyboxNode.prototype.onConfigure = function () {
         this.specEl.value = this.properties.spec || '';
+        if (this.promptEl) this.promptEl.value = this.properties.scenePrompt || '';
+        if (this.textModelSel && this.properties.textModel) this.textModelSel.value = this.properties.textModel;
         if (this.presetSel) this.presetSel.value = this.properties.preset;
         if (this.moveSel) this.moveSel.value = this.properties.move;
         if (this.ratioSel) this.ratioSel.value = this.properties.ratio;
