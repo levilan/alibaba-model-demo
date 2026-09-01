@@ -1155,6 +1155,42 @@ MODELS = {
          "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），最長約 10 秒，自動含原生配音（無需另設定）", "type": "r2v", "audio": False, "no_duration": True, "no_resolution": True, "max_ref": 3},
     ],
     "muleai": [
+        # ── w3.0 影片四顆（2026-09-01 上架）────────────────────────────
+        # 四顆的請求契約逐欄位相同，唯一差異是 resolution 檔次：
+        #   w3.0-video-spicy / -prime-spicy      → 480p / 720p / 1080p
+        #   w3.0-video-pro-spicy / -prime-pro-spicy → 1080p / 2k / 4k
+        # 越檔的值閘道會在**預扣費之前**回 422（實測訊息會列出該顆的合法值），
+        # 所以計費不會出錯；前端仍只列該顆有的檔次，避免使用者選到必定被拒的值。
+        #
+        # 解析度標籤是**小寫**（480p/2k/4k），與既有影片模型的 480P/720P/1080P
+        # 不同一套，不要順手改成大寫——閘道是字面比對。
+        #
+        # 以下全部由 2026-09-01 對測試網關的免費 422 探測實證（送非法值觸發驗證，
+        # 不產生內容、不計費）：
+        #   duration  2–30 或 -1（智能時長）
+        #   ratio     16:9 / 4:3 / 1:1 / 3:4 / 9:16 / adaptive
+        #   參數位置  resolution/ratio/duration 走 metadata 或頂層都讀得到
+        #   互斥      first_frame/last_frame 不能與 reference_* 混送
+        #   必填      prompt、keyframe、reference 三者至少要有一個
+        #   參考圖    最多 10 張
+        # ⚠️ smart_duration（-1）閘道只預扣 1 秒押金、事後拿不到成片秒數，
+        #    所以 UI 不顯示這個選項的預估金額。
+        {"id": "w3.0-video-spicy",            "name": "Spicy 影片 3.0",           "group": "影片生成",
+         "desc": "文字或首幀圖生影片，最長 30 秒", "type": "video",
+         "resolutions": ["480p", "720p", "1080p"], "ratios": ["adaptive", "16:9", "4:3", "1:1", "3:4", "9:16"],
+         "min_dur": 2, "max_dur": 30, "smart_duration": True, "audio": True, "image_optional": True},
+        {"id": "w3.0-video-pro-spicy",        "name": "Spicy 影片 3.0 Pro",       "group": "影片生成",
+         "desc": "高解析度檔次，最長 30 秒", "type": "video",
+         "resolutions": ["1080p", "2k", "4k"], "ratios": ["adaptive", "16:9", "4:3", "1:1", "3:4", "9:16"],
+         "min_dur": 2, "max_dur": 30, "smart_duration": True, "audio": True, "image_optional": True},
+        {"id": "w3.0-video-prime-spicy",      "name": "Spicy 影片 3.0 Prime",     "group": "影片生成",
+         "desc": "高速版，最長 30 秒", "type": "video",
+         "resolutions": ["480p", "720p", "1080p"], "ratios": ["adaptive", "16:9", "4:3", "1:1", "3:4", "9:16"],
+         "min_dur": 2, "max_dur": 30, "smart_duration": True, "audio": True, "image_optional": True},
+        {"id": "w3.0-video-prime-pro-spicy",  "name": "Spicy 影片 3.0 Prime Pro", "group": "影片生成",
+         "desc": "高速版高解析度檔次，最長 30 秒", "type": "video",
+         "resolutions": ["1080p", "2k", "4k"], "ratios": ["adaptive", "16:9", "4:3", "1:1", "3:4", "9:16"],
+         "min_dur": 2, "max_dur": 30, "smart_duration": True, "audio": True, "image_optional": True},
         {"id": "wan2.7-i2v-spicy",       "name": "Wan 2.7 I2V Spicy",  "group": "影片生成", "desc": "Spicy 模型 (支援文字/圖片)"},
         {"id": "z-image-spicy",           "name": "Z-Image Spicy",      "group": "圖片生成", "desc": "Spicy 圖片生成模型"},
         {"id": "qwen-image-edit-spicy",   "name": "圖像編輯 Spicy",     "group": "圖像編輯", "desc": "Spicy 圖像編輯模型 (prompt + 來源圖)"},
@@ -1976,6 +2012,7 @@ async def muleai_generate(
     prompt: str = Form(""),
     negative_prompt: Optional[str] = Form(None),
     resolution: str = Form("1080P"),
+    ratio: Optional[str] = Form(None),
     duration: Optional[int] = Form(5),
     img_resolution: Optional[str] = Form("1024*1536"),
     prompt_extend: bool = Form(True),
@@ -1990,14 +2027,17 @@ async def muleai_generate(
     is_face_swap    = model == "face-swap"
     is_img_edit     = model == "qwen-image-edit-spicy"
     is_image_model  = "z-image" in model or is_img_edit or is_face_swap
+    is_w3_video     = model.startswith("w3.0-video")
 
     if not prompt and not is_face_swap:
         raise HTTPException(status_code=400, detail="Prompt is required")
 
+    # 這裡原本把網址寫死成正式站，導致 NENAI_BASE 對 Spicy 這條路徑完全無效——
+    # 新模型要先對測試網關驗證時會直接打到正式站（那裡還沒有該模型）。
     MULEAI_URL = (
-        "https://nen.com.tw/v1/image/generations"
+        f"{NENAI_V1}/image/generations"
         if is_image_model
-        else "https://nen.com.tw/v1/video/generations"
+        else f"{NENAI_V1}/video/generations"
     )
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
@@ -2046,6 +2086,35 @@ async def muleai_generate(
         if seed is not None:
             payload["seed"] = seed
 
+    # ── w3.0 影片四顆 ──────────────────────────────────────────
+    # 與 wan2.7-i2v-spicy 不同：首幀圖是**選填**（沒有圖就是文生影片），而且
+    # 多了 ratio 與智能時長（-1）。參數位置以 metadata 為主——resolution/ratio/
+    # duration 走頂層或 metadata 都讀得到（2026-09-01 實測），統一放 metadata
+    # 比較不會跟其他模型家族的頂層欄位語意撞在一起；duration 另外同步送頂層，
+    # 因為那是閘道對影片任務的共通欄位。
+    #
+    # ⚠️ 不要送 seconds：閘道那個欄位是字串型別，送數字會 400
+    #    （`cannot unmarshal number into Go struct field .Alias.seconds of type string`）。
+    elif is_w3_video:
+        meta: dict = {
+            "resolution": (resolution or "1080p").lower(),
+            "prompt_extend": prompt_extend,
+        }
+        if ratio:
+            meta["ratio"] = ratio
+        if seed is not None:
+            meta["seed"] = seed
+        # 首幀圖選填；有圖就是 keyframe 模式（與 reference 模式互斥，閘道會擋）
+        if image and image.filename:
+            meta["first_frame"] = await _to_data_uri(image)
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "duration": duration,
+            "audio": enable_audio,
+            "metadata": meta,
+        }
+
     # ── wan2.7-i2v-spicy（影片）────────────────────────────────
     else:
         if not image or not image.filename:
@@ -2090,7 +2159,7 @@ async def muleai_generate(
 async def muleai_task_status(model: str, task_id: str, api_key: str = Depends(get_api_key)):
 
     _is_img = "z-image" in model or model in ("qwen-image-edit-spicy", "face-swap")
-    MULEAI_STATUS_URL = f"https://nen.com.tw/v1/{'image' if _is_img else 'video'}/generations/{task_id}"
+    MULEAI_STATUS_URL = f"{NENAI_V1}/{'image' if _is_img else 'video'}/generations/{task_id}"
     headers = {
         "Authorization": f"Bearer {api_key}"
     }
@@ -2155,7 +2224,7 @@ async def muleai_task_status(model: str, task_id: str, api_key: str = Depends(ge
 async def muleai_debug(model: str, task_id: str, api_key: str = Depends(get_api_key)):
     """回傳平台原始 JSON，診斷 status 欄位位置。"""
     _is_img = "z-image" in model or model in ("qwen-image-edit-spicy", "face-swap")
-    url = f"https://nen.com.tw/v1/{'image' if _is_img else 'video'}/generations/{task_id}"
+    url = f"{NENAI_V1}/{'image' if _is_img else 'video'}/generations/{task_id}"
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(url, headers={"Authorization": f"Bearer {api_key}"})
         return {"http_status": resp.status_code, "url": url, "raw": resp.json()}

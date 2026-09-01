@@ -768,7 +768,7 @@
                 </div>
                 <div class="form-group" id="muleaiVidResGroup">
                     <label class="form-label">解析度</label>
-                    <select id="muleaiVidResolution" class="select-input">
+                    <select id="muleaiVidResolution" class="select-input" onchange="updateModelPriceHint('muleaiModelPrice', document.getElementById('muleaiModel').value)">
                         <option value="1080P">1080P</option>
                         <option value="720P">720P</option>
                     </select>
@@ -781,10 +781,18 @@
                         <option value="1024*1024">1024 × 1024 (1:1)</option>
                     </select>
                 </div>
+                <div class="form-group" id="muleaiVidRatioGroup" style="display:none">
+                    <label class="form-label">畫面比例</label>
+                    <select id="muleaiVidRatio" class="select-input"></select>
+                </div>
                 <div class="form-group" id="muleaiVidDurGroup">
                     <label class="form-label">時長 (秒) <span class="param-val" id="muleaiVidDurVal">5</span></label>
                     <input type="range" id="muleaiVidDuration" min="2" max="15" step="1" value="5"
                            oninput="document.getElementById('muleaiVidDurVal').textContent=this.value">
+                    <div class="toggle-row" id="muleaiSmartDurGroup" style="display:none;margin-top:8px">
+                        <span>智能時長</span>
+                        <label class="toggle"><input type="checkbox" id="muleaiSmartDur" onchange="onMuleaiSmartDurToggle()"><span class="toggle-slider"></span></label>
+                    </div>
                 </div>
             </div>
             
@@ -1158,6 +1166,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=95"></script>
+<script src="/static/js/app.js?v=96"></script>
 </body>
 </html>

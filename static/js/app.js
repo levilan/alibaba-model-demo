@@ -438,6 +438,25 @@ function authHeader() {
 }
 
 // ── Selectors ─────────────────────────────────────────────────
+// w3.0 影片四顆走跟其他 Spicy 模型不同的請求形狀：首幀圖選填、多了畫面比例與
+// 智能時長、解析度檔次逐顆不同（pro 系列沒有 720p 以下）。用前綴判斷，之後若
+// 再加同家族的型號會自動落進同一條路徑。
+function isW3SpicyVideo(modelId) {
+    return typeof modelId === 'string' && modelId.startsWith('w3.0-video');
+}
+
+function _muleaiMeta(modelId) {
+    return (models.muleai || []).find(m => m.id === modelId) || {};
+}
+
+function onMuleaiSmartDurToggle() {
+    const on = document.getElementById('muleaiSmartDur').checked;
+    const slider = document.getElementById('muleaiVidDuration');
+    slider.disabled = on;
+    // 智能時長由模型自行決定長度，事前算不出秒數，所以不顯示估價（顯示了會嚴重低估）
+    document.getElementById('muleaiVidDurVal').textContent = on ? '由模型決定' : slider.value;
+}
+
 function onMuleaiModelChange() {
     const model = document.getElementById('muleaiModel').value;
     updateModelPriceHint('muleaiModelPrice', model);
@@ -452,6 +471,44 @@ function onMuleaiModelChange() {
     document.getElementById('muleaiImgResGroup').style.display  = isZImage     ? '' : 'none';
     document.getElementById('muleaiVidDurGroup').style.display  = isVideoModel ? '' : 'none';
 
+    // w3.0：解析度／比例／時長上限逐顆不同，一律由 MODELS 的資料驅動，不要寫死
+    const isW3  = isW3SpicyVideo(model);
+    const meta  = isW3 ? _muleaiMeta(model) : {};
+    const resSel = document.getElementById('muleaiVidResolution');
+    if (isW3) {
+        const list = meta.resolutions || [];
+        resSel.innerHTML = list.map(r => `<option value="${r}">${r}</option>`).join('');
+        // 預設選最低的一檔（清單第一個就是最便宜的），不用上游的 1080p 預設——
+        // 讓使用者主動往上選，而不是預設就落在較高的檔次
+        if (list.length) resSel.value = list[0];
+    } else if (isVideoModel) {
+        resSel.innerHTML = '<option value="1080P">1080P</option><option value="720P">720P</option>';
+    }
+
+    const ratioGroup = document.getElementById('muleaiVidRatioGroup');
+    ratioGroup.style.display = isW3 ? '' : 'none';
+    if (isW3) {
+        const ratios = meta.ratios || [];
+        const ratioSel = document.getElementById('muleaiVidRatio');
+        ratioSel.innerHTML = ratios.map(r => `<option value="${r}">${r === 'adaptive' ? '自動 (adaptive)' : r}</option>`).join('');
+    }
+
+    const durSlider = document.getElementById('muleaiVidDuration');
+    if (isVideoModel) {
+        durSlider.min = meta.min_dur || 2;
+        durSlider.max = meta.max_dur || 15;
+        if (+durSlider.value > +durSlider.max) durSlider.value = durSlider.max;
+        if (+durSlider.value < +durSlider.min) durSlider.value = durSlider.min;
+        document.getElementById('muleaiVidDurVal').textContent = durSlider.value;
+    }
+    const smartGroup = document.getElementById('muleaiSmartDurGroup');
+    smartGroup.style.display = (isW3 && meta.smart_duration) ? '' : 'none';
+    if (!isW3 || !meta.smart_duration) {
+        const sd = document.getElementById('muleaiSmartDur');
+        if (sd) sd.checked = false;
+        durSlider.disabled = false;
+    }
+
     // 首幀 / 來源圖上傳區
     document.getElementById('muleaiImgUploadSection').style.display = (isVideoModel || isImgEdit || isFaceSwap) ? '' : 'none';
 
@@ -459,6 +516,7 @@ function onMuleaiModelChange() {
     if (uploadTitle) {
         if (isFaceSwap)     uploadTitle.textContent = '來源圖片 (必填)';
         else if (isImgEdit) uploadTitle.textContent = '來源圖片 (必填)';
+        else if (isW3)      uploadTitle.textContent = '首幀圖片 (選填，不放就是文生影片)';
         else                uploadTitle.textContent = '首幀圖片 (影片必填)';
     }
 
@@ -477,6 +535,7 @@ function onMuleaiModelChange() {
         if (cb) cb.checked = false;
         document.getElementById('muleaiAudioUploadSection').style.display = 'none';
     }
+    if (isW3) document.getElementById('muleaiAudioUploadSection').style.display = 'none';
 
     const promptInput = document.getElementById('muleaiVidPrompt');
     if (promptInput) {
@@ -494,7 +553,10 @@ function onMuleaiModelChange() {
 
 function onMuleaiAudioToggle() {
     const enabled = document.getElementById('muleaiAudioEnable').checked;
-    document.getElementById('muleaiAudioUploadSection').style.display = enabled ? '' : 'none';
+    // w3.0 的配音是純開關（由模型自行產生聲音），沒有「上傳音軌」這回事，
+    // 開關打開也不要露出上傳區
+    const isW3 = isW3SpicyVideo(document.getElementById('muleaiModel').value);
+    document.getElementById('muleaiAudioUploadSection').style.display = (enabled && !isW3) ? '' : 'none';
     if (!enabled) clearMuleaiAudio();
 }
 
@@ -826,6 +888,22 @@ function estimateVideoTokenCost(modelId, resolution, seconds) {
 // 音訊會影響價格的兩家已標在下面。沒有列在這裡的模型（gemini-omni）走 token 計費、
 // 且長度由模型自己決定，沒有「每秒」這個概念，維持原本的顯示。
 const _VIDEO_SEC_PRICE = {
+    // w3.0 影片四顆（Spicy 頁籤）。閘道的 /api/pricing 對這四顆只給 model_price
+    // ＝**最便宜那一檔的每秒價**（沒有單位、沒有檔次），照它顯示會變成「$0.05/次」
+    // ——一支 5 秒 1080p 實際是 $1.00，差 20 倍。所以價格一律以這裡的官方每秒單價
+    // 為準。配音開關不影響價格（與 Veo 相反），故不設 _withAudio。
+    // ⚠️ 這是 w3.0-video（CarrotHub），與下面的 wan3.0-video（萬相 3.0）是**不同的
+    //    上游路徑**，別名只差一個 an，不要看串了。
+    // 前端用的是 -spicy 這組（閘道端的模型重定向）；官方名同時列著，是為了萬一
+    // 改回直呼官方名時價格顯示不會落空——兩組價格必須一致，改一邊要改兩邊。
+    'w3.0-video-spicy':           { '480p': 0.05,  '720p': 0.10, '1080p': 0.20 },
+    'w3.0-video-prime-spicy':     { '480p': 0.068, '720p': 0.14, '1080p': 0.28 },
+    'w3.0-video-pro-spicy':       { '1080p': 0.18, '2k': 0.20,   '4k': 0.23 },
+    'w3.0-video-prime-pro-spicy': { '1080p': 0.26, '2k': 0.28,   '4k': 0.31 },
+    'w3.0-video':           { '480p': 0.05,  '720p': 0.10, '1080p': 0.20 },
+    'w3.0-video-prime':     { '480p': 0.068, '720p': 0.14, '1080p': 0.28 },
+    'w3.0-video-pro':       { '1080p': 0.18, '2k': 0.20,   '4k': 0.23 },
+    'w3.0-video-prime-pro': { '1080p': 0.26, '2k': 0.28,   '4k': 0.31 },
     // 萬相 3.0（all-in-one）：480P $0.05 / 720P $0.10 / 1080P $0.20
     'wan3.0-video':     { '480P': 0.05, '720P': 0.10, '1080P': 0.20 },
     // 萬相 3.0 Prime（高速版）：官方定價 2026-08-25 核對（平台倍率表同源）；
@@ -870,14 +948,32 @@ const _VIDEO_SEC_PRICE = {
                                    _withAudio: { '720P': 0.05, '1080P': 0.08, '4K': 0.08 } },
 };
 
+// 解析度標籤各家大小寫不一致（既有影片模型用 480P/720P/1080P，w3.0 用
+// 480p/2k/4k），比對前一律轉小寫。fallbackCheapest 只給「下拉選單基準價」用：
+// 選單固定拿 720P 當基準，但 w3.0 的 pro 檔次根本沒有 720p，硬比會落空、退回
+// 顯示成沒有意義的 token 單價。落空時改用該模型**最便宜的一檔**，並把實際用到
+// 的標籤一起回傳——顯示 $0.18/秒（720P）這種該模型不存在的檔次比不顯示更糟。
+function _resolveVideoTier(modelId, resolution, fallbackCheapest) {
+    const t = _VIDEO_SEC_PRICE[modelId];
+    if (!t) return null;
+    const keys = Object.keys(t).filter(k => !k.startsWith('_'));
+    if (!keys.length) return null;
+    const want = String(resolution == null ? '' : resolution).toLowerCase();
+    const hit = keys.find(k => k.toLowerCase() === want);
+    if (hit) return hit;
+    if (!fallbackCheapest) return null;
+    return keys.reduce((a, b) => (t[a] <= t[b] ? a : b));
+}
+
 // 回傳每秒單價，查不到就回 null（呼叫端會退回原本的顯示方式）
 function videoPerSecondPrice(modelId, resolution, opts) {
     const o = opts || {};
     const t = _VIDEO_SEC_PRICE[modelId];
     if (t) {
         if (t._byMode) return t._byMode[o.mode] ?? Object.values(t._byMode)[0];
-        if (o.audio && t._withAudio && t._withAudio[resolution] != null) return t._withAudio[resolution];
-        let v = t[resolution];
+        const tier = _resolveVideoTier(modelId, resolution, o.fallbackCheapest);
+        if (o.audio && t._withAudio && tier != null && t._withAudio[tier] != null) return t._withAudio[tier];
+        let v = tier == null ? null : t[tier];
         if (v == null) return null;
         if (t._noAudioHalf && o.audio === false) v = v / 2;
         return v;
@@ -930,18 +1026,24 @@ function formatPriceSuffix(modelId, resolution) {
     // 每秒基準價，顯示成「/次」會嚴重低估：例如 HappyHorse 標 $0.02 但 720P 官方是
     // $0.14/秒，一支 5 秒的片子差 35 倍）
     const baseline = resolution != null;
-    const res = resolution || document.getElementById('videoResolution')?.value;
+    // Spicy 頁籤的影片模型有自己的解析度選單。先前這裡固定讀影片頁籤的
+    // `videoResolution`，Spicy 那邊選什麼都不會反映在價格提示上。
+    const resSelId = isW3SpicyVideo(modelId) ? 'muleaiVidResolution' : 'videoResolution';
+    const res = resolution || document.getElementById(resSelId)?.value;
     const audio = baseline ? true : document.getElementById('vidAudio')?.checked;
     const perSec = videoPerSecondPrice(modelId, res, {
         audio,
         mode: document.getElementById('videoAnimateMode')?.value,
+        fallbackCheapest: baseline,
     });
     if (perSec != null) {
         // 動作動畫固定 720P 輸出、UI 上根本沒有解析度選單，標上解析度只會誤導
         const byMode = !!_VIDEO_SEC_PRICE[modelId]?._byMode;
         if (byMode) return ` ・ 約 $${formatUsd(Number(perSec.toFixed(4)))}/秒`;
         const note = baseline && _audioAffectsPrice(modelId) ? '・含配音' : '';
-        return ` ・ 約 $${formatUsd(Number(perSec.toFixed(4)))}/秒（${res}${note}）`;
+        // 標籤用實際查到的那一檔，不是要求的那一檔（見 _resolveVideoTier）
+        const tier = _resolveVideoTier(modelId, res, baseline) || res;
+        return ` ・ 約 $${formatUsd(Number(perSec.toFixed(4)))}/秒（${tier}${note}）`;
     }
     if (p.type === 'fixed') return ` ・ $${formatUsd(p.price)}/次`;
     return ` ・ $${formatUsd(p.input)}→$${formatUsd(p.output)}/1M`;
@@ -3634,6 +3736,18 @@ async function sendMuleAIVideo() {
         fd.append('negative_prompt', negPrompt);
         fd.append('prompt_extend', extend);
         if (seed !== null) fd.append('seed', seed);
+
+    } else if (isW3SpicyVideo(model)) {
+        // w3.0：首幀圖選填（沒有就是文生影片）；智能時長送 -1
+        const firstFrameFile = document.getElementById('muleaiFirstFrameInput').files[0];
+        if (firstFrameFile) fd.append('image', firstFrameFile);
+        fd.append('prompt', prompt);
+        fd.append('resolution', resolution);
+        fd.append('ratio', document.getElementById('muleaiVidRatio').value);
+        fd.append('duration', document.getElementById('muleaiSmartDur')?.checked ? -1 : duration);
+        fd.append('prompt_extend', extend);
+        if (seed !== null) fd.append('seed', seed);
+        if (document.getElementById('muleaiAudioEnable')?.checked) fd.append('enable_audio', 'true');
 
     } else {
         // 影片模型
