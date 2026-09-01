@@ -1148,20 +1148,20 @@ MODELS = {
          "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
         # ── Gemini Omni（走 /v1beta/interactions，模型自行決定長度/解析度，固定含原生配音）──
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview", "group": "Gemini",
-         "desc": "Google 多模態影片生成（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "t2v", "audio": False, "no_duration": True, "no_resolution": True},
+         "desc": "Google 多模態影片生成（預覽版），長度與解析度由模型決定（約 10 秒），自動含原生配音", "type": "t2v", "audio": False, "no_duration": True, "no_resolution": True},
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview（圖生影片）", "group": "Gemini",
-         "desc": "Google 多模態圖生影片（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "i2v", "audio": False, "no_duration": True, "no_resolution": True},
+         "desc": "Google 多模態圖生影片（預覽版），長度與解析度由模型決定（約 10 秒），自動含原生配音", "type": "i2v", "audio": False, "no_duration": True, "no_resolution": True},
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview（參考生影片）", "group": "Gemini",
-         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），最長約 10 秒，自動含原生配音（無需另設定）", "type": "r2v", "audio": False, "no_duration": True, "no_resolution": True, "max_ref": 3},
+         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），長度與解析度由模型決定（約 10 秒），自動含原生配音", "type": "r2v", "audio": False, "no_duration": True, "no_resolution": True, "max_ref": 3},
         # gemini-omni-1.1-flash-preview：帶版號的 omni flash，與上面同家族、同價
         # （輸入 $1.50/1M、文字輸出 $9、影片輸出 $17.50）。同樣走 /v1beta/interactions，
         # 模型自行決定長度與解析度，聲音隨影片產出。
         {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview", "group": "Gemini",
-         "desc": "Google 多模態影片生成（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "t2v", "audio": False, "no_duration": True, "no_resolution": True},
+         "desc": "Google 多模態影片生成（預覽版），長度與解析度由模型決定（約 10 秒），自動含原生配音", "type": "t2v", "audio": False, "no_duration": True, "no_resolution": True},
         {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview（圖生影片）", "group": "Gemini",
-         "desc": "Google 多模態圖生影片（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "i2v", "audio": False, "no_duration": True, "no_resolution": True},
+         "desc": "Google 多模態圖生影片（預覽版），長度與解析度由模型決定（約 10 秒），自動含原生配音", "type": "i2v", "audio": False, "no_duration": True, "no_resolution": True},
         {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview（參考生影片）", "group": "Gemini",
-         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），最長約 10 秒，自動含原生配音（無需另設定）", "type": "r2v", "audio": False, "no_duration": True, "no_resolution": True, "max_ref": 3},
+         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），長度與解析度由模型決定（約 10 秒），自動含原生配音", "type": "r2v", "audio": False, "no_duration": True, "no_resolution": True, "max_ref": 3},
     ],
     "muleai": [
         # ── w3.0 影片四顆（2026-09-01 上架）────────────────────────────
