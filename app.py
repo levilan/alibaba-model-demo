@@ -1153,6 +1153,15 @@ MODELS = {
          "desc": "Google 多模態圖生影片（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "i2v", "audio": False, "no_duration": True, "no_resolution": True},
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview（參考生影片）", "group": "Gemini",
          "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），最長約 10 秒，自動含原生配音（無需另設定）", "type": "r2v", "audio": False, "no_duration": True, "no_resolution": True, "max_ref": 3},
+        # gemini-omni-1.1-flash-preview：帶版號的 omni flash，與上面同家族、同價
+        # （輸入 $1.50/1M、文字輸出 $9、影片輸出 $17.50）。同樣走 /v1beta/interactions，
+        # 模型自行決定長度與解析度，聲音隨影片產出。
+        {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview", "group": "Gemini",
+         "desc": "Google 多模態影片生成（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "t2v", "audio": False, "no_duration": True, "no_resolution": True},
+        {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview（圖生影片）", "group": "Gemini",
+         "desc": "Google 多模態圖生影片（預覽版），最長約 10 秒，自動含原生配音（無需另設定）", "type": "i2v", "audio": False, "no_duration": True, "no_resolution": True},
+        {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview（參考生影片）", "group": "Gemini",
+         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），最長約 10 秒，自動含原生配音（無需另設定）", "type": "r2v", "audio": False, "no_duration": True, "no_resolution": True, "max_ref": 3},
     ],
     "muleai": [
         # ── w3.0 影片四顆（2026-09-01 上架）────────────────────────────
@@ -2733,7 +2742,7 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
 
 # ─── Resolution helper ────────────────────────────────────────────
 # Gemini Omni 不走 /v1/videos 的非同步任務模式，而是同步呼叫 /v1beta/interactions 直接拿到完成的影片
-_INTERACTIONS_VIDEO_MODELS = {"gemini-omni-flash-preview"}
+_INTERACTIONS_VIDEO_MODELS = {"gemini-omni-flash-preview", "gemini-omni-1.1-flash-preview"}
 # Veo 預設的 personGeneration 安全設定較嚴格，帶真人圖片容易被擋，明確放寬為 allow_adult
 _VEO_MODELS = {"veo-3.1-generate-001", "veo-3.1-fast-generate-001", "veo-3.1-lite-generate-001"}
 _OMNI_TASK_CACHE: Dict[str, dict] = {}
