@@ -554,6 +554,7 @@
         camera_angle: { type: 'nenai/camera_angle', label: '相機角度 Camera Angle' },
         load_image: { type: 'nenai/load_image', label: '上傳圖片 Load Image' },
         pose: { type: 'nenai/pose', label: '姿勢 Pose' },
+        greybox: { type: 'nenai/greybox', label: '3D 灰模 Greybox' },
         image: { type: 'nenai/image', label: '圖片 Image' },
         video: { type: 'nenai/video', label: '影片 Video' },
         video_edit: { type: 'nenai/video_edit', label: '影片編輯 Video Edit' },
@@ -3115,11 +3116,320 @@
     };
     AsrNode.prototype.onRemoved = sharedOnRemoved;
 
+    // ── 3D 灰模節點（Greybox / Blockout）─────────────────────────
+    // 用途：在瀏覽器裡搭一個沒有材質的粗塊場景，跑一段相機運鏡，輸出「灰模影片」
+    // 當作影片模型的運鏡參考（接到 MuleAI 節點的「參考影片」插槽，提示詞裡用
+    // 「Video 1」指涉）。也可以只取單格當構圖參考圖。
+    //
+    // 為什麼不是在伺服器跑 Blender：這條工作流真正需要的只有「粗塊體積 ＋ 一條相機
+    // 軌跡」，不需要建模／材質／算圖。伺服器跑 headless Blender 要 +1GB image、GPU、
+    // 任務佇列與 bpy 沙箱，成本全花在無關的地方（2026-09-01 評估）。
+    //
+    // 影片編碼走 WebCodecs ＋ mp4-muxer：上游只收 mp4/mov，MediaRecorder 只給 webm，
+    // 送過去會被擋，所以不能用它。瀏覽器不支援 WebCodecs 時只提供單格輸出。
+    const GREYBOX_RATIOS = {
+        '16:9': [832, 480], '9:16': [480, 832], '1:1': [640, 640],
+        '4:3': [800, 600], '3:4': [600, 800],
+    };
+
+    // 相機運鏡：t 從 0 到 1，回傳 { pos:[x,y,z], look:[x,y,z] }。
+    // 灰模的價值就在這條軌跡上——場景只要粗塊，運鏡才是要傳達給模型的資訊。
+    const GREYBOX_MOVES = {
+        dolly_in:     { label: '推近 Dolly in',    fn: (t, d, h) => ({ pos: [0, h, d - (d - d * 0.35) * t], look: [0, h * 0.6, -d] }) },
+        dolly_out:    { label: '拉遠 Dolly out',   fn: (t, d, h) => ({ pos: [0, h, d * 0.35 + (d - d * 0.35) * t], look: [0, h * 0.6, -d] }) },
+        orbit_left:   { label: '左環繞 Orbit L',   fn: (t, d, h) => { const a = -Math.PI / 4 * t; return { pos: [Math.sin(a) * d, h, Math.cos(a) * d], look: [0, h * 0.6, 0] }; } },
+        orbit_right:  { label: '右環繞 Orbit R',   fn: (t, d, h) => { const a = Math.PI / 4 * t; return { pos: [Math.sin(a) * d, h, Math.cos(a) * d], look: [0, h * 0.6, 0] }; } },
+        crane_up:     { label: '升降 Crane up',    fn: (t, d, h) => ({ pos: [0, h * 0.4 + h * 1.6 * t, d], look: [0, h * 0.5, -d * 0.5] }) },
+        push_through: { label: '穿越 Push through', fn: (t, d, h) => ({ pos: [0, h, d - (d * 1.8) * t], look: [0, h, -d] }) },
+        pan_right:    { label: '橫搖 Pan right',   fn: (t, d, h) => ({ pos: [0, h, d], look: [-d * 0.6 + d * 1.2 * t, h * 0.6, -d] }) },
+    };
+
+    // 場景用文字描述，一行一個量體。理由：不必寫拖拉 gizmo（那是一整套 UI），
+    // 而且這個格式可以直接由文字節點／LLM 產生——接一個文字節點就能「用講的」搭場景。
+    const GREYBOX_PRESETS = {
+        street: {
+            label: '街道 Street',
+            spec: ['box 6 10 6 at -8 5 -14', 'box 6 16 6 at -9 8 -28', 'box 6 12 6 at 9 6 -18',
+                   'box 6 20 6 at 10 10 -34', 'box 2 1 4 at -3 0.5 -8', 'cone 1.2 3 at 4 1.5 -10'].join('\n'),
+        },
+        room: {
+            label: '室內 Room',
+            spec: ['box 10 0.3 10 at 0 0 -6', 'box 0.3 6 10 at -5 3 -6', 'box 0.3 6 10 at 5 3 -6',
+                   'box 3 1 1.5 at 0 0.5 -7', 'cyl 0.4 2 at -2 1 -4'].join('\n'),
+        },
+        stage: {
+            label: '人物舞台 Stage',
+            spec: ['cyl 3 0.3 at 0 0.15 -6', 'cyl 0.5 3.4 at 0 1.7 -6', 'sphere 0.5 at 0 3.8 -6',
+                   'box 8 5 0.4 at 0 2.5 -12'].join('\n'),
+        },
+        empty: { label: '空白 Empty', spec: 'box 2 2 2 at 0 1 -6' },
+    };
+
+    // 解析場景描述。容錯：看不懂的行收集成錯誤讓使用者看到，不要靜默跳過——
+    // 靜默跳過的話使用者會以為打錯的那一行有生效，只是「模型沒照做」。
+    function parseGreyboxSpec(text) {
+        const shapes = [], errors = [];
+        (text || '').split('\n').forEach((raw, i) => {
+            const line = raw.trim();
+            if (!line || line.startsWith('#')) return;
+            const tok = line.split(/\s+/);
+            const kind = tok[0].toLowerCase();
+            const atIdx = tok.indexOf('at');
+            const nums = (a, b) => tok.slice(a, b).map(Number);
+            const pos = atIdx >= 0 ? nums(atIdx + 1, atIdx + 4) : [0, 0, 0];
+            const dims = nums(1, atIdx >= 0 ? atIdx : tok.length);
+            const rotIdx = tok.indexOf('rot');
+            const rot = rotIdx >= 0 ? Number(tok[rotIdx + 1]) || 0 : 0;
+            const bad = (msg) => errors.push(`第 ${i + 1} 行：${msg}`);
+            if (pos.length !== 3 || pos.some(n => !Number.isFinite(n))) return bad('at 後面要接三個數字（x y z）');
+            if (kind === 'box' && dims.length >= 3) shapes.push({ kind, dims: dims.slice(0, 3), pos, rot });
+            else if (kind === 'cyl' && dims.length >= 2) shapes.push({ kind, dims: dims.slice(0, 2), pos, rot });
+            else if (kind === 'cone' && dims.length >= 2) shapes.push({ kind, dims: dims.slice(0, 2), pos, rot });
+            else if (kind === 'sphere' && dims.length >= 1) shapes.push({ kind, dims: dims.slice(0, 1), pos, rot });
+            else bad(`看不懂「${line}」（可用：box 寬 高 深／cyl 半徑 高／cone 半徑 高／sphere 半徑，後接 at x y z）`);
+        });
+        return { shapes, errors };
+    }
+
+    function GreyboxNode() {
+        this.addInput('場景描述', 'string');
+        this.addOutput('image', 'image');
+        this.addOutput('video', 'video');
+        this.properties = {
+            preset: 'street', spec: GREYBOX_PRESETS.street.spec, move: 'dolly_in',
+            ratio: '16:9', duration: 3, distance: 14, height: 3, status: '',
+        };
+        this.imageUrl = null; this.videoUrl = null;
+        // ⚠️ wireConfigOverlay() 會把 .cv-controls 整塊搬去「選取時才顯示的設定浮層」，
+        // 留在面板裡的才是節點本體會畫出來的東西。第一版把所有控制項都放在 .cv-controls，
+        // 結果重新整理後節點本體整個空掉（新增當下因為節點是選取狀態才看得到）。
+        // 本體＝預覽畫布＋生成鈕＋狀態，設定＝浮層，跟 PoseNode 同一套。
+        this._contentHeight = 260;
+        this.size = [340, 260];
+        this.color = '#26323a'; this.bgcolor = '#2a2a2a';
+
+        const panel = el('div');
+        panel.innerHTML = `
+            <div class="cv-controls">
+                <label>場景範本</label>
+                <div class="cv-gb-preset-slot"></div>
+                <label>場景描述<span class="cv-hint">（一行一個量體；接文字節點可由 AI 產生）</span></label>
+                <textarea class="cv-gb-spec" rows="6" spellcheck="false"></textarea>
+                <div class="cv-hint cv-gb-err" style="color:#B3574F"></div>
+                <label>運鏡</label>
+                <div class="cv-gb-move-slot"></div>
+                <label>畫面比例</label>
+                <div class="cv-gb-ratio-slot"></div>
+                <label>時長（秒）<span class="cv-gb-dur-val">3</span></label>
+                <input type="range" class="cv-gb-dur" min="1" max="8" step="1" value="3">
+                <label>相機距離 <span class="cv-gb-dist-val">14</span></label>
+                <input type="range" class="cv-gb-dist" min="4" max="40" step="1" value="14">
+                <label>相機高度 <span class="cv-gb-h-val">3</span></label>
+                <input type="range" class="cv-gb-h" min="1" max="20" step="1" value="3">
+            </div>
+            <div class="cv-gb-body">
+                <canvas class="cv-gb-view" style="width:100%;border-radius:6px;display:block"></canvas>
+                <button class="cv-generate cv-gb-render" style="margin-top:6px">▶ 產生灰模影片</button>
+                <div class="cv-status"></div>
+            </div>`;
+        attachDomPanel(this, panel);
+
+        this.specEl = panel.querySelector('.cv-gb-spec');
+        this.errEl = panel.querySelector('.cv-gb-err');
+        this.statusEl = panel.querySelector('.cv-status');
+        this.viewCanvas = panel.querySelector('.cv-gb-view');
+        this.specEl.value = this.properties.spec;
+        this.specEl.addEventListener('input', () => {
+            this.properties.spec = this.specEl.value;
+            this._rebuildScene();
+        });
+
+        this.presetSel = buildSelect(Object.keys(GREYBOX_PRESETS), this.properties.preset, (v) => {
+            this.properties.preset = v;
+            this.properties.spec = GREYBOX_PRESETS[v].spec;
+            this.specEl.value = this.properties.spec;
+            this._rebuildScene();
+        });
+        Array.from(this.presetSel.options).forEach(o => { o.textContent = GREYBOX_PRESETS[o.value].label; });
+        panel.querySelector('.cv-gb-preset-slot').appendChild(this.presetSel);
+
+        this.moveSel = buildSelect(Object.keys(GREYBOX_MOVES), this.properties.move, (v) => {
+            this.properties.move = v; this._renderPreview();
+        });
+        Array.from(this.moveSel.options).forEach(o => { o.textContent = GREYBOX_MOVES[o.value].label; });
+        panel.querySelector('.cv-gb-move-slot').appendChild(this.moveSel);
+
+        this.ratioSel = buildSelect(Object.keys(GREYBOX_RATIOS), this.properties.ratio, (v) => {
+            this.properties.ratio = v; this._resize(); this._renderPreview();
+        });
+        panel.querySelector('.cv-gb-ratio-slot').appendChild(this.ratioSel);
+
+        const bindSlider = (cls, valCls, key) => {
+            const s = panel.querySelector(cls), v = panel.querySelector(valCls);
+            s.value = this.properties[key]; v.textContent = this.properties[key];
+            s.addEventListener('input', () => {
+                this.properties[key] = parseInt(s.value); v.textContent = s.value; this._renderPreview();
+            });
+            return s;
+        };
+        this.durSlider = bindSlider('.cv-gb-dur', '.cv-gb-dur-val', 'duration');
+        bindSlider('.cv-gb-dist', '.cv-gb-dist-val', 'distance');
+        bindSlider('.cv-gb-h', '.cv-gb-h-val', 'height');
+
+        panel.querySelector('.cv-gb-render').addEventListener('click', () => this.renderVideo());
+        wireConfigOverlay(this, panel);
+        attachNodeChrome(this);
+        this._initThree();
+        this._rebuildScene();
+    }
+    GreyboxNode.title = '3D 灰模 Greybox';
+
+    GreyboxNode.prototype._initThree = function () {
+        if (typeof THREE === 'undefined') { this.statusEl.textContent = '三維函式庫未載入'; return; }
+        const [w, h] = GREYBOX_RATIOS[this.properties.ratio];
+        this.renderer = new THREE.WebGLRenderer({ canvas: this.viewCanvas, antialias: true, preserveDrawingBuffer: true });
+        this.renderer.setPixelRatio(1);
+        this.renderer.setSize(w, h, false);
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0xd8d8d8);
+        this.camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 500);
+        // 灰模就是「沒有材質資訊」：單一中性灰、一盞方向光加環境光，只留下形狀與體積
+        this.scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+        const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+        dir.position.set(6, 12, 8);
+        this.scene.add(dir);
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400),
+            new THREE.MeshLambertMaterial({ color: 0xc4c4c4 }));
+        ground.rotation.x = -Math.PI / 2;
+        this.scene.add(ground);
+        this.group = new THREE.Group();
+        this.scene.add(this.group);
+        this.greyMat = new THREE.MeshLambertMaterial({ color: 0xb0b0b0 });
+    };
+
+    GreyboxNode.prototype._resize = function () {
+        if (!this.renderer) return;
+        const [w, h] = GREYBOX_RATIOS[this.properties.ratio];
+        this.renderer.setSize(w, h, false);
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+    };
+
+    GreyboxNode.prototype._rebuildScene = function () {
+        if (!this.group) return;
+        const { shapes, errors } = parseGreyboxSpec(this.properties.spec);
+        this.errEl.textContent = errors.join('；');
+        while (this.group.children.length) {
+            const c = this.group.children.pop();
+            if (c.geometry) c.geometry.dispose();
+        }
+        shapes.forEach(s => {
+            let geo;
+            if (s.kind === 'box') geo = new THREE.BoxGeometry(s.dims[0], s.dims[1], s.dims[2]);
+            else if (s.kind === 'cyl') geo = new THREE.CylinderGeometry(s.dims[0], s.dims[0], s.dims[1], 24);
+            else if (s.kind === 'cone') geo = new THREE.ConeGeometry(s.dims[0], s.dims[1], 24);
+            else geo = new THREE.SphereGeometry(s.dims[0], 24, 16);
+            const m = new THREE.Mesh(geo, this.greyMat);
+            m.position.set(s.pos[0], s.pos[1], s.pos[2]);
+            m.rotation.y = (s.rot || 0) * Math.PI / 180;
+            this.group.add(m);
+        });
+        this._renderPreview();
+    };
+
+    GreyboxNode.prototype._applyCamera = function (t) {
+        const mv = (GREYBOX_MOVES[this.properties.move] || GREYBOX_MOVES.dolly_in).fn;
+        const { pos, look } = mv(t, this.properties.distance, this.properties.height);
+        this.camera.position.set(pos[0], pos[1], pos[2]);
+        this.camera.lookAt(look[0], look[1], look[2]);
+    };
+
+    // 預覽固定畫第一格：使用者要判斷的是「起始構圖對不對」，
+    // 播動畫反而看不清楚，而且每次滑桿變動都跑動畫很吵
+    GreyboxNode.prototype._renderPreview = function () {
+        if (!this.renderer) return;
+        this._applyCamera(0);
+        this.renderer.render(this.scene, this.camera);
+        this.imageUrl = this.viewCanvas.toDataURL('image/png');
+        this.setOutputData(0, this.imageUrl);
+    };
+
+    GreyboxNode.prototype.renderVideo = async function () {
+        if (!this.renderer) { showToast('三維函式庫未載入'); return; }
+        if (typeof VideoEncoder === 'undefined' || typeof Mp4Muxer === 'undefined') {
+            showToast('這個瀏覽器不支援影片編碼（WebCodecs），只能用單格輸出');
+            return;
+        }
+        const [w, h] = GREYBOX_RATIOS[this.properties.ratio];
+        const fps = 24, total = this.properties.duration * fps;
+        this.statusEl.textContent = '編碼中… 0%';
+        try {
+            const muxer = new Mp4Muxer.Muxer({
+                target: new Mp4Muxer.ArrayBufferTarget(),
+                video: { codec: 'avc', width: w, height: h },
+                fastStart: 'in-memory',
+            });
+            const encoder = new VideoEncoder({
+                output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+                error: (e) => { throw e; },
+            });
+            encoder.configure({ codec: 'avc1.42001f', width: w, height: h, bitrate: 2500000, framerate: fps });
+            for (let i = 0; i < total; i++) {
+                this._applyCamera(total > 1 ? i / (total - 1) : 0);
+                this.renderer.render(this.scene, this.camera);
+                const frame = new VideoFrame(this.viewCanvas, {
+                    timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps),
+                });
+                encoder.encode(frame, { keyFrame: i % fps === 0 });
+                frame.close();
+                if (i % fps === 0) {
+                    this.statusEl.textContent = `編碼中… ${Math.round(i / total * 100)}%`;
+                    await new Promise(r => setTimeout(r, 0));   // 讓出主執行緒，避免整頁卡住
+                }
+            }
+            await encoder.flush();
+            muxer.finalize();
+            if (this.videoUrl) URL.revokeObjectURL(this.videoUrl);
+            this.videoUrl = URL.createObjectURL(new Blob([muxer.target.buffer], { type: 'video/mp4' }));
+            this.setOutputData(1, this.videoUrl);
+            this.statusEl.textContent = `完成（${this.properties.duration} 秒 / ${w}×${h}）`;
+            this._renderPreview();
+        } catch (e) {
+            this.statusEl.textContent = '編碼失敗：' + (e && e.message ? e.message : e);
+        }
+    };
+
+    GreyboxNode.prototype.onExecute = function () {
+        // 上游文字節點可以直接餵場景描述（讓 AI 產生量體配置）
+        const inSpec = this.getInputData(0);
+        if (inSpec && inSpec !== this._lastInSpec) {
+            this._lastInSpec = inSpec;
+            this.properties.spec = inSpec;
+            this.specEl.value = inSpec;
+            this._rebuildScene();
+        }
+        this.setOutputData(0, this.imageUrl);
+        this.setOutputData(1, this.videoUrl);
+    };
+    GreyboxNode.prototype.onConfigure = function () {
+        this.specEl.value = this.properties.spec || '';
+        if (this.presetSel) this.presetSel.value = this.properties.preset;
+        if (this.moveSel) this.moveSel.value = this.properties.move;
+        if (this.ratioSel) this.ratioSel.value = this.properties.ratio;
+        this._resize();
+        this._rebuildScene();
+        // blob: 網址重整後就失效，還原時不要假裝影片還在
+        this.videoUrl = null;
+        this.statusEl.textContent = '請重新產生灰模影片';
+    };
+    GreyboxNode.prototype.onRemoved = sharedOnRemoved;
+
     function registerNodeTypes() {
         LiteGraph.registerNodeType('nenai/text', TextPromptNode);
         LiteGraph.registerNodeType('nenai/camera_angle', CameraAngleNode);
         LiteGraph.registerNodeType('nenai/load_image', LoadImageNode);
         LiteGraph.registerNodeType('nenai/pose', PoseNode);
+        LiteGraph.registerNodeType('nenai/greybox', GreyboxNode);
         LiteGraph.registerNodeType('nenai/image', ImageGenNode);
         LiteGraph.registerNodeType('nenai/video', VideoGenNode);
         LiteGraph.registerNodeType('nenai/video_edit', VideoEditNode);
@@ -3208,7 +3518,7 @@
     // ⚠️ 新增節點類型時這裡跟 NODE_TYPE_LABELS **兩張表都要加**：這張給工具列的
     // 「+ 新增節點」選單（HTML 裡的 data-type 是短鍵），NODE_TYPE_LABELS 給輸出插槽
     // 旁的快速新增選單。只加一邊的話按鈕會出現但點下去沒有反應（type 查不到就 return）。
-    const NODE_MENU_TYPES = { text: 'nenai/text', camera_angle: 'nenai/camera_angle', load_image: 'nenai/load_image', pose: 'nenai/pose', image: 'nenai/image', video: 'nenai/video', video_edit: 'nenai/video_edit', video_animate: 'nenai/video_animate', edit: 'nenai/edit', audio: 'nenai/audio', asr: 'nenai/asr', muleai: 'nenai/muleai' };
+    const NODE_MENU_TYPES = { text: 'nenai/text', camera_angle: 'nenai/camera_angle', load_image: 'nenai/load_image', pose: 'nenai/pose', greybox: 'nenai/greybox', image: 'nenai/image', video: 'nenai/video', video_edit: 'nenai/video_edit', video_animate: 'nenai/video_animate', edit: 'nenai/edit', audio: 'nenai/audio', asr: 'nenai/asr', muleai: 'nenai/muleai' };
 
     // ── 範本庫：一鍵套用常見組合，省去手動拉線 ─────────────────────
     // 每個範本只描述「節點類型 + 相對座標 + 要接的線」，實際節點是套用當下用

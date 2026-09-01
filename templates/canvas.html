@@ -45,6 +45,7 @@
         <button data-type="camera_angle">相機角度 Camera Angle</button>
         <button data-type="load_image">上傳圖片 Load Image</button>
         <button data-type="pose">姿勢 Pose</button>
+        <button data-type="greybox">3D 灰模 Greybox</button>
         <button data-type="image">圖片 Image</button>
         <button data-type="video">影片 Video</button>
         <button data-type="video_edit">影片編輯 Video Edit</button>
@@ -76,7 +77,12 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/litegraph.js@0.7.18/build/litegraph.min.js"></script>
+<!-- 3D 灰模節點：three 用 UMD 版（canvas.js 是傳統 script，不是 module）；
+     mp4-muxer 把 WebCodecs 編出來的 H.264 封裝成 mp4——上游只收 mp4/mov，
+     MediaRecorder 給的 webm 送不進去，所以不能用它。 -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.js"></script>
 <script src="/static/js/model_intros.js?v=2"></script>
-<script src="/static/js/canvas.js?v=46"></script>
+<script src="/static/js/canvas.js?v=49"></script>
 </body>
 </html>
