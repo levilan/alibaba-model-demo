@@ -2676,19 +2676,47 @@
         this._syncUiForModel();
     }
     MuleAiGenNode.title = 'MuleAI Spicy';
-    MuleAiGenNode.prototype._isVideo = function () { return this.properties.model === MULEAI_VIDEO_MODEL; };
+    // ⚠️ 這幾個判斷原本是**寫死的模型 id 比對**，只認 wan2.7-i2v-spicy 是影片。
+    // 2026-09-01 加進 w3.0 影片四顆之後就出事了：新模型排在清單第一個、成為節點
+    // 預設值，_isVideo() 卻回 false —— 輸出插槽變成 image、不送解析度與時長、還
+    // 強制要求連來源圖，最後從 result.images[0] 取結果（w3.0 回的是 videos[]）而
+    // 拿到 undefined。改成看 MODELS 給的中繼資料，之後再加同類模型就不必改這裡。
+    MuleAiGenNode.prototype._meta = function () {
+        return getModelsFor('muleai').find(m => m.id === this.properties.model) || {};
+    };
+    MuleAiGenNode.prototype._isVideo = function () {
+        return this._meta().type === 'video' || this.properties.model === MULEAI_VIDEO_MODEL;
+    };
     MuleAiGenNode.prototype._isFaceSwap = function () { return this.properties.model === MULEAI_FACESWAP_MODEL; };
     MuleAiGenNode.prototype._isT2i = function () { return this.properties.model === MULEAI_T2I_MODEL; };
-    MuleAiGenNode.prototype._needsImage = function () { return this.properties.model !== MULEAI_T2I_MODEL; };
+    // 首幀圖選填的模型（w3.0：沒有圖就是文生影片）不能擋在「請先連接來源圖」那一關
+    MuleAiGenNode.prototype._needsImage = function () {
+        return this.properties.model !== MULEAI_T2I_MODEL && !this._meta().image_optional;
+    };
     MuleAiGenNode.prototype._syncUiForModel = function () {
         const isVideo = this._isVideo(), isFaceSwap = this._isFaceSwap(), isT2i = this._isT2i();
         this.promptGroup.style.display = isFaceSwap ? 'none' : '';
         this.resGroup.style.display = isVideo ? '' : 'none';
         this.imgResGroup.style.display = isT2i ? '' : 'none';
         this.durGroup.style.display = isVideo ? '' : 'none';
-        this.inputs[0].name = isVideo ? '首幀圖片' : '來源圖';
+        // 解析度檔次與時長上限逐顆不同（w3.0 的 pro 系列是 1080p/2k/4k、最長 30 秒），
+        // 由 MODELS 的資料驅動；沒帶這些欄位的舊模型維持原本的 1080P/720P 與 2–15 秒
+        const meta = this._meta();
+        if (isVideo) {
+            const list = meta.resolutions || ['1080P', '720P'];
+            if (!list.includes(this.properties.resolution)) this.properties.resolution = list[0];
+            this.resPicker.rebuild(list, this.properties.resolution);
+            const lo = meta.min_dur || 2, hi = meta.max_dur || 15;
+            this.durSlider.min = lo; this.durSlider.max = hi;
+            this.properties.duration = Math.min(Math.max(this.properties.duration, lo), hi);
+            this.durSlider.value = this.properties.duration;
+            this.durValEl.textContent = this.properties.duration;
+        }
+        this.inputs[0].name = !isVideo ? '來源圖'
+            : (meta.image_optional ? '首幀圖片（選填）' : '首幀圖片');
         this.modeHintEl.textContent =
-            isVideo ? '（圖生影片 + 配音）' : isFaceSwap ? '（來源圖 + 換臉參考圖）' : isT2i ? '（純文生圖）' : '（來源圖 + Prompt）';
+            isVideo ? (this._meta().image_optional ? '（文生／圖生影片）' : '（圖生影片 + 配音）')
+            : isFaceSwap ? '（來源圖 + 換臉參考圖）' : isT2i ? '（純文生圖）' : '（來源圖 + Prompt）';
         const outType = isVideo ? 'video' : 'image';
         if (this.outputs[0].type !== outType) {
             this.disconnectOutput(0);
@@ -2717,6 +2745,10 @@
             const imgUrl = this.getInputData(0, true);
             if (!imgUrl) { showToast('請先連接一張來源圖片'); return; }
             imageBlob = await fetchAsBlob(imgUrl);
+        } else if (this._meta().image_optional) {
+            // 首幀圖選填：有接就送（＝圖生影片），沒接就是文生影片，不擋
+            const imgUrl = this.getInputData(0, true);
+            if (imgUrl) imageBlob = await fetchAsBlob(imgUrl);
         }
         if (isFaceSwap) {
             const faceUrl = this.getInputData(1, true);
