@@ -1539,6 +1539,11 @@ function onVidModelChange() {
     // 480P，那是它的基準價位，不該被 vedit 的通則擋掉）
     const allowedRes = modelInfo.resolutions;
     Array.from(resEl.options).forEach(o => {
+        // 360P 目前只有 Gemini Omni 支援，是 2026-09-02 才加進選單的新選項。
+        // 沒有 resolutions 清單的模型走「顯示全部」那條路，若不特別擋，這個新選項
+        // 會憑空出現在它們身上（實際不支援、送出去只會被上游拒或靜默忽略）。
+        // 所以 360P 一律**只在模型明確列出時**才顯示。
+        if (o.value === '360P') { o.hidden = !(allowedRes && allowedRes.includes('360P')); return; }
         o.hidden = allowedRes ? !allowedRes.includes(o.value)
                               : (taskType === 'vedit' && o.value === '480P');
     });

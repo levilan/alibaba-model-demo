@@ -1157,11 +1157,11 @@ MODELS = {
         # （輸入 $1.50/1M、文字輸出 $9、影片輸出 $17.50）。同樣走 /v1beta/interactions，
         # 模型自行決定長度與解析度，聲音隨影片產出。
         {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview", "group": "Gemini",
-         "desc": "Google 多模態影片生成（預覽版），長度與解析度由模型決定（約 10 秒），自動含原生配音", "type": "t2v", "audio": False, "no_duration": True, "no_resolution": True},
+         "desc": "Google 多模態影片生成（預覽版），約 10 秒、可選 360P 或 720P，自動含原生配音", "type": "t2v", "audio": False, "no_duration": True, "resolutions": ["360P", "720P"]},
         {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview（圖生影片）", "group": "Gemini",
-         "desc": "Google 多模態圖生影片（預覽版），長度與解析度由模型決定（約 10 秒），自動含原生配音", "type": "i2v", "audio": False, "no_duration": True, "no_resolution": True},
+         "desc": "Google 多模態圖生影片（預覽版），約 10 秒、可選 360P 或 720P，自動含原生配音", "type": "i2v", "audio": False, "no_duration": True, "resolutions": ["360P", "720P"]},
         {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview（參考生影片）", "group": "Gemini",
-         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），長度與解析度由模型決定（約 10 秒），自動含原生配音", "type": "r2v", "audio": False, "no_duration": True, "no_resolution": True, "max_ref": 3},
+         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），約 10 秒、可選 360P 或 720P，自動含原生配音", "type": "r2v", "audio": False, "no_duration": True, "max_ref": 3, "resolutions": ["360P", "720P"]},
     ],
     "muleai": [
         # ── w3.0 影片四顆（2026-09-01 上架）────────────────────────────
@@ -3110,13 +3110,47 @@ async def _save_video_bytes(data: bytes) -> Optional[str]:
         print(f"Video save error: {e}")
         return None
 
+# omni 的解析度只放行**我們自己驗證過**的值。發布文章另外提到可以 upscale 到
+# 1080p／4K，但那段的措辭是「upscale」、未必是同一個欄位的值域，沒驗過就不列——
+# 列出來卻做不到的選項比沒有更糟（MAI 尺寸那次的教訓）。
+_OMNI_RESOLUTIONS = {"360p", "720p"}
+
+
+def _omni_resolution(model: str, raw: Optional[str]) -> Optional[str]:
+    """只有在 MODELS 明確給了 `resolutions` 的 omni 型號才送 response_format。
+
+    ⚠️ 這個「要 MODELS 開通才送」的閘門是刻意的，不要簡化掉。影片頁籤的解析度
+    欄位**即使被隱藏（no_resolution）也還是會帶著預設值 720P 送過來**，若只看值是否
+    合法就送出去，等於在還沒驗證透傳是否有效之前，就把原本「不帶欄位、走上游預設」
+    的行為悄悄改成「明確指定 720p」。驗證通過後再把 `resolutions` 加進該型號即可。
+    """
+    entry = next((m for m in MODELS["video"]
+                  if m["id"] == model and m.get("resolutions")), None)
+    if not entry:
+        return None
+    v = (raw or "").strip().lower()
+    allowed = {r.lower() for r in entry["resolutions"]} & _OMNI_RESOLUTIONS
+    return v if v in allowed else None
+
+
 async def _generate_omni_video(model: str, prompt: str, api_key: str,
-                                image_files: Optional[list] = None) -> dict:
+                                image_files: Optional[list] = None,
+                                resolution: Optional[str] = None) -> dict:
     content: list = [{"type": "text", "text": prompt}]
     for fbytes, ftype in (image_files or []):
         b64 = base64.b64encode(fbytes).decode()
         content.append({"type": "image", "data": b64, "mime_type": ftype})
     payload = {"model": model, "input": [{"type": "user_input", "content": content}]}
+    # 輸出解析度走 `response_format`（📄Google 發布文章的官方範例；
+    # 模型卡的「參數預設值」那張表只列取樣參數、沒有這一欄，**不要拿那張表當
+    # 「參數不存在」的證據**——2026-09-02 就是這樣判斷錯過一次）。
+    # 不帶這個欄位時走上游預設，實測是 720p。
+    # ⚠️ `type` 是必填，發布文章的 SDK 範例沒寫是因為 SDK 會補；少了它上游回
+    # 「The 'type' parameter is required at 'response_format'」（2026-09-02 實測，
+    # 該錯誤在計費前發生、不花錢）。合法值上游會列出來：boolean/video/number/
+    # integer/object/image/text/string/array/audio。
+    if resolution:
+        payload["response_format"] = {"type": "video", "resolution": resolution}
     async with httpx.AsyncClient(timeout=180.0) as client:
         resp = await client.post(
             f"{NENAI_BASE}/v1beta/interactions",
@@ -3167,7 +3201,8 @@ async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
 
     if model in _INTERACTIONS_VIDEO_MODELS:
         try:
-            return await _generate_omni_video(model, prompt, api_key)
+            return await _generate_omni_video(model, prompt, api_key,
+                                               resolution=_omni_resolution(model, resolution))
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -3252,7 +3287,8 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
         if not first_bytes:
             return JSONResponse(status_code=400, content={"error": "I2V 需要上傳首幀圖片"})
         try:
-            return await _generate_omni_video(model, prompt, api_key, [(first_bytes, "image/png")])
+            return await _generate_omni_video(model, prompt, api_key, [(first_bytes, "image/png")],
+                                               resolution=_omni_resolution(model, resolution))
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -3471,7 +3507,8 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
         if not image_files:
             return JSONResponse(status_code=400, content={"error": "R2V 需要至少一張參考圖片"})
         try:
-            return await _generate_omni_video(model, prompt, api_key, image_files[:3])
+            return await _generate_omni_video(model, prompt, api_key, image_files[:3],
+                                               resolution=_omni_resolution(model, resolution))
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
