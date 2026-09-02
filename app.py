@@ -3159,7 +3159,8 @@ _OMNI_MAX_SEGMENTS = 4
 #    ⚠️ **量到的秒數 ≠ 被收費的秒數**：那支 13 秒的影片收 $0.3468，約等於「10 秒新影片」
 #    的價（360p 10 秒約 $0.338）加上來源影片的輸入 token，不是按 13 秒收。
 #    ⚠️ 延長時**不能帶 aspect_ratio**（上游 400），比例跟著來源走。
-#    ⚪ 未驗證：延長的新增長度能不能用 duration 指定（目前不送，實測預設約 10 秒）。
+#    ✅ 延長的新增長度**可以用 duration 指定**（實測：3.008 秒來源 ＋ duration=3s →
+#       成品 6.016 秒，新增段 3 秒；不帶則是上游預設的約 10 秒）。
 
 # ⚠️ 早期版本用 `previous_interaction_id` 實作延長，被上游擋下
 #   （`… on this path do not support previous_interaction_id.`）。
@@ -3750,9 +3751,13 @@ async def video_omni_extend(request: Request, api_key: str = Depends(get_api_key
     # ⚠️ 延長時**不能帶 aspect_ratio**：上游回
     #    `Aspect ratio cannot be set in response format for extend task.`（400、不計費）。
     #    比例本來就跟著來源影片走，所以也沒有帶的理由。
+    # ✅ 但 duration **可以帶**，而且控制的是「新增那一段」的長度，不是成品總長
+    #    （2026-09-02 實測：3.008 秒的來源 ＋ duration=3s → 成品 6.016 秒）。
+    #    不帶就是上游預設的約 10 秒；帶短一點可以省錢。
     return await _generate_omni_video(
         model, prompt, api_key,
         resolution=prev.get("resolution"),
+        duration=_omni_duration(model, form.get("duration")),
         source_video=disk_path.read_bytes(),
         task="extend",
         chain_len=chain_len + 1,

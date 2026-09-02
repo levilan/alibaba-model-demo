@@ -2622,6 +2622,10 @@ async function extendOmniVideo(taskId) {
     fd.append('task_id', taskId);
     const p = document.getElementById('videoPrompt')?.value.trim();
     if (p) fd.append('prompt', p);
+    // 延長的 duration 控制的是「新增那一段」的長度（實測），不是成品總長——
+    // 沿用目前選的秒數，使用者調短就是延長得短、也比較便宜
+    const d = document.getElementById('videoDuration')?.value;
+    if (d) fd.append('duration', d);
     toast('已送出延長請求…');
     try {
         // apiPostForm 已經幫忙 parse 過了，回傳的是資料不是 Response
