@@ -242,10 +242,19 @@ def test_models_fields_are_known_to_mcp():
         "no_size", "supports_gpt_params", "supports_sequential",
         "sequential_max_size", "image_input", "audio_only", "turn_modes",
         "reasoning_effort",
+        # 文字模型專屬的行為旗標。MCP **目前沒有任何對話／文字工具**（只有
+        # list_models／圖片／影片／TTS／ASR），agent 拿不到也用不到這些參數，
+        # 一律歸內部欄位。⚠️ 之後若新增 chat 類工具，這一組要重新分類。
+        "no_sampling",       # 不接受 temperature/top_p（Claude 系）
+        "no_penalties",      # 連 0.0 都不接受 presence/frequency_penalty（grok-4.6）
+        "thinking_budget", "clear_thinking", "preserve_thinking",
+        "repetition_penalty",
     }
     known = set(_MCP_CONSTRAINT_FIELDS) | non_constraint
     unknown: dict[str, set] = {}
-    for cat in ("image", "video"):
+    # text 先前沒被涵蓋——2026-09-02 加 grok-4.6 的 no_penalties 時，新欄位就這樣
+    # 靜悄悄溜過去了，正是這條測試該擋下的東西
+    for cat in ("image", "video", "text"):
         for m in MODELS[cat]:
             extra = set(m) - known
             if extra:

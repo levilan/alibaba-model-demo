@@ -571,6 +571,12 @@ MODELS = {
         {"id": "claude-sonnet-4-6",           "name": "Claude Sonnet 4.6", "group": "Claude", "desc": "前代均衡模型",     "thinking": False, "no_sampling": True},
         {"id": "claude-sonnet-4-5-20250929",  "name": "Claude Sonnet 4.5", "group": "Claude", "desc": "前代均衡模型",     "thinking": False, "no_sampling": True},
         {"id": "claude-haiku-4-5-20251001",   "name": "Claude Haiku 4.5",  "group": "Claude", "desc": "極速模型",         "thinking": False, "no_sampling": True},
+        # claude-fable-5-1（2026-09-02 上架，正式站；測試站沒有這顆）。實測：
+        #   temperature 送出被上游拒（`temperature` is deprecated for this model）→ no_sampling
+        #   不回 reasoning_content、reasoning_tokens=0
+        #   **看得到圖**（1x1 PNG 實測答得出顏色）——Claude 家族目前只有這顆標了 vision，
+        #   但那是既有缺漏不是差異：claude-sonnet-5 同樣實測看得到圖卻沒標。詳見 update.md。
+        {"id": "claude-fable-5-1",            "name": "Claude Fable 5.1",  "group": "Claude", "desc": "創意寫作模型，支援看圖", "thinking": False, "no_sampling": True, "vision": True},
         {"id": "claude-fable-5",              "name": "Claude Fable 5",    "group": "Claude", "desc": "創意寫作模型",     "thinking": False, "no_sampling": True},
         # ── GPT（推理強度用 reasoning_effort 字串控制，不是 enable_thinking 布林值——
         #    實測過對 GPT 模型送 enable_thinking 會直接 400 "Unknown parameter"；
@@ -632,7 +638,18 @@ MODELS = {
         #   reasoning_effort 枚舉 none/minimal/low/medium/high（xhigh 與 max 回 422）
         #   none 三次都得到 reasoning_tokens=0，是穩定有效的
         #   一樣不回 reasoning_content，所以思考過程看不到、thinking 維持 False
-        {"id": "grok-4.3",                    "name": "Grok 4.3",                    "group": "xAI Grok", "desc": "最新旗艦，可調推理強度、支援看圖", "thinking": False,
+        # grok-4.6（2026-09-02 上架，正式站）。**值域與 4.3 不同，不要照抄**（實測 2026-09-02）：
+        #   reasoning_effort 接受 minimal/low/medium/high/xhigh；**none 被拒**（3/3 都是
+        #     openai_error／bad_response_status_code——Grok 不列舉合法值，只能逐一試）
+        #   4.3 剛好相反：接受 none、拒絕 xhigh。同家族互推在 Grok 上一次都沒對過。
+        #   預設就會推理（reasoning_tokens 71），不回 reasoning_content → thinking 維持 False
+        #   **不支援看圖**（n=1，回通用 openai_error；與「4.3 是唯一支援看圖的 Grok」一致）
+        #   各檔的 reasoning_tokens 各測一次：minimal 52／low 74／medium 97／high 93／xhigh 199
+        #   ——**high 低於 medium，n=1 撐不起「單調遞增」**，只寫值域不寫強弱關係。
+        {"id": "grok-4.6",                    "name": "Grok 4.6",                    "group": "xAI Grok", "desc": "最新旗艦，可調推理強度", "thinking": False,
+         "reasoning_effort": True, "reasoning_efforts": ["minimal", "low", "medium", "high", "xhigh"],
+         "no_penalties": True},
+        {"id": "grok-4.3",                    "name": "Grok 4.3",                    "group": "xAI Grok", "desc": "旗艦，可調推理強度、支援看圖", "thinking": False,
          "reasoning_effort": True, "reasoning_efforts": ["none", "minimal", "low", "medium", "high"],
          "vision": True},
         {"id": "grok-4-20-reasoning",         "name": "Grok 4.20 Reasoning",         "group": "xAI Grok", "desc": "旗艦推理（可關閉推理）", "thinking": False,
@@ -1700,6 +1717,8 @@ _GEMINI_THINKING_OFF_BY_DEFAULT = {"gemini-2.5-flash-lite", "gemini-3.5-flash-li
 # 真正的原因是閘道關閉思考時會改送上游不接受的取樣參數。這個模型的 thinking 旗標是
 # False，前端因此會送 enable_thinking:false，不排除就會**每一次呼叫都失敗**。
 _NO_ENABLE_THINKING_MODELS = {"kimi/kimi-k3"}
+# 連 0.0 都不收 presence_penalty／frequency_penalty 的模型（MODELS 的 no_penalties 旗標）
+_TEXT_NO_PENALTIES = {m["id"] for m in MODELS["text"] if m.get("no_penalties")}
 
 
 def _build_gemini_body(data: "TextGenerateRequest", messages: list) -> dict:
@@ -1900,11 +1919,16 @@ async def text_generate(request: Request, data: TextGenerateRequest, api_key: st
         model=data.model,
         messages=messages,
         max_tokens=data.max_tokens,
-        presence_penalty=data.presence_penalty,
-        frequency_penalty=data.frequency_penalty,
         stream=data.stream,
         extra_body=extra_body or None,
     )
+    # presence_penalty／frequency_penalty：有些模型連 0.0 都不收。grok-4.6 實測**只要
+    # 帶了其中任一個就 400**（`openai_error`／`bad_response_status_code`，Grok 不說是哪個
+    # 欄位的問題），而同家族的 grok-4.3 收得好好的——又一次「同家族不能互推」。
+    # 這兩個欄位原本是無條件送的（預設 0.0），所以新模型一上架就整個不能用。
+    if data.model not in _TEXT_NO_PENALTIES:
+        create_kwargs["presence_penalty"] = data.presence_penalty
+        create_kwargs["frequency_penalty"] = data.frequency_penalty
     # Claude 系列在此平台的 Bedrock 後端不接受 temperature/top_p（部分模型視為已棄用參數，
     # 部分模型不允許兩者同時指定），一律不送這兩個參數，讓後端使用預設取樣設定
     if not data.model.startswith("claude-"):
