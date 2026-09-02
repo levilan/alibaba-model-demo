@@ -644,3 +644,34 @@ def test_text_top_p_is_optional():
     修掉後「沒填就不送」才是正確語意，這條防止之後有人把預設值加回來。"""
     req = app.TextGenerateRequest(model="qwen3.5-flash", prompt="hi")
     assert req.top_p is None
+
+
+def test_drift_collects_every_model_category_but_not_voices():
+    """`probe_model.collect_model_ids()`：**每個分類都要收到、音色不能收**。
+
+    對應兩個實際發生過的 bug（2026-09-02 同一次修改的前後兩版），兩個都是這支
+    「偵測清單漂移」的工具**自己漂移**：
+      1. 原本寫死 text/image/video/muleai ＋ voice.asr/voice.tts，**漏了
+         voice.realtime 與 voice.music**，那 7 顆明明有收錄卻被報成「閘道有、我們
+         沒收錄」（實際 16 顆報成 23 顆）——會催人去補上根本已經在的東西。
+      2. 改成遞迴走訪後**收過頭**：TTS 底下的音色也長成 {"id","name","desc"}，
+         loongjohn／longanlingxin 這些音色 id 被當成模型，變成一堆假警報。
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "probe_model", Path(__file__).resolve().parent.parent / "scripts" / "probe_model.py")
+    probe = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probe)
+
+    ours = probe.collect_model_ids(app.MODELS)
+
+    # 每個分類至少要有一顆被收到（含最容易被漏掉的 voice 子分類）
+    for cat in ("text", "image", "video", "muleai"):
+        assert any(m["id"] in ours for m in app.MODELS[cat]), cat
+    for sub in app.MODELS["voice"]:
+        assert any(m["id"] in ours for m in app.MODELS["voice"][sub]), f"voice.{sub}"
+
+    # 音色不能被當成模型
+    voice_ids = {v["id"] for m in app.MODELS["voice"]["tts"] for v in m.get("voices", [])}
+    assert voice_ids, "測試前提不成立：TTS 模型底下沒有音色"
+    assert not (voice_ids & ours), sorted(voice_ids & ours)[:5]

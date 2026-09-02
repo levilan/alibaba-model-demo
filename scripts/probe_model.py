@@ -122,6 +122,39 @@ def probe_sizes(base: str, key: str, model: str, sizes: list[str]) -> None:
         print(f"     {sz:14s} {'✅ 可用' if r.status_code == 200 else '❌ ' + _err(r)[:90]}")
 
 
+# MODELS 底下**不是模型**的巢狀清單。目前只有 TTS 的音色：它也長成
+# {"id","name","desc"}，不排除的話 loongjohn／longanlingxin 這些音色 id 會被當成
+# 模型 id，變成一堆「MODELS 有、閘道沒有」的假警報。
+_NOT_MODEL_KEYS = {"voices"}
+
+
+def collect_model_ids(node: object) -> set[str]:
+    """遞迴走訪 MODELS，收集所有模型 id。
+
+    ⚠️ 兩個踩過的坑（2026-09-02 同一次修改的前後兩版），都是這支工具**自己漂移**：
+      1. 原本寫死分類清單（text/image/video/muleai ＋ voice.asr/voice.tts），漏掉
+         voice.realtime 與 voice.music——那 7 顆明明有收錄卻被報成「閘道有、我們沒
+         收錄」（實際 16 顆報成 23 顆）。清單漂移工具自己漂移比沒工具更糟：它會催人
+         去補上根本已經在的東西。所以改成遞迴走訪，新增分類不必再改這裡。
+      2. 遞迴之後**收過頭**，把音色也當成模型（見 _NOT_MODEL_KEYS）。
+    """
+    out: set[str] = set()
+
+    def walk(n: object) -> None:
+        if isinstance(n, dict):
+            if isinstance(n.get("id"), str):
+                out.add(n["id"])
+            for k, v in n.items():
+                if k not in _NOT_MODEL_KEYS:
+                    walk(v)
+        elif isinstance(n, list):
+            for v in n:
+                walk(v)
+
+    walk(node)
+    return out
+
+
 def drift_check(base: str, key: str) -> int:
     """比對 MODELS ↔ /v1/models ↔ /api/pricing，回傳有問題的項數。
 
@@ -137,11 +170,7 @@ def drift_check(base: str, key: str) -> int:
     avail = {m["id"] for m in httpx.get(f"{base}/v1/models", headers=hdr, timeout=30).json()["data"]}
     price = {m["model_name"] for m in httpx.get(f"{base}/api/pricing", headers=hdr, timeout=60).json()["data"]}
 
-    ours: set[str] = set()
-    for k in ("text", "image", "video", "muleai"):
-        ours |= {m["id"] for m in app.MODELS[k]}
-    for k in ("asr", "tts"):
-        ours |= {m["id"] for m in app.MODELS["voice"][k]}
+    ours = collect_model_ids(app.MODELS)
 
     problems = 0
     missing = sorted(ours - avail)
