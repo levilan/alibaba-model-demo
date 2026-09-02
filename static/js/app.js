@@ -1441,13 +1441,18 @@ function syncVidRatio() {
     const isFamily = isWan30 || model.startsWith('wan2.7') || model.startsWith('happyhorse');
     // no_ratio：該接口官方沒有 ratio 參數（wan2.7-i2v／happyhorse i2v／
     // happyhorse-1.0-video-edit，比例跟隨輸入素材），顯式送出會被閘道 422 拒絕
-    const noRatio = !!(models.video.find(m => m.id === model && m.type === t) || {}).no_ratio;
-    const show = !noRatio && ((isFamily && t !== 'animate') || (t === 'vedit'));
+    const entry = models.video.find(m => m.id === model && m.type === t) || {};
+    const noRatio = !!entry.no_ratio;
+    // MODELS 明確給了 ratios 的模型（目前是 Gemini Omni）以那份清單為準——
+    // 它的值域比萬相家族窄（只有 16:9／9:16），沿用共用清單會讓使用者選到
+    // 保證被上游拒絕的值。其餘模型維持原本的家族判斷，行為不變。
+    const declared = entry.ratios;
+    const show = !noRatio && (!!declared || (isFamily && t !== 'animate') || (t === 'vedit'));
     group.style.display = show ? '' : 'none';
     if (!show) { sel.value = ''; return; }
     const prev = sel.value;
     const opts = isWan30 ? [['adaptive', '自動（依內容）']] : [['', '自動（預設）']];
-    ['16:9', '9:16', '1:1', '4:3', '3:4'].forEach(r => opts.push([r, r]));
+    (declared || ['16:9', '9:16', '1:1', '4:3', '3:4']).forEach(r => opts.push([r, r]));
     sel.innerHTML = opts.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
     sel.value = opts.some(([v]) => v === prev) ? prev : opts[0][0];
 }

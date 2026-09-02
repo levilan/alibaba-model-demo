@@ -1157,11 +1157,11 @@ MODELS = {
         # （輸入 $1.50/1M、文字輸出 $9、影片輸出 $17.50）。同樣走 /v1beta/interactions，
         # 模型自行決定長度與解析度，聲音隨影片產出。
         {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview", "group": "Gemini",
-         "desc": "Google 多模態影片生成（預覽版），約 10 秒、可選 360P／720P／1080P／4K，自動含原生配音", "type": "t2v", "audio": False, "no_duration": True, "resolutions": ["360P", "720P", "1080P", "4K"]},
+         "desc": "Google 多模態影片生成（預覽版），3–10 秒、可選 360P／720P／1080P／4K，自動含原生配音", "type": "t2v", "audio": False, "min_dur": 3, "max_dur": 10, "resolutions": ["360P", "720P", "1080P", "4K"], "ratios": ["16:9", "9:16"]},
         {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview（圖生影片）", "group": "Gemini",
-         "desc": "Google 多模態圖生影片（預覽版），約 10 秒、可選 360P／720P／1080P／4K，自動含原生配音", "type": "i2v", "audio": False, "no_duration": True, "resolutions": ["360P", "720P", "1080P", "4K"]},
+         "desc": "Google 多模態圖生影片（預覽版），3–10 秒、可選 360P／720P／1080P／4K，自動含原生配音", "type": "i2v", "audio": False, "min_dur": 3, "max_dur": 10, "resolutions": ["360P", "720P", "1080P", "4K"], "ratios": ["16:9", "9:16"]},
         {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview（參考生影片）", "group": "Gemini",
-         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），約 10 秒、可選 360P／720P／1080P／4K，自動含原生配音", "type": "r2v", "audio": False, "no_duration": True, "max_ref": 3, "resolutions": ["360P", "720P", "1080P", "4K"]},
+         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），3–10 秒、可選 360P／720P／1080P／4K，自動含原生配音", "type": "r2v", "audio": False, "min_dur": 3, "max_dur": 10, "max_ref": 3, "resolutions": ["360P", "720P", "1080P", "4K"], "ratios": ["16:9", "9:16"]},
     ],
     "muleai": [
         # ── w3.0 影片四顆（2026-09-01 上架）────────────────────────────
@@ -3116,18 +3116,48 @@ async def _save_video_bytes(data: bytes) -> Optional[str]:
 # 上游自己列出來的完整值域（送非法值時回的：Supported values: '360p', '720p',
 # '1080p', '4k'）——2026-09-02 實測，400、不計費。比文件可靠。
 _OMNI_RESOLUTIONS = {"360p", "720p", "1080p", "4k"}
+# 同樣是上游列出來的：duration 3–10 秒、aspect_ratio 只有兩個值
+#   "Requested duration 2 less than minimum duration 3."
+#   "Generation duration 99 exceeds maximum duration 10."
+#   "… not supported for 'response_format[0].aspect_ratio'. Supported values: '16:9', '9:16'."
+_OMNI_MIN_DUR, _OMNI_MAX_DUR = 3, 10
+_OMNI_RATIOS = {"16:9", "9:16"}
 
 # 📄發布文章：延長以 10 秒為單位、**累計最長 40 秒**，所以最多 4 段。
 # 這個上限我們自己擋——超過之後上游會怎麼回應未驗證，不要讓使用者用錢去試。
 _OMNI_MAX_SEGMENTS = 4
 
-# ⛔ 場景延長目前**在本平台走不通**：帶 previous_interaction_id 會被擋下——
-#   400 `gemini-omni-1.1-flash-preview on this path do not support previous_interaction_id.`
-#   （2026-09-02 對正式站實測，用真實的 interaction id，不計費）
-# 平台端讀碼認為這個欄位是具名欄位、會原樣透傳，但**實際行為與讀碼結論不符**，
-# 已回報。程式與端點都留著，等閘道支援後把這個旗標改成 True 即可——
-# 在那之前不要讓「延長」按鈕出現，客戶點了只會拿到錯誤。
-_OMNI_EXTEND_ENABLED = False
+# ⚠️ 早期版本用 `previous_interaction_id` 實作延長，被上游擋下
+#   （`… on this path do not support previous_interaction_id.`）。
+#   那不是 preview 限制、也不是閘道擋的——**那個欄位屬於 Gemini Developer API／
+#   google.genai SDK，Agent Platform 這條路根本沒有它**。正解是
+#   `generation_config.video_config.task = "extend"` ＋ 帶一支輸入影片。
+#   錯誤訊息裡的 "this path" 字面上就是這個意思。
+
+
+def _omni_video_entry(model: str) -> Optional[dict]:
+    return next((m for m in MODELS["video"]
+                 if m["id"] == model and m.get("resolutions")), None)
+
+
+def _omni_duration(model: str, raw) -> Optional[int]:
+    """3–10 秒；不在範圍內就不送，交上游預設（實測預設約 10 秒）。"""
+    if not _omni_video_entry(model):
+        return None
+    try:
+        v = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return v if _OMNI_MIN_DUR <= v <= _OMNI_MAX_DUR else None
+
+
+def _omni_ratio(model: str, raw: Optional[str]) -> Optional[str]:
+    """只有 16:9 與 9:16（上游列的）。其他影片模型的比例值域比較寬，
+    直接把使用者選的值送過來會被拒，所以這裡過濾掉不合法的、交上游推斷。"""
+    if not _omni_video_entry(model):
+        return None
+    v = (raw or "").strip()
+    return v if v in _OMNI_RATIOS else None
 
 
 def _omni_resolution(model: str, raw: Optional[str]) -> Optional[str]:
@@ -3138,8 +3168,7 @@ def _omni_resolution(model: str, raw: Optional[str]) -> Optional[str]:
     合法就送出去，等於在還沒驗證透傳是否有效之前，就把原本「不帶欄位、走上游預設」
     的行為悄悄改成「明確指定 720p」。驗證通過後再把 `resolutions` 加進該型號即可。
     """
-    entry = next((m for m in MODELS["video"]
-                  if m["id"] == model and m.get("resolutions")), None)
+    entry = _omni_video_entry(model)
     if not entry:
         return None
     v = (raw or "").strip().lower()
@@ -3150,27 +3179,55 @@ def _omni_resolution(model: str, raw: Optional[str]) -> Optional[str]:
 async def _generate_omni_video(model: str, prompt: str, api_key: str,
                                 image_files: Optional[list] = None,
                                 resolution: Optional[str] = None,
-                                previous_interaction_id: Optional[str] = None,
+                                duration: Optional[int] = None,
+                                ratio: Optional[str] = None,
+                                source_video: Optional[bytes] = None,
+                                task: Optional[str] = None,
                                 chain_len: int = 1) -> dict:
+    """Gemini Omni 走 Agent Platform 的 Interactions API（不是 /v1/videos 任務制）。
+
+    ⚠️ **請求規格以 Agent Platform 自己的 REST 文檔為準**，不是 Google 部落格的 SDK
+    範例、也不是模型卡：`docs.cloud.google.com/gemini-enterprise-agent-platform/
+    models/video/` 底下的六頁（text／image／first-and-last-frames／references／
+    extend／edit）。2026-09-02 為此連錯三次——拿模型卡當參數規格（漏了 resolution）、
+    拿「沒看到」當「不存在」（音軌）、拿 blog 的 SDK 範例當 REST 規格（誤用
+    previous_interaction_id）。**那三份文件都不是規格書。**
+
+    以下值域都是上游自己列出來的（送非法值、400、不計費，比文件可靠）：
+      task        text_to_video / image_to_video / reference_to_video / edit / extend
+      duration    3–10 秒
+      aspect_ratio 16:9 / 9:16
+      resolution  360p / 720p / 1080p / 4k
+    """
     content: list = [{"type": "text", "text": prompt}]
     for fbytes, ftype in (image_files or []):
         b64 = base64.b64encode(fbytes).decode()
         content.append({"type": "image", "data": b64, "mime_type": ftype})
-    payload = {"model": model, "input": [{"type": "user_input", "content": content}]}
-    # 輸出解析度走 `response_format`（📄Google 發布文章的官方範例；
-    # 模型卡的「參數預設值」那張表只列取樣參數、沒有這一欄，**不要拿那張表當
-    # 「參數不存在」的證據**——2026-09-02 就是這樣判斷錯過一次）。
-    # 不帶這個欄位時走上游預設，實測是 720p。
-    # ⚠️ `type` 是必填，發布文章的 SDK 範例沒寫是因為 SDK 會補；少了它上游回
-    # 「The 'type' parameter is required at 'response_format'」（2026-09-02 實測，
-    # 該錯誤在計費前發生、不花錢）。合法值上游會列出來：boolean/video/number/
-    # integer/object/image/text/string/array/audio。
+    # 延長要求「恰好一支輸入影片」（上游原文：Exactly one input video is required
+    # for extend task.）。影片用 inline base64——遠端網址上游雖然會去抓，但我們的
+    # /outputs 被自家 robots.txt 擋（實測回 "URL is blocked by robots.txt rules"）。
+    if source_video:
+        content.append({"type": "video",
+                        "data": base64.b64encode(source_video).decode(),
+                        "mime_type": "video/mp4"})
+    payload: dict = {"model": model, "input": [{"type": "user_input", "content": content}]}
+
+    # response_format 官方是陣列；欄位不帶就走上游預設（實測預設 720p、約 10 秒）
+    rf: dict = {"type": "video"}
     if resolution:
-        payload["response_format"] = {"type": "video", "resolution": resolution}
-    # 場景延長：帶上一次 interaction 的 id，上游會分析前段脈絡接著演下去
-    # （📄發布文章：10 秒為單位、累計最長 40 秒，分析前 10 秒的脈絡）
-    if previous_interaction_id:
-        payload["previous_interaction_id"] = previous_interaction_id
+        rf["resolution"] = resolution
+    if duration:
+        rf["duration"] = f"{duration}s"
+    if ratio:
+        rf["aspect_ratio"] = ratio
+    if len(rf) > 1:
+        payload["response_format"] = [rf]
+
+    # 影片任務型別。不帶時上游自己依輸入推斷（我們既有的 t2v/i2v/r2v 都是這樣跑的），
+    # 但 extend 一定要明講，否則上游只會把那支影片當成一般的參考輸入。
+    if task:
+        payload["generation_config"] = {"video_config": {"task": task}}
+
     async with httpx.AsyncClient(timeout=180.0) as client:
         resp = await client.post(
             f"{NENAI_BASE}/v1beta/interactions",
@@ -3196,13 +3253,13 @@ async def _generate_omni_video(model: str, prompt: str, api_key: str,
         local_path = await _save_video_bytes(video_bytes)
         task_id = f"omni_{uuid.uuid4().hex}"
         # 存下 interaction id 才能接著延長；chain_len 用來擋在 40 秒（4 段）上限
+        # 延長是把「前一段影片本身」再送一次（task=extend），所以要留住檔案路徑；
+        # interaction id 在 Agent Platform 這條路上用不到，不再保存。
         _OMNI_TASK_CACHE[task_id] = {
             "status": "SUCCEEDED", "local_path": local_path, "video_url": local_path,
-            "interaction_id": rj.get("id"), "model": model,
-            "resolution": resolution,
+            "model": model, "resolution": resolution, "ratio": ratio,
             "chain_len": chain_len,
-            "can_extend": (_OMNI_EXTEND_ENABLED and bool(rj.get("id"))
-                           and chain_len < _OMNI_MAX_SEGMENTS),
+            "can_extend": chain_len < _OMNI_MAX_SEGMENTS,
         }
         return {"success": True, "task_id": task_id, "status": "queued", "model": model}
 
@@ -3230,7 +3287,9 @@ async def video_t2v(request: Request, api_key: str = Depends(get_api_key)):
     if model in _INTERACTIONS_VIDEO_MODELS:
         try:
             return await _generate_omni_video(model, prompt, api_key,
-                                               resolution=_omni_resolution(model, resolution))
+                                               resolution=_omni_resolution(model, resolution),
+                                               duration=_omni_duration(model, duration),
+                                               ratio=_omni_ratio(model, ratio))
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -3316,7 +3375,9 @@ async def video_i2v(request: Request, api_key: str = Depends(get_api_key)):
             return JSONResponse(status_code=400, content={"error": "I2V 需要上傳首幀圖片"})
         try:
             return await _generate_omni_video(model, prompt, api_key, [(first_bytes, "image/png")],
-                                               resolution=_omni_resolution(model, resolution))
+                                               resolution=_omni_resolution(model, resolution),
+                                               duration=_omni_duration(model, duration),
+                                               ratio=_omni_ratio(model, ratio))
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -3536,7 +3597,9 @@ async def video_r2v(request: Request, api_key: str = Depends(get_api_key)):
             return JSONResponse(status_code=400, content={"error": "R2V 需要至少一張參考圖片"})
         try:
             return await _generate_omni_video(model, prompt, api_key, image_files[:3],
-                                               resolution=_omni_resolution(model, resolution))
+                                               resolution=_omni_resolution(model, resolution),
+                                               duration=_omni_duration(model, duration),
+                                               ratio=_omni_ratio(model, ratio))
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
@@ -3639,11 +3702,11 @@ async def video_omni_extend(request: Request, api_key: str = Depends(get_api_key
     prev = _OMNI_TASK_CACHE.get(task_id)
     if not prev:
         return JSONResponse(status_code=404, content={"error": "找不到這個任務，或服務重啟後已經失效——請重新生成一次再延長。"})
-    if not _OMNI_EXTEND_ENABLED:
+    src_path = prev.get("local_path") or ""
+    disk_path = Path(src_path.lstrip("/")) if src_path else None
+    if not disk_path or not disk_path.exists():
         return JSONResponse(status_code=400, content={
-            "error": "這個模型目前不支援場景延長。"})
-    if not prev.get("interaction_id"):
-        return JSONResponse(status_code=400, content={"error": "這個任務沒有可延長的來源。"})
+            "error": "找不到來源影片檔案，無法延長——請重新生成一次再延長。"})
     chain_len = int(prev.get("chain_len") or 1)
     if chain_len >= _OMNI_MAX_SEGMENTS:
         return JSONResponse(status_code=400, content={
@@ -3653,7 +3716,9 @@ async def video_omni_extend(request: Request, api_key: str = Depends(get_api_key
     return await _generate_omni_video(
         model, prompt, api_key,
         resolution=prev.get("resolution"),
-        previous_interaction_id=prev["interaction_id"],
+        ratio=prev.get("ratio"),
+        source_video=disk_path.read_bytes(),
+        task="extend",
         chain_len=chain_len + 1,
     )
 
@@ -4117,6 +4182,7 @@ _MCP_EXPIRES_HINT = "結果連結有時效（依上游而異，最短數小時�
 _MCP_CONSTRAINT_FIELDS = (
     "type", "sizes", "resolutions", "min_dur", "max_dur", "dur_step", "max_n",
     "max_ref", "audio", "no_duration", "aspect_ratios", "custom_size",
+    "ratios",   # 該模型的 ratio 合法值（Gemini Omni 只有 16:9／9:16，比萬相家族窄）
     "i2v_modes", "ref_images_only", "vision", "thinking", "reasoning_efforts",
     "smart_duration",   # duration=-1（模型自行判斷合適時長）是否可用，僅 wan3.0
     "no_seed", "no_negative_prompt",   # 該模型不存在這些參數（如 GPT Image 家族）
