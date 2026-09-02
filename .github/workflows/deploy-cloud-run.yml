@@ -34,6 +34,11 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      # 資源調度用 --min/--max（服務層級，對應主控台「資源調度：自動，下限/上限」，
+      # 由 Levi 在主控台設定為 1/20），不要用 --min-instances/--max-instances——
+      # 後者是「修訂版本層級」的上限，會寫死在每個新修訂版本上，且兩者同時存在時
+      # 以較嚴的一邊生效（本專案曾出現服務允許 20、修訂版本卻被壓在 5 的狀態）。
+      # 這裡明確送 default 把修訂版本層級的設定清掉，避免它悄悄蓋過服務層級。
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy "${{ env.SERVICE_NAME }}" \
@@ -44,8 +49,50 @@ jobs:
             --allow-unauthenticated \
             --memory=1Gi \
             --cpu=1 \
-            --min-instances=0 \
-            --max-instances=5 \
+            --min=1 \
+            --max=20 \
+            --min-instances=default \
+            --max-instances=default \
             --execution-environment=gen2 \
             --timeout=300 \
             --quiet
+
+      # Cloud Run 沒有「保留 N 個修訂版本」的設定，每次部署都會多一個、只增不減
+      # （2026-09-01 清過一次：147 → 2）。這一步在部署後自己收：保留最新兩個
+      # （現行版 + 可回滾的上一版），其餘刪除。
+      #
+      # 兩層保護，順序不能顛倒：
+      #   1. 任何正在吃流量的修訂版本一律排除（含 traffic tag 指向的），就算它不在
+      #      最新兩個之內——手動 update-traffic 回滾到舊版時就會是這種狀態
+      #   2. 刪除失敗不讓整個 workflow 失敗（|| true）：部署本身已經成功了，
+      #      清理沒清乾淨是下次再清的事，不該把綠燈變紅燈
+      - name: Prune old revisions (keep latest 2)
+        run: |
+          set -uo pipefail
+          SVC="${{ env.SERVICE_NAME }}"
+          COMMON=(--project="${{ env.GCP_PROJECT_ID }}" --region="${{ env.GCP_REGION }}")
+
+          # 有流量的修訂版本（percent > 0 或帶 tag），無論新舊都保留
+          gcloud run services describe "$SVC" "${COMMON[@]}" \
+            --format="value(status.traffic[].revisionName)" \
+            | tr ';,' '\n\n' | tr -d ' ' | grep -v '^$' | sort -u > /tmp/keep.txt
+
+          # 最新兩個（依建立時間新到舊）
+          gcloud run revisions list --service="$SVC" "${COMMON[@]}" \
+            --sort-by="~metadata.creationTimestamp" --limit=2 \
+            --format="value(metadata.name)" >> /tmp/keep.txt
+          sort -u /tmp/keep.txt -o /tmp/keep.txt
+
+          echo "保留："; cat /tmp/keep.txt
+
+          gcloud run revisions list --service="$SVC" "${COMMON[@]}" \
+            --format="value(metadata.name)" | sort -u > /tmp/all.txt
+          comm -23 /tmp/all.txt /tmp/keep.txt > /tmp/prune.txt
+
+          COUNT=$(wc -l < /tmp/prune.txt | tr -d ' ')
+          if [ "$COUNT" -eq 0 ]; then echo "沒有需要清理的修訂版本"; exit 0; fi
+          echo "刪除 $COUNT 個修訂版本："; cat /tmp/prune.txt
+
+          xargs -P 8 -I{} sh -c \
+            'gcloud run revisions delete "$1" '"${COMMON[*]}"' --quiet >/dev/null 2>&1 || echo "刪除失敗（略過）：$1"' \
+            _ {} < /tmp/prune.txt || true
