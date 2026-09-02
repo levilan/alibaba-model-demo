@@ -561,23 +561,27 @@ MODELS = {
         # ── Claude（實測過 enable_thinking 與 Anthropic 原生 thinking 參數在這個
         #    網關上都不會回傳任何思考過程，thinking 一律維持 False；temperature/
         #    top_p 也不能送，Bedrock 後端會直接回 400 "temperature is deprecated"）──
-        {"id": "claude-opus-5",               "name": "Claude Opus 5",     "group": "Claude", "desc": "最新旗艦",         "thinking": False, "no_sampling": True},
-        {"id": "claude-opus-4-8",             "name": "Claude Opus 4.8",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True},
-        {"id": "claude-opus-4-7",             "name": "Claude Opus 4.7",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True},
-        {"id": "claude-opus-4-6",             "name": "Claude Opus 4.6",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True},
-        {"id": "claude-opus-4-5-20251101",    "name": "Claude Opus 4.5",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True},
-        {"id": "claude-opus-4-1-20250805",    "name": "Claude Opus 4.1",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True},
-        {"id": "claude-sonnet-5",             "name": "Claude Sonnet 5",   "group": "Claude", "desc": "最新均衡，推薦使用", "thinking": False, "no_sampling": True},
-        {"id": "claude-sonnet-4-6",           "name": "Claude Sonnet 4.6", "group": "Claude", "desc": "前代均衡模型",     "thinking": False, "no_sampling": True},
-        {"id": "claude-sonnet-4-5-20250929",  "name": "Claude Sonnet 4.5", "group": "Claude", "desc": "前代均衡模型",     "thinking": False, "no_sampling": True},
-        {"id": "claude-haiku-4-5-20251001",   "name": "Claude Haiku 4.5",  "group": "Claude", "desc": "極速模型",         "thinking": False, "no_sampling": True},
+        # Claude 全家族都支援看圖——2026-09-02 逐顆實測（11 顆，1x1 PNG 都描述得出來），
+        # 不是照家族推的。先前一顆都沒標 vision，客戶在文字頁籤看不到圖片上傳區。
+        # claude-opus-4-8 首次回 Bedrock 暫時性錯誤、claude-fable-5 首次回空字串
+        #（max_tokens 給太小），兩顆各重試 2 次都正常——**單次失敗不足以判定不支援**。
+        {"id": "claude-opus-5",               "name": "Claude Opus 5",     "group": "Claude", "desc": "最新旗艦",         "thinking": False, "no_sampling": True, "vision": True},
+        {"id": "claude-opus-4-8",             "name": "Claude Opus 4.8",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True, "vision": True},
+        {"id": "claude-opus-4-7",             "name": "Claude Opus 4.7",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True, "vision": True},
+        {"id": "claude-opus-4-6",             "name": "Claude Opus 4.6",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True, "vision": True},
+        {"id": "claude-opus-4-5-20251101",    "name": "Claude Opus 4.5",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True, "vision": True},
+        {"id": "claude-opus-4-1-20250805",    "name": "Claude Opus 4.1",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True, "vision": True},
+        {"id": "claude-sonnet-5",             "name": "Claude Sonnet 5",   "group": "Claude", "desc": "最新均衡，推薦使用", "thinking": False, "no_sampling": True, "vision": True},
+        {"id": "claude-sonnet-4-6",           "name": "Claude Sonnet 4.6", "group": "Claude", "desc": "前代均衡模型",     "thinking": False, "no_sampling": True, "vision": True},
+        {"id": "claude-sonnet-4-5-20250929",  "name": "Claude Sonnet 4.5", "group": "Claude", "desc": "前代均衡模型",     "thinking": False, "no_sampling": True, "vision": True},
+        {"id": "claude-haiku-4-5-20251001",   "name": "Claude Haiku 4.5",  "group": "Claude", "desc": "極速模型",         "thinking": False, "no_sampling": True, "vision": True},
         # claude-fable-5-1（2026-09-02 上架，正式站；測試站沒有這顆）。實測：
         #   temperature 送出被上游拒（`temperature` is deprecated for this model）→ no_sampling
         #   不回 reasoning_content、reasoning_tokens=0
         #   **看得到圖**（1x1 PNG 實測答得出顏色）——Claude 家族目前只有這顆標了 vision，
         #   但那是既有缺漏不是差異：claude-sonnet-5 同樣實測看得到圖卻沒標。詳見 update.md。
         {"id": "claude-fable-5-1",            "name": "Claude Fable 5.1",  "group": "Claude", "desc": "創意寫作模型，支援看圖", "thinking": False, "no_sampling": True, "vision": True},
-        {"id": "claude-fable-5",              "name": "Claude Fable 5",    "group": "Claude", "desc": "創意寫作模型",     "thinking": False, "no_sampling": True},
+        {"id": "claude-fable-5",              "name": "Claude Fable 5",    "group": "Claude", "desc": "創意寫作模型",     "thinking": False, "no_sampling": True, "vision": True},
         # ── GPT（推理強度用 reasoning_effort 字串控制，不是 enable_thinking 布林值——
         #    實測過對 GPT 模型送 enable_thinking 會直接 400 "Unknown parameter"；
         #    reasoning_effort 這個網關接受的枚舉是 none/low/medium/high/xhigh（不是
@@ -3150,6 +3154,12 @@ _OMNI_RATIOS = {"16:9", "9:16"}
 # 📄發布文章：延長以 10 秒為單位、**累計最長 40 秒**，所以最多 4 段。
 # 這個上限我們自己擋——超過之後上游會怎麼回應未驗證，不要讓使用者用錢去試。
 _OMNI_MAX_SEGMENTS = 4
+# ✅ 2026-09-02 實測：**延長回來的是「累積後的完整影片」，不是新的一段**——
+#    3.008 秒的來源延長後拿到 13.013 秒（＝來源 ＋ 新增約 10 秒），所以 UI 不需要拼接。
+#    ⚠️ **量到的秒數 ≠ 被收費的秒數**：那支 13 秒的影片收 $0.3468，約等於「10 秒新影片」
+#    的價（360p 10 秒約 $0.338）加上來源影片的輸入 token，不是按 13 秒收。
+#    ⚠️ 延長時**不能帶 aspect_ratio**（上游 400），比例跟著來源走。
+#    ⚪ 未驗證：延長的新增長度能不能用 duration 指定（目前不送，實測預設約 10 秒）。
 
 # ⚠️ 早期版本用 `previous_interaction_id` 實作延長，被上游擋下
 #   （`… on this path do not support previous_interaction_id.`）。
@@ -3737,10 +3747,12 @@ async def video_omni_extend(request: Request, api_key: str = Depends(get_api_key
             "error": f"已達延長上限（{_OMNI_MAX_SEGMENTS} 段）。"})
     model = prev.get("model") or "gemini-omni-1.1-flash-preview"
     request.state.model = model
+    # ⚠️ 延長時**不能帶 aspect_ratio**：上游回
+    #    `Aspect ratio cannot be set in response format for extend task.`（400、不計費）。
+    #    比例本來就跟著來源影片走，所以也沒有帶的理由。
     return await _generate_omni_video(
         model, prompt, api_key,
         resolution=prev.get("resolution"),
-        ratio=prev.get("ratio"),
         source_video=disk_path.read_bytes(),
         task="extend",
         chain_len=chain_len + 1,
