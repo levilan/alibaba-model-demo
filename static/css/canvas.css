@@ -482,3 +482,19 @@ body { font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; color: var(-
 }
 .cv-pose-canvas { height: auto; }
 .cv-pose-editor { margin-top: 2px; }
+
+/* 標記節點（在圖片上畫記號） */
+.cv-an-canvas {
+    width: 100%; height: auto; border: 1px solid var(--cv-border, #3a3a3a); border-radius: 8px;
+    background: #000; cursor: crosshair; touch-action: none; display: block;
+}
+.cv-an-tools { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.cv-node-panel .cv-an-tools .cv-pill { padding: 3px 8px; }
+.cv-node-panel .cv-an-tools .cv-an-undo { margin-left: auto; }
+.cv-node-panel .cv-an-tools .cv-an-undo + .cv-an-undo { margin-left: 0; }
+.cv-an-colors { display: flex; gap: 8px; margin: 4px 0 6px; }
+.cv-an-swatch {
+    width: 20px; height: 20px; border-radius: 50%; cursor: pointer;
+    border: 2px solid transparent; box-shadow: 0 0 0 1px rgba(0,0,0,0.4) inset;
+}
+.cv-an-swatch.active { border-color: var(--cv-text, #e8e8e8); }

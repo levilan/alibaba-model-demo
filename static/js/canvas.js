@@ -553,6 +553,8 @@
         text: { type: 'nenai/text', label: '文字 Text' },
         camera_angle: { type: 'nenai/camera_angle', label: '相機角度 Camera Angle' },
         load_image: { type: 'nenai/load_image', label: '上傳圖片 Load Image' },
+        load_video: { type: 'nenai/load_video', label: '上傳影片 Load Video' },
+        annotate: { type: 'nenai/annotate', label: '標記 Annotate' },
         pose: { type: 'nenai/pose', label: '姿勢 Pose' },
         greybox: { type: 'nenai/greybox', label: '3D 灰模 Greybox' },
         image: { type: 'nenai/image', label: '圖片 Image' },
@@ -751,8 +753,14 @@
                 if (showConfig && panel) {
                     const [sx, sy] = toScreen(node.pos[0], node.pos[1] + zoneH);
                     const bodyScreenH = (panel.offsetHeight || 0) * scale;
+                    const top = sy + bodyScreenH + 10;
                     node._configOverlay.style.left = sx + 'px';
-                    node._configOverlay.style.top = (sy + bodyScreenH + 10) + 'px';
+                    node._configOverlay.style.top = top + 'px';
+                    // 浮層不隨縮放、但內容可能很長（灰模、Spicy 都超過 700px）：超出視窗底部的
+                    // 部分本來按不到（body 是 overflow:hidden），限高後在浮層內捲動。
+                    // 浮層已擋掉 wheel 冒泡，捲動時不會順便縮放畫布。
+                    node._configOverlay.style.maxHeight = Math.max(160, window.innerHeight - top - 12) + 'px';
+                    node._configOverlay.style.overflowY = 'auto';
                 }
             }
         });
@@ -1257,6 +1265,73 @@
         sharedOnRemoved.call(this);
     };
 
+    // ── Node: Load Video（上傳影片）────────────────────────────────
+    // 為了接「本機 Blender 等工具做出來的灰模影片」進來當運鏡參考而加（2026-09-03）：
+    // 社群裡「用 Blender 做運鏡參考」的實際做法就是本機算一支低畫質灰模 mp4 再上傳，
+    // 之前 Canvas 沒有獨立的影片上傳節點（影片上傳只藏在影片編輯／動作動畫節點裡），
+    // 這條路接不進 MuleAI 節點的「參考影片」插槽。跟 LoadImageNode 同一套。
+    const LOAD_VIDEO_MAX_REF_SEC = 15;   // w3.0 參考影片單支上限（實測 2026-09-01）
+    function LoadVideoNode() {
+        this.addOutput('video', 'video');
+        this.videoUrl = null;
+        this._contentHeight = 300;
+        this.size = [300, 300];
+        this.color = '#3a2f1f'; this.bgcolor = '#2a2a2a';
+
+        const panel = el('div');
+        panel.innerHTML = `
+            <div class="cv-controls">
+                <label>上傳影片<span class="cv-hint">（mp4／mov）</span></label>
+                <input type="file" class="cv-load-file" accept="video/mp4,video/quicktime,.mp4,.mov" style="display:none">
+                <button class="cv-generate cv-load-btn">選擇檔案</button>
+                <div class="cv-hint" style="margin-top:6px">可接到影片編輯節點的「來源影片」，或 NenAI Spicy 節點的「參考影片」當運鏡參考（例如用 Blender 等 3D 工具輸出的灰模影片，${LOAD_VIDEO_MAX_REF_SEC} 秒以內）</div>
+                <div class="cv-status"></div>
+            </div>`;
+        attachDomPanel(this, panel);
+        this.fileInput = panel.querySelector('.cv-load-file');
+        this.statusEl = panel.querySelector('.cv-status');
+        const loadBtn = panel.querySelector('.cv-load-btn');
+        loadBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+        loadBtn.addEventListener('click', () => this.fileInput.click());
+        this.fileInput.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.fileInput.addEventListener('change', () => this._onFile());
+
+        panel.appendChild(buildPreview(this));
+        setPreviewEmpty(this, '尚未選擇影片');   // 這不是生成節點，預設的「尚未生成」會誤導
+        wireConfigOverlay(this, panel);
+        attachNodeChrome(this);
+    }
+    LoadVideoNode.title = '上傳影片 Load Video';
+    LoadVideoNode.prototype._onFile = function () {
+        const file = this.fileInput.files[0];
+        if (!file) return;
+        if (this.videoUrl && this.videoUrl.startsWith('blob:')) URL.revokeObjectURL(this.videoUrl);
+        this.videoUrl = URL.createObjectURL(file);
+        setPreviewVideo(this, this.videoUrl);
+        this.statusEl.textContent = '已載入：' + file.name;
+        this.setOutputData(0, this.videoUrl);
+        // 讀時長：超過參考影片上限就先講，不要等送出去才被拒
+        const probe = document.createElement('video');
+        probe.preload = 'metadata';
+        probe.onloadedmetadata = () => {
+            const sec = probe.duration;
+            if (!Number.isFinite(sec)) return;
+            this.statusEl.textContent = `已載入：${file.name}（${sec.toFixed(1)} 秒）` +
+                (sec > LOAD_VIDEO_MAX_REF_SEC ? `｜超過 ${LOAD_VIDEO_MAX_REF_SEC} 秒，當參考影片會被拒絕` : '');
+        };
+        probe.src = this.videoUrl;
+    };
+    LoadVideoNode.prototype.onExecute = function () {
+        this.setOutputData(0, this.videoUrl);
+    };
+    LoadVideoNode.prototype.onConfigure = function () {
+        this.statusEl.textContent = '請重新選擇影片檔案（瀏覽器重新整理後上傳檔案不會保留）';
+    };
+    LoadVideoNode.prototype.onRemoved = function () {
+        if (this.videoUrl && this.videoUrl.startsWith('blob:')) URL.revokeObjectURL(this.videoUrl);
+        sharedOnRemoved.call(this);
+    };
+
     // ── Node: Pose（姿勢骨架編輯器，輸出 OpenPose 風格骨架圖當參考圖）────────
     // 上游沒有 ControlNet 條件化通道，這是「骨架圖作為參考圖」的軟引導：
     // 2026-08-29 實測（wan2.7-image ×3、qwen-image-3.0 ×3，同一不對稱姿勢，
@@ -1540,6 +1615,244 @@
         this._refreshOutput();
     };
     PoseNode.prototype.onRemoved = sharedOnRemoved;
+
+    // ── Node: Annotate（在圖片上畫記號，指引影片怎麼動）──────────────
+    // 社群做法（Seedance 2.5「在圖上畫箭頭」）：在首幀圖上畫箭頭／路線／編號，提示詞裡
+    // 說明記號的意思，模型照著動。這裡沒有專用的「動態筆刷」通道，是**把畫好記號的圖
+    // 當首幀圖或參考圖送出去**的軟引導——跟姿勢節點是同一類：能不能照做看模型。
+    // 筆畫存成向量（正規化座標 0–1），重整後可以重畫；圖片本身跟其他節點一樣走輸入插槽。
+    // 橡皮擦只擦記號層不擦底圖：記號層與底圖分開畫，輸出時才合成。
+    const ANNOTATE_COLORS = ['#E53935', '#43A047', '#1E88E5', '#FDD835', '#FFFFFF'];
+    const ANNOTATE_TOOLS = { brush: '筆刷', arrow: '箭頭', marker: '編號', eraser: '橡皮擦' };
+    const ANNOTATE_MAX_SIDE = 1536;   // 輸出最長邊上限，避免 data URL 太大拖慢送出
+    const ANNOTATE_DISPLAY_W = 296;   // 節點本體畫布顯示寬（節點寬 320 減內距）
+
+    function AnnotateNode() {
+        this.addInput('image', 'image');
+        this.addOutput('image', 'image');
+        this.properties = { strokes: [], tool: 'brush', color: ANNOTATE_COLORS[0], size: 6, nextMarker: 1 };
+        this.srcUrl = null; this._srcKey = null; this.img = null; this.imageUrl = null;
+        this._temp = null;
+        this._contentHeight = 120;
+        this.size = [320, 120];
+        this.color = '#3a2a2a'; this.bgcolor = '#2a2a2a';
+
+        const panel = el('div');
+        panel.innerHTML = `
+            <div class="cv-controls">
+                <label>圖片<span class="cv-hint">（未連接 image 輸入時可直接上傳）</span></label>
+                <input type="file" class="cv-an-file" accept="image/*" style="display:none">
+                <button class="cv-add-ref-btn cv-an-upload">選擇圖片</button>
+                <label>顏色</label>
+                <div class="cv-an-colors"></div>
+                <label>線寬 <span class="cv-an-size-val">6</span></label>
+                <input type="range" class="cv-an-size" min="1" max="16" step="1" value="6">
+                <div class="cv-hint" style="margin-top:6px">把輸出接到影片節點的首幀圖或參考圖，並在提示詞說明記號的意思，例如：「紅色箭頭是人物的移動方向，1 到 2 是行進路線，成片不要出現箭頭與數字」。記號為參考性質，實際生成以模型理解為準</div>
+            </div>
+            <div class="cv-an-body">
+                <div class="cv-an-tools"></div>
+                <canvas class="cv-an-canvas"></canvas>
+                <div class="cv-status">請連接或上傳一張圖片</div>
+            </div>`;
+        attachDomPanel(this, panel);
+        this.statusEl = panel.querySelector('.cv-status');
+        this.editCanvas = panel.querySelector('.cv-an-canvas');
+
+        this.fileInput = panel.querySelector('.cv-an-file');
+        const upBtn = panel.querySelector('.cv-an-upload');
+        upBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+        upBtn.addEventListener('click', () => this.fileInput.click());
+        this.fileInput.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.fileInput.addEventListener('change', () => {
+            const f = this.fileInput.files[0];
+            if (f) this._loadSource(URL.createObjectURL(f), 'file:' + f.name);
+        });
+
+        this.colorsEl = panel.querySelector('.cv-an-colors');
+        this._rebuildColors();
+        const sizeEl = panel.querySelector('.cv-an-size'), sizeVal = panel.querySelector('.cv-an-size-val');
+        sizeEl.value = this.properties.size; sizeVal.textContent = this.properties.size;
+        sizeEl.addEventListener('input', () => { this.properties.size = parseInt(sizeEl.value); sizeVal.textContent = sizeEl.value; });
+        this.sizeEl = sizeEl; this.sizeVal = sizeVal;
+
+        this.toolsEl = panel.querySelector('.cv-an-tools');
+        this._rebuildTools();
+
+        const ec = this.editCanvas;
+        ec.addEventListener('mousedown', (e) => e.stopPropagation());
+        const toNorm = (e) => {
+            const r = ec.getBoundingClientRect();
+            return [Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
+                    Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))];
+        };
+        ec.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            if (!this.img) return;
+            const p = toNorm(e), t = this.properties.tool;
+            if (t === 'marker') {
+                this.properties.strokes.push({ tool: t, color: this.properties.color, size: this.properties.size,
+                                               pts: [p], n: this.properties.nextMarker++ });
+                this._redraw(); this._refreshOutput();
+                return;
+            }
+            this._temp = { tool: t, color: this.properties.color, size: this.properties.size, pts: [p] };
+            ec.setPointerCapture(e.pointerId);
+        });
+        ec.addEventListener('pointermove', (e) => {
+            if (!this._temp) return;
+            const p = toNorm(e);
+            if (this._temp.tool === 'arrow') this._temp.pts = [this._temp.pts[0], p];
+            else this._temp.pts.push(p);
+            this._redraw();
+        });
+        const finish = () => {
+            if (!this._temp) return;
+            const st = this._temp; this._temp = null;
+            // 箭頭要有兩個點才算；筆刷單點也留（畫一個點）
+            if (st.tool === 'arrow' && st.pts.length < 2) { this._redraw(); return; }
+            this.properties.strokes.push(st);
+            this._redraw(); this._refreshOutput();
+        };
+        ec.addEventListener('pointerup', finish);
+        ec.addEventListener('pointercancel', finish);
+
+        wireConfigOverlay(this, panel);
+        attachNodeChrome(this);
+    }
+    AnnotateNode.title = '標記 Annotate';
+    AnnotateNode.prototype._rebuildColors = function () {
+        this.colorsEl.innerHTML = '';
+        ANNOTATE_COLORS.forEach(c => {
+            const sw = el('span', 'cv-an-swatch' + (c === this.properties.color ? ' active' : ''));
+            sw.style.background = c;
+            sw.addEventListener('mousedown', (e) => e.stopPropagation());
+            sw.addEventListener('click', () => { this.properties.color = c; this._rebuildColors(); });
+            this.colorsEl.appendChild(sw);
+        });
+    };
+    AnnotateNode.prototype._rebuildTools = function () {
+        this.toolsEl.innerHTML = '';
+        Object.keys(ANNOTATE_TOOLS).forEach(k => {
+            const b = el('button', 'cv-pill' + (k === this.properties.tool ? ' active' : ''), ANNOTATE_TOOLS[k]);
+            b.addEventListener('mousedown', (e) => e.stopPropagation());
+            b.addEventListener('click', () => { this.properties.tool = k; this._rebuildTools(); });
+            this.toolsEl.appendChild(b);
+        });
+        const undo = el('button', 'cv-pill cv-an-undo', '↶ 復原');
+        undo.addEventListener('mousedown', (e) => e.stopPropagation());
+        undo.addEventListener('click', () => {
+            const st = this.properties.strokes.pop();
+            if (st && st.tool === 'marker') this.properties.nextMarker = Math.max(1, this.properties.nextMarker - 1);
+            this._redraw(); this._refreshOutput();
+        });
+        const clear = el('button', 'cv-pill cv-an-undo', '清除');
+        clear.addEventListener('mousedown', (e) => e.stopPropagation());
+        clear.addEventListener('click', () => {
+            this.properties.strokes = []; this.properties.nextMarker = 1;
+            this._redraw(); this._refreshOutput();
+        });
+        this.toolsEl.appendChild(undo); this.toolsEl.appendChild(clear);
+    };
+    // 來源圖片：遠端（雲端儲存的簽名網址）要走 fetchAsBlob 經代理抓回來，不然畫到
+    // canvas 上會被 taint、toDataURL() 直接丟例外；blob:／data: 也一併走同一條路統一處理
+    AnnotateNode.prototype._loadSource = async function (url, key) {
+        this._srcKey = key || url;
+        const token = (this._loadToken = (this._loadToken || 0) + 1);
+        this.statusEl.textContent = '載入圖片中…';
+        try {
+            const blob = await fetchAsBlob(url);
+            if (token !== this._loadToken) return;   // 期間又換了來源，這次的結果作廢
+            if (this.srcUrl && this.srcUrl.startsWith('blob:')) URL.revokeObjectURL(this.srcUrl);
+            this.srcUrl = URL.createObjectURL(blob);
+            const img = new Image();
+            await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('圖片無法解碼')); img.src = this.srcUrl; });
+            if (token !== this._loadToken) return;
+            this.img = img;
+            const k = Math.min(1, ANNOTATE_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+            this.editCanvas.width = Math.round(img.naturalWidth * k);
+            this.editCanvas.height = Math.round(img.naturalHeight * k);
+            this._contentHeight = Math.round(ANNOTATE_DISPLAY_W * this.editCanvas.height / this.editCanvas.width) + 70;
+            this.size = [320, this._contentHeight];
+            if (typeof lgCanvas !== 'undefined' && lgCanvas) lgCanvas.setDirty(true, true);
+            this.statusEl.textContent = `${img.naturalWidth}×${img.naturalHeight}｜在圖上畫記號`;
+            this._redraw(); this._refreshOutput();
+        } catch (e) {
+            this.img = null;
+            this.statusEl.textContent = '錯誤：' + e.message;
+        }
+    };
+    AnnotateNode.prototype._drawStroke = function (ctx, st, W, H) {
+        // 線寬以「圖寬 400px 時 size 像素」為基準：預設 6 在 1024 寬的圖上是 15px，模型看得到；
+        // 審視截圖時發現原本 /500 太細（2026-09-03 review）
+        const lw = Math.max(1, st.size * W / 400);
+        ctx.save();
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.strokeStyle = st.color; ctx.fillStyle = st.color; ctx.lineWidth = lw;
+        if (st.tool === 'eraser') { ctx.globalCompositeOperation = 'destination-out'; ctx.lineWidth = lw * 2.5; }
+        const P = st.pts.map(p => [p[0] * W, p[1] * H]);
+        if (st.tool === 'brush' || st.tool === 'eraser') {
+            ctx.beginPath();
+            ctx.moveTo(P[0][0], P[0][1]);
+            if (P.length === 1) ctx.lineTo(P[0][0] + 0.01, P[0][1]);
+            for (let i = 1; i < P.length; i++) ctx.lineTo(P[i][0], P[i][1]);
+            ctx.stroke();
+        } else if (st.tool === 'arrow' && P.length >= 2) {
+            const [a, b] = [P[0], P[P.length - 1]];
+            const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+            const head = Math.max(lw * 3.5, 14 * W / 400);
+            ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(b[0], b[1]);
+            ctx.lineTo(b[0] - head * Math.cos(ang - 0.45), b[1] - head * Math.sin(ang - 0.45));
+            ctx.lineTo(b[0] - head * Math.cos(ang + 0.45), b[1] - head * Math.sin(ang + 0.45));
+            ctx.closePath(); ctx.fill();
+        } else if (st.tool === 'marker') {
+            const r = Math.max(lw * 2.2, 16 * W / 400);
+            ctx.beginPath(); ctx.arc(P[0][0], P[0][1], r, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = st.color === '#FFFFFF' || st.color === '#FDD835' ? '#000' : '#fff';
+            ctx.font = `bold ${Math.round(r * 1.3)}px sans-serif`;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(String(st.n), P[0][0], P[0][1] + r * 0.05);
+        }
+        ctx.restore();
+    };
+    AnnotateNode.prototype._redraw = function () {
+        const c = this.editCanvas, W = c.width, H = c.height;
+        if (!this.img || !W) return;
+        const ctx = c.getContext('2d');
+        ctx.clearRect(0, 0, W, H);
+        ctx.drawImage(this.img, 0, 0, W, H);
+        // 記號層另開一張，橡皮擦（destination-out）才不會把底圖也擦掉
+        if (!this._layer) this._layer = document.createElement('canvas');
+        this._layer.width = W; this._layer.height = H;
+        const lctx = this._layer.getContext('2d');
+        this.properties.strokes.forEach(st => this._drawStroke(lctx, st, W, H));
+        if (this._temp) this._drawStroke(lctx, this._temp, W, H);
+        ctx.drawImage(this._layer, 0, 0);
+    };
+    AnnotateNode.prototype._refreshOutput = function () {
+        if (!this.img) return;
+        this.imageUrl = this.editCanvas.toDataURL('image/png');
+        this.setOutputData(0, this.imageUrl);
+    };
+    AnnotateNode.prototype.onExecute = function () {
+        const url = this.getInputData(0);
+        if (url && url !== this._srcKey) this._loadSource(url, url);
+        this.setOutputData(0, this.imageUrl);
+    };
+    AnnotateNode.prototype.onConfigure = function () {
+        if (!Array.isArray(this.properties.strokes)) this.properties.strokes = [];
+        if (!ANNOTATE_COLORS.includes(this.properties.color)) this.properties.color = ANNOTATE_COLORS[0];
+        if (!ANNOTATE_TOOLS[this.properties.tool]) this.properties.tool = 'brush';
+        this._rebuildColors(); this._rebuildTools();
+        if (this.sizeEl) { this.sizeEl.value = this.properties.size; this.sizeVal.textContent = this.properties.size; }
+        // 記號存得下來，底圖不一定：接了上游會在 onExecute 重新載入；自己上傳的要重選
+        this.statusEl.textContent = this.getInputNode(0) ? '等待上游圖片…' : '請重新選擇圖片（記號已保留）';
+    };
+    AnnotateNode.prototype.onRemoved = function () {
+        if (this.srcUrl && this.srcUrl.startsWith('blob:')) URL.revokeObjectURL(this.srcUrl);
+        sharedOnRemoved.call(this);
+    };
 
     // ── Node: Image（文生圖，t2i 模型） ─────────────────────────
     // 圖片節點依「是否連接參考圖」自動切換 t2i（純文生圖）/ i2i（拿參考圖做
@@ -3162,33 +3475,73 @@
             spec: ['cyl 3 0.3 at 0 0.15 -6', 'cyl 0.5 3.4 at 0 1.7 -6', 'sphere 0.5 at 0 3.8 -6',
                    'box 8 5 0.4 at 0 2.5 -12'].join('\n'),
         },
+        walk: {
+            label: '走位 Walk',
+            // 示範三個動態語法：figure（人形假人，y 是腳底）、move to（片長內從 at 走到 to）、
+            // camera 行（自訂相機起止與注視點，覆蓋運鏡選單）
+            spec: ['box 6 10 6 at -8 5 -14', 'box 6 16 6 at -9 8 -28', 'box 6 12 6 at 9 6 -18',
+                   'box 6 20 6 at 10 10 -34', 'figure 1.7 at -5 0 -10 move to 5 0 -10',
+                   'camera from 0 3 14 to 0 2 4 look 0 1.2 -10'].join('\n'),
+        },
         empty: { label: '空白 Empty', spec: 'box 2 2 2 at 0 1 -6' },
     };
 
     // 解析場景描述。容錯：看不懂的行收集成錯誤讓使用者看到，不要靜默跳過——
     // 靜默跳過的話使用者會以為打錯的那一行有生效，只是「模型沒照做」。
+    //
+    // 語法（2026-09-03 擴充，補上社群拿 Blender 做的那幾樣：會動的東西、人形假人、自訂相機）：
+    //   box W H D | cyl R H | cone R H | sphere R | figure H   at x y z [rot deg] [move to x y z]
+    //   camera from x y z to x y z [look x y z]
+    // figure 的 y 是腳底（放地上就是 0），其他量體的 y 是中心。move to 是片長內從 at 線性走到 to。
+    // camera 行存在時覆蓋運鏡選單。同一套語法在 scripts/blender_greybox_export.py 有 Python 版，
+    // 改這裡要一起改那邊（tests/test_pure_functions.py 有鎖兩邊的範例）。
+    const GREYBOX_DIMS = { box: 3, cyl: 2, cone: 2, sphere: 1, figure: 1 };
     function parseGreyboxSpec(text) {
         const shapes = [], errors = [];
+        let camera = null;
         (text || '').split('\n').forEach((raw, i) => {
             const line = raw.trim();
             if (!line || line.startsWith('#')) return;
             const tok = line.split(/\s+/);
             const kind = tok[0].toLowerCase();
-            const atIdx = tok.indexOf('at');
-            const nums = (a, b) => tok.slice(a, b).map(Number);
-            const pos = atIdx >= 0 ? nums(atIdx + 1, atIdx + 4) : [0, 0, 0];
-            const dims = nums(1, atIdx >= 0 ? atIdx : tok.length);
-            const rotIdx = tok.indexOf('rot');
-            const rot = rotIdx >= 0 ? Number(tok[rotIdx + 1]) || 0 : 0;
             const bad = (msg) => errors.push(`第 ${i + 1} 行：${msg}`);
-            if (pos.length !== 3 || pos.some(n => !Number.isFinite(n))) return bad('at 後面要接三個數字（x y z）');
-            if (kind === 'box' && dims.length >= 3) shapes.push({ kind, dims: dims.slice(0, 3), pos, rot });
-            else if (kind === 'cyl' && dims.length >= 2) shapes.push({ kind, dims: dims.slice(0, 2), pos, rot });
-            else if (kind === 'cone' && dims.length >= 2) shapes.push({ kind, dims: dims.slice(0, 2), pos, rot });
-            else if (kind === 'sphere' && dims.length >= 1) shapes.push({ kind, dims: dims.slice(0, 1), pos, rot });
-            else bad(`看不懂「${line}」（可用：box 寬 高 深／cyl 半徑 高／cone 半徑 高／sphere 半徑，後接 at x y z）`);
+            const vec3 = (idx) => {
+                const v = tok.slice(idx, idx + 3).map(Number);
+                return (v.length === 3 && v.every(Number.isFinite)) ? v : null;
+            };
+            if (kind === 'camera') {
+                const fi = tok.indexOf('from'), ti = tok.indexOf('to'), li = tok.indexOf('look');
+                const from = fi >= 0 ? vec3(fi + 1) : null, to = ti >= 0 ? vec3(ti + 1) : null;
+                if (!from || !to) return bad('camera 要寫成「camera from x y z to x y z [look x y z]」');
+                const look = li >= 0 ? vec3(li + 1) : null;
+                if (li >= 0 && !look) return bad('look 後面要接三個數字（x y z）');
+                camera = { from, to, look };
+                return;
+            }
+            const atIdx = tok.indexOf('at'), rotIdx = tok.indexOf('rot'), mvIdx = tok.indexOf('move');
+            const pos = atIdx >= 0 ? vec3(atIdx + 1) : [0, 0, 0];
+            if (!pos) return bad('at 後面要接三個數字（x y z）');
+            const rot = rotIdx >= 0 ? Number(tok[rotIdx + 1]) || 0 : 0;
+            let to = null;
+            if (mvIdx >= 0) {
+                to = tok[mvIdx + 1] === 'to' ? vec3(mvIdx + 2) : null;
+                if (!to) return bad('move 要寫成「move to x y z」');
+            }
+            const end = Math.min(...[atIdx, rotIdx, mvIdx, tok.length].filter(n => n >= 0));
+            const dims = tok.slice(1, end).map(Number);
+            const need = GREYBOX_DIMS[kind];
+            if (need === undefined || dims.length < need || dims.slice(0, need).some(n => !Number.isFinite(n))) {
+                return bad(`看不懂「${line}」（可用：box 寬 高 深／cyl 半徑 高／cone 半徑 高／sphere 半徑／figure 身高，後接 at x y z，可加 move to x y z）`);
+            }
+            shapes.push({ kind, dims: dims.slice(0, need), pos, rot, to });
         });
-        return { shapes, errors };
+        return { shapes, camera, errors };
+    }
+
+    // AI 產出逐行過濾用：這一行是不是一個合法的量體或 camera 行
+    function isGreyboxLine(line) {
+        const r = parseGreyboxSpec(line);
+        return r.shapes.length === 1 || !!r.camera;
     }
 
     // 用提示詞產場景：把自然語言轉成上面那套 DSL。規則寫死在系統提示詞裡，
@@ -3200,22 +3553,27 @@
         'Output ONLY spec lines. No prose, no markdown, no code fences, no comments.',
         '',
         'Grammar (one volume per line):',
-        '  box <width> <height> <depth> at <x> <y> <z> [rot <deg>]',
-        '  cyl <radius> <height> at <x> <y> <z> [rot <deg>]',
-        '  cone <radius> <height> at <x> <y> <z> [rot <deg>]',
-        '  sphere <radius> at <x> <y> <z> [rot <deg>]',
+        '  box <width> <height> <depth> at <x> <y> <z> [rot <deg>] [move to <x> <y> <z>]',
+        '  cyl <radius> <height> at <x> <y> <z> [rot <deg>] [move to <x> <y> <z>]',
+        '  cone <radius> <height> at <x> <y> <z> [rot <deg>] [move to <x> <y> <z>]',
+        '  sphere <radius> at <x> <y> <z> [rot <deg>] [move to <x> <y> <z>]',
+        '  figure <height> at <x> <y> <z> [rot <deg>] [move to <x> <y> <z>]',
+        '  camera from <x> <y> <z> to <x> <y> <z> [look <x> <y> <z>]',
         '',
         'Coordinate system: Y is up, the ground plane is Y=0, the camera looks down -Z.',
         'Put the subject around z = -6 to -20. y is the CENTRE of the volume, so a box',
-        'of height 10 sitting on the ground has y = 5.',
-        'Use 4-12 volumes. Keep it coarse: this is a blockout for camera framing,',
-        'not a detailed model. Represent people/animals with simple stacked volumes.',
+        'of height 10 sitting on the ground has y = 5. EXCEPTION: figure is a human',
+        'dummy and its y is the FEET, so a person standing on the ground has y = 0.',
+        '"move to" makes the volume travel from "at" to that point over the clip;',
+        'use it for anything that moves (a person walking, a car driving).',
+        'Use "camera" only when the description asks for a specific camera path;',
+        'otherwise omit it. Use 4-12 volumes. Keep it coarse: this is a blockout',
+        'for camera framing, not a detailed model. Use figure for people.',
         '',
-        'Example for "a narrow alley with a figure standing at the end":',
+        'Example for "a narrow alley, a person walks from the far end toward the camera":',
         'box 4 12 20 at -6 6 -14',
         'box 4 12 20 at 6 6 -14',
-        'cyl 0.4 1.7 at 0 0.85 -16',
-        'sphere 0.28 at 0 1.95 -16',
+        'figure 1.7 at 0 0 -20 move to 0 0 -6',
     ].join('\n');
 
     function GreyboxNode() {
@@ -3251,14 +3609,17 @@
                 <div class="cv-hint cv-gb-err" style="color:#B3574F"></div>
                 <label>運鏡</label>
                 <div class="cv-gb-move-slot"></div>
+                <div class="cv-hint cv-gb-cam-hint" style="color:#3F625F"></div>
                 <label>畫面比例</label>
                 <div class="cv-gb-ratio-slot"></div>
                 <label>時長（秒）<span class="cv-gb-dur-val">3</span></label>
-                <input type="range" class="cv-gb-dur" min="1" max="8" step="1" value="3">
+                <input type="range" class="cv-gb-dur" min="1" max="15" step="1" value="3">
                 <label>相機距離 <span class="cv-gb-dist-val">14</span></label>
                 <input type="range" class="cv-gb-dist" min="4" max="40" step="1" value="14">
                 <label>相機高度 <span class="cv-gb-h-val">3</span></label>
                 <input type="range" class="cv-gb-h" min="1" max="20" step="1" value="3">
+                <button class="cv-add-ref-btn cv-gb-export">⬇ 匯出場景檔</button>
+                <div class="cv-hint">場景檔可搭配 Blender 匯入腳本在 Blender 裡重建、繼續細修後再輸出灰模影片；做好的影片用「上傳影片」節點接回來</div>
             </div>
             <div class="cv-gb-body">
                 <canvas class="cv-gb-view" style="width:100%;border-radius:6px;display:block"></canvas>
@@ -3269,6 +3630,7 @@
 
         this.specEl = panel.querySelector('.cv-gb-spec');
         this.errEl = panel.querySelector('.cv-gb-err');
+        this.camHintEl = panel.querySelector('.cv-gb-cam-hint');
         this.statusEl = panel.querySelector('.cv-status');
         this.viewCanvas = panel.querySelector('.cv-gb-view');
         this.specEl.value = this.properties.spec;
@@ -3322,6 +3684,7 @@
         this._hVal = panel.querySelector('.cv-gb-h-val');
 
         panel.querySelector('.cv-gb-render').addEventListener('click', () => this.renderVideo());
+        panel.querySelector('.cv-gb-export').addEventListener('click', () => this.exportSceneFile());
         wireConfigOverlay(this, panel);
         attachNodeChrome(this);
         this._initThree();
@@ -3362,24 +3725,50 @@
 
     GreyboxNode.prototype._rebuildScene = function () {
         if (!this.group) return;
-        const { shapes, errors } = parseGreyboxSpec(this.properties.spec);
+        const { shapes, camera, errors } = parseGreyboxSpec(this.properties.spec);
         this.errEl.textContent = errors.join('；');
+        this.camSpec = camera;
+        if (this.camHintEl) this.camHintEl.textContent = camera ? '場景描述裡有 camera 行，運鏡以它為準（運鏡選單與距離／高度不作用）' : '';
         while (this.group.children.length) {
             const c = this.group.children.pop();
-            if (c.geometry) c.geometry.dispose();
+            c.traverse(o => { if (o.geometry) o.geometry.dispose(); });
         }
         shapes.forEach(s => {
-            let geo;
-            if (s.kind === 'box') geo = new THREE.BoxGeometry(s.dims[0], s.dims[1], s.dims[2]);
-            else if (s.kind === 'cyl') geo = new THREE.CylinderGeometry(s.dims[0], s.dims[0], s.dims[1], 24);
-            else if (s.kind === 'cone') geo = new THREE.ConeGeometry(s.dims[0], s.dims[1], 24);
-            else geo = new THREE.SphereGeometry(s.dims[0], 24, 16);
-            const m = new THREE.Mesh(geo, this.greyMat);
-            m.position.set(s.pos[0], s.pos[1], s.pos[2]);
-            m.rotation.y = (s.rot || 0) * Math.PI / 180;
-            this.group.add(m);
+            const obj = s.kind === 'figure' ? this._buildFigure(s.dims[0]) : this._buildPrimitive(s);
+            obj.position.set(s.pos[0], s.pos[1], s.pos[2]);
+            obj.rotation.y = (s.rot || 0) * Math.PI / 180;
+            // move to：片長內從 at 走到 to，_applyFrame() 每格插值
+            obj.userData.from = s.pos;
+            obj.userData.to = s.to;
+            this.group.add(obj);
         });
+        // camera 行沒寫 look 時注視場景包圍盒中心；每次重建算一次，不要每格算
+        const bbox = new THREE.Box3().setFromObject(this.group);
+        this.sceneCentre = shapes.length ? bbox.getCenter(new THREE.Vector3()).toArray() : [0, 1, -6];
         this._renderPreview();
+    };
+
+    GreyboxNode.prototype._buildPrimitive = function (s) {
+        let geo;
+        if (s.kind === 'box') geo = new THREE.BoxGeometry(s.dims[0], s.dims[1], s.dims[2]);
+        else if (s.kind === 'cyl') geo = new THREE.CylinderGeometry(s.dims[0], s.dims[0], s.dims[1], 24);
+        else if (s.kind === 'cone') geo = new THREE.ConeGeometry(s.dims[0], s.dims[1], 24);
+        else geo = new THREE.SphereGeometry(s.dims[0], 24, 16);
+        return new THREE.Mesh(geo, this.greyMat);
+    };
+
+    // 人形假人：腿（圓柱）＋軀幹（盒）＋雙臂（細圓柱）＋頭（球），原點在腳底。
+    // 比例照真人大致 8 頭身，目的只是讓模型認得出「這是一個人、面向哪邊、在走」，
+    // 不追求好看。Blender 腳本裡的 build_figure() 是同一組比例。
+    GreyboxNode.prototype._buildFigure = function (h) {
+        const g = new THREE.Group();
+        const add = (geo, x, y, z) => { const m = new THREE.Mesh(geo, this.greyMat); m.position.set(x, y, z); g.add(m); };
+        add(new THREE.CylinderGeometry(h * 0.09, h * 0.09, h * 0.47, 16), 0, h * 0.235, 0);
+        add(new THREE.BoxGeometry(h * 0.24, h * 0.33, h * 0.13), 0, h * 0.635, 0);
+        add(new THREE.CylinderGeometry(h * 0.035, h * 0.035, h * 0.3, 12), -h * 0.16, h * 0.63, 0);
+        add(new THREE.CylinderGeometry(h * 0.035, h * 0.035, h * 0.3, 12), h * 0.16, h * 0.63, 0);
+        add(new THREE.SphereGeometry(h * 0.08, 16, 12), 0, h * 0.9, 0);
+        return g;
     };
 
     // AI 產的場景尺度不固定（有時是 3 公尺的房間、有時是 24 公尺的高樓），固定的
@@ -3403,18 +3792,46 @@
         if (this._hVal) this._hVal.textContent = height;
     };
 
-    GreyboxNode.prototype._applyCamera = function (t) {
-        const mv = (GREYBOX_MOVES[this.properties.move] || GREYBOX_MOVES.dolly_in).fn;
-        const { pos, look } = mv(t, this.properties.distance, this.properties.height);
+    // 一格：t 從 0 到 1。先把有 move to 的量體擺到位，再擺相機。
+    // 物件位移與自訂相機用 smoothstep 緩入緩出（跟 Blender 預設的 Bezier 關鍵格接近，
+    // 起步／停止不會突兀）；內建運鏡維持線性，跟先前的實測樣本一致。
+    GreyboxNode.prototype._applyFrame = function (t) {
+        const e = t * t * (3 - 2 * t);
+        const lerp = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+        this.group.children.forEach(o => {
+            if (o.userData.to) { const p = lerp(o.userData.from, o.userData.to, e); o.position.set(p[0], p[1], p[2]); }
+        });
+        let pos, look;
+        if (this.camSpec) {
+            pos = lerp(this.camSpec.from, this.camSpec.to, e);
+            look = this.camSpec.look || this.sceneCentre;
+        } else {
+            const mv = (GREYBOX_MOVES[this.properties.move] || GREYBOX_MOVES.dolly_in).fn;
+            ({ pos, look } = mv(t, this.properties.distance, this.properties.height));
+        }
         this.camera.position.set(pos[0], pos[1], pos[2]);
         this.camera.lookAt(look[0], look[1], look[2]);
+    };
+
+    // 場景檔：spec 前面加幾行設定註解，scripts/blender_greybox_export.py 會讀這些當預設值。
+    // 用 # 開頭是因為 parseGreyboxSpec() 本來就略過 # 行，貼回節點也不會出錯。
+    GreyboxNode.prototype.exportSceneFile = function () {
+        const p = this.properties;
+        const text = ['# nenai greybox scene — blender -b -P scripts/blender_greybox_export.py -- --spec 本檔 --out greybox.mp4',
+                      `# move: ${p.move}`, `# distance: ${p.distance}`, `# height: ${p.height}`,
+                      `# duration: ${p.duration}`, `# ratio: ${p.ratio}`, '', p.spec || ''].join('\n');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+        a.download = 'greybox-scene.txt';
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     };
 
     // 預覽固定畫第一格：使用者要判斷的是「起始構圖對不對」，
     // 播動畫反而看不清楚，而且每次滑桿變動都跑動畫很吵
     GreyboxNode.prototype._renderPreview = function () {
         if (!this.renderer) return;
-        this._applyCamera(0);
+        this._applyFrame(0);
         this.renderer.render(this.scene, this.camera);
         this.imageUrl = this.viewCanvas.toDataURL('image/png');
         this.setOutputData(0, this.imageUrl);
@@ -3441,7 +3858,7 @@
             const raw = (data.content || '').trim();
             // 模型常常包 markdown 圍欄或先講一段解釋，先剝掉圍欄再逐行過濾
             const body = raw.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/, '');
-            const kept = body.split('\n').filter(l => parseGreyboxSpec(l).shapes.length === 1);
+            const kept = body.split('\n').filter(isGreyboxLine);
             if (!kept.length) throw new Error('模型沒有回傳可用的量體，換個描述或換模型再試');
             const dropped = body.split('\n').filter(l => l.trim()).length - kept.length;
             this.properties.spec = kept.join('\n');
@@ -3449,7 +3866,8 @@
             this._rebuildScene();
             this._autoFrame();
             this._renderPreview();
-            this.statusEl.textContent = `已生成 ${kept.length} 個量體` + (dropped ? `（略過 ${dropped} 行非量體內容）` : '');
+            const nShapes = parseGreyboxSpec(this.properties.spec).shapes.length;
+            this.statusEl.textContent = `已生成 ${nShapes} 個量體` + (kept.length > nShapes ? '＋相機路徑' : '') + (dropped ? `（略過 ${dropped} 行非量體內容）` : '');
         } catch (e) {
             this.statusEl.textContent = '錯誤：' + e.message;
             showToast('場景生成失敗：' + e.message);
@@ -3477,7 +3895,7 @@
             });
             encoder.configure({ codec: 'avc1.42001f', width: w, height: h, bitrate: 2500000, framerate: fps });
             for (let i = 0; i < total; i++) {
-                this._applyCamera(total > 1 ? i / (total - 1) : 0);
+                this._applyFrame(total > 1 ? i / (total - 1) : 0);
                 this.renderer.render(this.scene, this.camera);
                 const frame = new VideoFrame(this.viewCanvas, {
                     timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps),
@@ -3528,6 +3946,14 @@
         if (this.presetSel) this.presetSel.value = this.properties.preset;
         if (this.moveSel) this.moveSel.value = this.properties.move;
         if (this.ratioSel) this.ratioSel.value = this.properties.ratio;
+        // 滑桿與數字標籤是建構時照預設值填的，還原存檔後要重新同步（距離／高度先前也漏了）
+        [['durSlider', 'duration', '.cv-gb-dur-val'], ['_distSlider', 'distance', '.cv-gb-dist-val'], ['_hSlider', 'height', '.cv-gb-h-val']]
+            .forEach(([sl, key, valCls]) => {
+                if (!this[sl]) return;
+                this[sl].value = this.properties[key];
+                const v = this[sl].parentElement.querySelector(valCls);
+                if (v) v.textContent = this.properties[key];
+            });
         this._resize();
         this._rebuildScene();
         // blob: 網址重整後就失效，還原時不要假裝影片還在
@@ -3540,6 +3966,8 @@
         LiteGraph.registerNodeType('nenai/text', TextPromptNode);
         LiteGraph.registerNodeType('nenai/camera_angle', CameraAngleNode);
         LiteGraph.registerNodeType('nenai/load_image', LoadImageNode);
+        LiteGraph.registerNodeType('nenai/load_video', LoadVideoNode);
+        LiteGraph.registerNodeType('nenai/annotate', AnnotateNode);
         LiteGraph.registerNodeType('nenai/pose', PoseNode);
         LiteGraph.registerNodeType('nenai/greybox', GreyboxNode);
         LiteGraph.registerNodeType('nenai/image', ImageGenNode);
@@ -3630,7 +4058,7 @@
     // ⚠️ 新增節點類型時這裡跟 NODE_TYPE_LABELS **兩張表都要加**：這張給工具列的
     // 「+ 新增節點」選單（HTML 裡的 data-type 是短鍵），NODE_TYPE_LABELS 給輸出插槽
     // 旁的快速新增選單。只加一邊的話按鈕會出現但點下去沒有反應（type 查不到就 return）。
-    const NODE_MENU_TYPES = { text: 'nenai/text', camera_angle: 'nenai/camera_angle', load_image: 'nenai/load_image', pose: 'nenai/pose', greybox: 'nenai/greybox', image: 'nenai/image', video: 'nenai/video', video_edit: 'nenai/video_edit', video_animate: 'nenai/video_animate', edit: 'nenai/edit', audio: 'nenai/audio', asr: 'nenai/asr', muleai: 'nenai/muleai' };
+    const NODE_MENU_TYPES = { text: 'nenai/text', camera_angle: 'nenai/camera_angle', load_image: 'nenai/load_image', load_video: 'nenai/load_video', annotate: 'nenai/annotate', pose: 'nenai/pose', greybox: 'nenai/greybox', image: 'nenai/image', video: 'nenai/video', video_edit: 'nenai/video_edit', video_animate: 'nenai/video_animate', edit: 'nenai/edit', audio: 'nenai/audio', asr: 'nenai/asr', muleai: 'nenai/muleai' };
 
     // ── 範本庫：一鍵套用常見組合，省去手動拉線 ─────────────────────
     // 每個範本只描述「節點類型 + 相對座標 + 要接的線」，實際節點是套用當下用
@@ -3667,6 +4095,24 @@
             desc: '上傳一張圖片當首幀，接到影片節點生成 i2v',
             nodes: [{ type: 'load_image', pos: [0, 0] }, { type: 'video', pos: [420, 0] }],
             edges: [[0, 0, 1, 1]],
+        },
+        {
+            id: 'annotate-to-video', name: '上傳圖片 → 畫記號 → 圖生影片',
+            desc: '在首幀圖上畫箭頭／編號指引動作，接到影片節點',
+            nodes: [{ type: 'load_image', pos: [0, 0] }, { type: 'annotate', pos: [400, 0] }, { type: 'video', pos: [800, 0] }],
+            edges: [[0, 0, 1, 0], [1, 0, 2, 1]],
+        },
+        {
+            id: 'greybox-camera-ref', name: '3D 灰模 → 運鏡參考 → NenAI Spicy',
+            desc: '灰模影片接到 Spicy 節點的「參考影片」，提示詞裡用「Video 1」指涉運鏡',
+            nodes: [{ type: 'greybox', pos: [0, 0] }, { type: 'muleai', pos: [440, 0] }],
+            edges: [[0, 1, 1, 3]],
+        },
+        {
+            id: 'video-camera-ref', name: '上傳影片 → 運鏡參考 → NenAI Spicy',
+            desc: '用自己做的灰模影片（例如 Blender 輸出）當運鏡參考',
+            nodes: [{ type: 'load_video', pos: [0, 0] }, { type: 'muleai', pos: [420, 0] }],
+            edges: [[0, 0, 1, 3]],
         },
     ];
     let _templatePlaceOffset = 0; // 每套用一次範本就往右下偏移，避免疊在前一個範本上面

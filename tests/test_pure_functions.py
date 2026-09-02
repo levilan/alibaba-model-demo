@@ -675,3 +675,67 @@ def test_drift_collects_every_model_category_but_not_voices():
     voice_ids = {v["id"] for m in app.MODELS["voice"]["tts"] for v in m.get("voices", [])}
     assert voice_ids, "測試前提不成立：TTS 模型底下沒有音色"
     assert not (voice_ids & ours), sorted(voice_ids & ours)[:5]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# scripts/blender_greybox_export.py：與 canvas.js 的灰模 DSL 是同一套語法，兩邊各有
+# 一份解析器（JS 跑在瀏覽器、Python 跑在 Blender）。2026-09-03 加 figure／move to／
+# camera 行時兩邊一起改；這裡鎖住「Python 版讀得懂 JS 版會產出的每一種行」，以及
+# 兩邊共用的常數表（比例、量體參數數量）與運鏡公式沒有漂移。
+import re as _re
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+import blender_greybox_export as gb  # noqa: E402
+
+_CANVAS_JS = (Path(__file__).resolve().parent.parent / "static/js/canvas.js").read_text()
+
+
+def test_greybox_spec_parser_handles_every_line_kind():
+    spec = """# move: orbit_left
+# distance: 20
+box 6 10 6 at -8 5 -14
+figure 1.7 at -5 0 -10 move to 5 0 -10
+cyl 0.4 2 at -2 1 -4 rot 30
+camera from 0 3 14 to 0 2 4 look 0 1.2 -10
+box 1 2 at 0 0 0
+cone 1 2 at 0 x 0
+"""
+    shapes, cam, settings, errors = gb.parse_spec(spec)
+    assert [s["kind"] for s in shapes] == ["box", "figure", "cyl"]
+    assert shapes[1]["to"] == [5.0, 0.0, -10.0]
+    assert shapes[2]["rot"] == 30.0 and shapes[2]["to"] is None
+    assert cam == {"from": [0.0, 3.0, 14.0], "to": [0.0, 2.0, 4.0], "look": [0.0, 1.2, -10.0]}
+    assert settings == {"move": "orbit_left", "distance": "20"}
+    assert len(errors) == 2   # box 少一個維度、cone 座標不是數字
+
+
+def test_greybox_constants_match_canvas_js():
+    js_ratios = dict(_re.findall(r"'(\d+:\d+)': \[(\d+, \d+)\]", _CANVAS_JS.split("const GREYBOX_RATIOS")[1].split("};")[0]))
+    assert {k: f"{w}, {h}" for k, (w, h) in gb.RATIOS.items()} == js_ratios
+    js_dims = _re.search(r"const GREYBOX_DIMS = \{([^}]+)\}", _CANVAS_JS).group(1)
+    assert dict(_re.findall(r"(\w+): (\d)", js_dims)) == {k: str(v) for k, v in gb.DIMS.items()}
+
+
+def test_greybox_camera_moves_match_canvas_js_endpoints():
+    # 與 canvas.js GREYBOX_MOVES 手算對照：t=0 與 t=1 的相機位置
+    d, h = 14, 3
+    assert gb.camera_move("dolly_in", 0, d, h)[0] == [0, h, d]
+    assert gb.camera_move("dolly_in", 1, d, h)[0] == [0, h, pytest.approx(d * 0.35)]
+    assert gb.camera_move("push_through", 1, d, h)[0][2] == pytest.approx(d - d * 1.8)
+    assert gb.camera_move("pan_right", 1, d, h)[1][0] == pytest.approx(d * 0.6)
+    assert gb.camera_move("orbit_left", 1, d, h)[0][0] == pytest.approx(-d * (2 ** 0.5) / 2)
+    with pytest.raises(ValueError):
+        gb.camera_move("nope", 0, d, h)
+
+
+def test_greybox_to_blender_is_proper_rotation():
+    # three.js（Y 上、看 -Z）→ Blender（Z 上、看 +Y）：主體在我們的 -Z 要落在 Blender 的 +Y
+    assert gb.to_blender([1, 2, -3]) == (1, 3, 2)
+    # 行列式 +1 → rot 角度不用反號
+    import itertools
+    m = [list(gb.to_blender(e)) for e in ([1, 0, 0], [0, 1, 0], [0, 0, 1])]
+    det = sum(
+        (1 if (perm in ((0, 1, 2), (1, 2, 0), (2, 0, 1))) else -1) * m[0][perm[0]] * m[1][perm[1]] * m[2][perm[2]]
+        for perm in itertools.permutations(range(3))
+    )
+    assert det == 1
