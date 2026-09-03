@@ -616,8 +616,17 @@ MODELS = {
         # 陷阱題的基準思考量本來就低（~167），沒有下降空間，所以看不出差別。
         # 結論：開關是有作用的（推理重的題目可省約一半 thinking token），因此給開關。
         # 這是 memory.md 4d「樣本數解決雜訊，解決不了變因沒被控制」的第三個實例。
-        {"id": "gemini-3.7-flash",            "name": "Gemini 3.7 Flash",            "group": "Gemini", "desc": "最新均衡模型",     "thinking": True},
-        {"id": "gemini-3.6-flash",            "name": "Gemini 3.6 Flash",            "group": "Gemini", "desc": "新一代均衡模型",   "thinking": True},
+        # gemini-3.8-flash（2026-09-04 正式站實測，$0.014）：預設就思考（240～362）；
+        # budget=0 → 126～247（中位 136）vs 不帶 → 170～245（中位 237），多步算術題各 5 次，
+        # 跟 3.7 一樣「大幅降低但不歸零」，區間有一格重疊（247 vs 170），開關仍給。
+        # includeThoughts 拿得到 thought 區塊；budget=0＋includeThoughts 會 400
+        # （"include_thoughts is only enabled when thinking is enabled"），_build_gemini_body
+        # 本來就不會同時送。**看得到圖**（原生 inlineData 1x1 紅色 PNG 答 "Red"）。
+        # presencePenalty／frequencyPenalty 任一 >0 都 400 "Penalty is not enabled for this
+        # model"——3.7、3.6 各驗一次同樣被拒，三顆一起標 no_penalties；其餘 Gemini 未逐顆驗、不標。
+        {"id": "gemini-3.8-flash",            "name": "Gemini 3.8 Flash",            "group": "Gemini", "desc": "最新均衡模型，支援看圖", "thinking": True, "vision": True, "no_penalties": True},
+        {"id": "gemini-3.7-flash",            "name": "Gemini 3.7 Flash",            "group": "Gemini", "desc": "新一代均衡模型",   "thinking": True, "no_penalties": True},
+        {"id": "gemini-3.6-flash",            "name": "Gemini 3.6 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": True, "no_penalties": True},
         {"id": "gemini-3.5-flash",            "name": "Gemini 3.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
         {"id": "gemini-3-flash-preview",      "name": "Gemini 3 Flash Preview",      "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
         {"id": "gemini-2.5-pro",              "name": "Gemini 2.5 Pro",              "group": "Gemini", "desc": "前代旗艦，深度推理", "thinking": False},
@@ -1464,6 +1473,18 @@ async def get_models(api_key: str = Depends(get_api_key)):
 _PRICING_CACHE: Dict[str, Any] = {"data": None, "ts": 0.0}
 _PRICING_CACHE_TTL = 3600
 
+# 閘道上這幾顆目前是**半價優惠**（到 2026 年底：model_ratio 0.375 → $0.75/1M），
+# 體驗站不跟著優惠走、一律顯示原價（Levi 裁示 2026-09-04）。所以這張表覆蓋
+# /api/pricing 換算出來的單價；「本次花費」也會用原價估，會比實際扣款高一倍——
+# 這是刻意的。優惠結束或閘道倍率改回去時把這張表清掉即可。
+# cached_input 是快取命中的輸入單價（閘道 cache_ratio 0.1 → 原價的一成）；目前 UI
+# 只顯示 input→output，這個欄位先進資料、不進畫面。
+_LIST_PRICE_OVERRIDE: Dict[str, Dict[str, float]] = {
+    "gemini-3.6-flash": {"input": 1.5, "output": 7.5, "cached_input": 0.15},
+    "gemini-3.7-flash": {"input": 1.5, "output": 7.5, "cached_input": 0.15},
+    "gemini-3.8-flash": {"input": 1.5, "output": 7.5, "cached_input": 0.15},
+}
+
 def _pricing_entry(m: dict) -> dict:
     """把網關 /api/pricing 的一筆記錄換算成前端要的美金單價。"""
     if m.get("quota_type") == 1:
@@ -1479,6 +1500,10 @@ def _pricing_entry(m: dict) -> dict:
         "input": model_ratio * 2,
         "output": model_ratio * completion_ratio * 2,
     }
+    cache_ratio = m.get("cache_ratio")
+    if cache_ratio:
+        entry["cached_input"] = round(entry["input"] * cache_ratio, 6)   # 0.15000000000000002 這種浮點尾數不要吐出去
+    entry.update(_LIST_PRICE_OVERRIDE.get(m.get("model_name", ""), {}))
     # 全模態模型的音訊 token 另有兩檔倍率（qwen3.5-omni-plus-realtime 的音訊輸入
     # 是文字的 7.86 倍、音訊輸出更高）。這兩個欄位在網關是 `*float64` + `omitempty`
     # ——**只有該模型真的設定了才會出現**，所以在其他模型上看不到是正常的，不代表
@@ -1725,6 +1750,30 @@ _NO_ENABLE_THINKING_MODELS = {"kimi/kimi-k3"}
 _TEXT_NO_PENALTIES = {m["id"] for m in MODELS["text"] if m.get("no_penalties")}
 
 
+def _gemini_parts(content) -> list:
+    """OpenAI 風格的 message content → Gemini parts。
+
+    純字串就是一段 text；帶圖的那一輪是 [{"type":"image_url"}, {"type":"text"}] 陣列，
+    圖片轉成 inlineData（只收 data URI——前端的視覺上傳本來就是讀成 base64 塞進來；
+    公網網址 Gemini 原生要走 fileData，這裡沒有那條路，直接略過並不假裝送了）。
+    2026-09-04 之前這個路徑把 content 陣列整個 str() 成文字，圖片等於靜默丟掉——
+    這也是為什麼 Gemini 文字模型先前一顆都沒標 vision。
+    """
+    if isinstance(content, str) or content is None:
+        return [{"text": content or ""}]
+    parts = []
+    for item in content:
+        if item.get("type") == "image_url":
+            url = (item.get("image_url") or {}).get("url", "")
+            if url.startswith("data:") and "," in url:
+                head, b64 = url.split(",", 1)
+                mime = head[5:].split(";")[0] or "image/png"
+                parts.append({"inlineData": {"mimeType": mime, "data": b64}})
+        elif item.get("type") == "text":
+            parts.append({"text": item.get("text") or ""})
+    return parts or [{"text": ""}]
+
+
 def _build_gemini_body(data: "TextGenerateRequest", messages: list) -> dict:
     """把內部的 OpenAI 風格請求轉成 Gemini 原生格式。"""
     contents = []
@@ -1733,7 +1782,7 @@ def _build_gemini_body(data: "TextGenerateRequest", messages: list) -> dict:
         if role == "system":
             continue          # Gemini 的 system 是頂層 systemInstruction
         contents.append({"role": "model" if role == "assistant" else "user",
-                         "parts": [{"text": m.get("content") or ""}]})
+                         "parts": _gemini_parts(m.get("content"))})
 
     gen: dict = {
         "temperature": data.temperature,
@@ -1747,10 +1796,13 @@ def _build_gemini_body(data: "TextGenerateRequest", messages: list) -> dict:
         gen["stopSequences"] = data.stop[:4]
     if data.seed is not None:
         gen["seed"] = data.seed
-    if data.presence_penalty:
-        gen["presencePenalty"] = data.presence_penalty
-    if data.frequency_penalty:
-        gen["frequencyPenalty"] = data.frequency_penalty
+    # no_penalties 的模型（gemini-3.8/3.7/3.6-flash 實測）送任一 penalty >0 就 400
+    # "Penalty is not enabled for this model"；前端也會把那兩個滑桿收起來
+    if data.model not in _TEXT_NO_PENALTIES:
+        if data.presence_penalty:
+            gen["presencePenalty"] = data.presence_penalty
+        if data.frequency_penalty:
+            gen["frequencyPenalty"] = data.frequency_penalty
 
     thinking: dict = {}
     if data.enable_thinking:

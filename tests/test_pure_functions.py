@@ -182,6 +182,60 @@ def test_kimi_must_not_receive_enable_thinking():
     assert "kimi/kimi-k3" in app._NO_ENABLE_THINKING_MODELS
 
 
+def test_pricing_override_shows_list_price_for_discounted_gemini_flash():
+    """gemini-3.6～3.8-flash 在閘道是半價優惠（到 2026 年底），體驗站顯示原價
+    $1.5→$7.5／快取 $0.15（Levi 裁示 2026-09-04）。其他模型維持閘道倍率換算。"""
+    rec = {"model_name": "gemini-3.8-flash", "quota_type": 0, "model_ratio": 0.375,
+           "completion_ratio": 5, "cache_ratio": 0.1}
+    e = app._pricing_entry(rec)
+    assert (e["input"], e["output"], e["cached_input"]) == (1.5, 7.5, 0.15)
+    for mid in ("gemini-3.6-flash", "gemini-3.7-flash"):
+        assert app._pricing_entry(dict(rec, model_name=mid))["input"] == 1.5
+    other = app._pricing_entry(dict(rec, model_name="gemini-3.5-flash", model_ratio=0.75, completion_ratio=6))
+    assert (other["input"], other["output"]) == (1.5, 9.0)
+    assert other["cached_input"] == pytest.approx(0.15)
+    assert "cached_input" not in app._pricing_entry({"model_name": "x", "quota_type": 0, "model_ratio": 1, "completion_ratio": 1})
+
+
+def test_gemini_38_flash_flags_match_prod_measurements():
+    """gemini-3.8-flash（2026-09-04 正式站實測）：預設思考、budget=0 有作用（中位 237→136）、
+    思考過程拿得到、看得到圖、penalty 任一 >0 就 400。3.7／3.6 的 penalty 各驗一次同樣被拒。"""
+    meta = {m["id"]: m for m in app.MODELS["text"]}
+    m = meta["gemini-3.8-flash"]
+    assert m["thinking"] is True and m.get("vision") is True and m.get("no_penalties") is True
+    assert "gemini-3.8-flash" not in app._GEMINI_NO_THINKING_OFF
+    assert "gemini-3.8-flash" not in app._GEMINI_NO_INCLUDE_THOUGHTS
+    assert "gemini-3.8-flash" not in app._GEMINI_THINKING_OFF_BY_DEFAULT, "不帶設定就會思考（240～362）"
+    for sibling in ("gemini-3.7-flash", "gemini-3.6-flash"):
+        assert meta[sibling].get("no_penalties") is True
+    assert "gemini-3.8-flash" in app._TEXT_NO_PENALTIES
+
+
+def test_gemini_body_forwards_images_and_gates_penalties():
+    """_build_gemini_body：帶圖那一輪要轉成 inlineData（先前整個 content 陣列被 str() 掉、
+    圖片靜默丟失）；no_penalties 的模型 penalty >0 也不能送（上游 400）。"""
+    data = app.TextGenerateRequest(model="gemini-3.8-flash", prompt="what colour",
+                                   presence_penalty=0.5, frequency_penalty=0.5,
+                                   images=["data:image/png;base64,QUJD"])
+    msgs = [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": data.images[0]}},
+                                          {"type": "text", "text": data.prompt}]}]
+    body = app._build_gemini_body(data, msgs)
+    parts = body["contents"][0]["parts"]
+    assert parts[0] == {"inlineData": {"mimeType": "image/png", "data": "QUJD"}}
+    assert parts[1] == {"text": "what colour"}
+    assert "presencePenalty" not in body["generationConfig"]
+    assert "frequencyPenalty" not in body["generationConfig"]
+    # 沒標 no_penalties 的模型維持原行為：>0 才送
+    data2 = app.TextGenerateRequest(model="gemini-3.1-pro-preview", prompt="hi", presence_penalty=0.5)
+    body2 = app._build_gemini_body(data2, [{"role": "user", "content": "hi"}])
+    assert body2["generationConfig"]["presencePenalty"] == 0.5
+    assert body2["contents"][0]["parts"] == [{"text": "hi"}]
+    # 公網網址沒有 fileData 那條路：略過、不假裝送了
+    body3 = app._build_gemini_body(data2, [{"role": "user", "content": [
+        {"type": "image_url", "image_url": {"url": "https://x/y.png"}}, {"type": "text", "text": "hi"}]}])
+    assert body3["contents"][0]["parts"] == [{"text": "hi"}]
+
+
 def test_gemini_37_flash_thinking_toggle_is_effective():
     """gemini-3.7-flash 的 thinkingBudget=0 有作用，所以要給開關。
 

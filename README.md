@@ -143,7 +143,7 @@ NenAI（nen.com.tw）模型測試平台。只要一把 NenAI API Key，就能在
 | claude-opus-5、claude-opus-4-8～4-1 | Claude Opus | — |
 | claude-sonnet-5／4-6／4-5、claude-haiku-4-5、claude-fable-5 | Claude | — |
 | gpt-5.6-terra／sol／luna、gpt-5.5～5-mini | GPT | reasoning_effort |
-| gemini-3.7-flash 等 9 個型號 | Gemini（走原生 API） | thinkingConfig |
+| gemini-3.8-flash 等 10 個型號 | Gemini（走原生 API；3.8-flash 支援圖片輸入） | thinkingConfig |
 | grok-4.3（支援圖片輸入）、grok-4-20-*、grok-4-1-fast-* | xAI Grok | 依型號 |
 
 思考控制依家族各有機制：Qwen／DeepSeek／GLM 用布林開關（`enable_thinking`），GPT 用推理強度分段（`reasoning_effort`），Gemini 走原生 `thinkingConfig`，GLM 5.x 兩種都支援。各模型可用的分段選項由 UI 依模型動態顯示，有思考過程回傳的模型會在回答上方顯示可收合的「思考過程」區塊。

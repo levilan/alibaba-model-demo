@@ -780,6 +780,10 @@ function onTextModelChange() {
     // top_p，滑桿顯示著只會讓使用者以為調了有效——整組收起來
     document.getElementById('textTempGroup').style.display = modelInfo.no_sampling ? 'none' : '';
     document.getElementById('textTopPGroup').style.display = modelInfo.no_sampling ? 'none' : '';
+    // no_penalties：後端對這些模型（grok-4.6、gemini-3.8/3.7/3.6-flash）不送 presence/
+    // frequency penalty（上游收到就 400），滑桿留著只會讓使用者以為調了有效——同樣收起來
+    document.getElementById('textPresencePenaltyGroup').style.display = modelInfo.no_penalties ? 'none' : '';
+    document.getElementById('textFrequencyPenaltyGroup').style.display = modelInfo.no_penalties ? 'none' : '';
 
     // 百煉方言四參數：依 MODELS 旗標分家族顯示（適用清單見 reference §2.3.24）。
     // clear_thinking（GLM）與 preserve_thinking（qwen3.7/3.6 系）是兩顆給不同家族的
