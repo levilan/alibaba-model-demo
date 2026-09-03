@@ -492,8 +492,8 @@ MODELS = {
         {"id": "qwen3.7-max",        "name": "Qwen3.7 Max",      "group": "旗艦",   "desc": "前代旗艦，強推理",       "thinking": True, "thinking_budget": True, "preserve_thinking": True, "repetition_penalty": True},
         {"id": "qwen3.6-max-preview","name": "Qwen3.6 Max",     "group": "旗艦",   "desc": "新一代旗艦，強推理",     "thinking": True, "thinking_budget": True, "preserve_thinking": True, "repetition_penalty": True},
         # ── 均衡 ──────────────────────────────────────────────────
-        {"id": "qwen3.6-plus",       "name": "Qwen3.6 Plus",     "group": "均衡",   "desc": "1M context，性價比最佳", "thinking": True, "thinking_budget": True, "preserve_thinking": True, "repetition_penalty": True},
         {"id": "qwen3.7-plus",       "name": "Qwen3.7 Plus",     "group": "均衡",   "desc": "最新均衡模型",           "thinking": True, "thinking_budget": True, "preserve_thinking": True, "repetition_penalty": True},
+        {"id": "qwen3.6-plus",       "name": "Qwen3.6 Plus",     "group": "均衡",   "desc": "1M context，性價比最佳", "thinking": True, "thinking_budget": True, "preserve_thinking": True, "repetition_penalty": True},
         {"id": "qwen3.5-plus",       "name": "Qwen3.5 Plus",     "group": "均衡",   "desc": "前代均衡模型",           "thinking": True, "thinking_budget": True, "repetition_penalty": True},
         # ── 極速 ──────────────────────────────────────────────────
         {"id": "qwen3.6-flash",      "name": "Qwen3.6 Flash",    "group": "極速",   "desc": "新一代極速模型",         "thinking": True, "thinking_budget": True, "preserve_thinking": True, "repetition_penalty": True},
@@ -517,17 +517,14 @@ MODELS = {
         # 的優先權高於 reasoning_effort；但反向不成立——實測 enable_thinking:true 配
         # reasoning_effort:none 仍然不會思考，也就是「關」的那一方永遠贏。
         # 支援的枚舉各型號不同，送錯值會回 400 並列出正確清單，故以 reasoning_efforts 標明。
-        {"id": "glm-5.1",            "name": "GLM 5.1",          "group": "第三方", "desc": "智譜 GLM 前一版",        "thinking": True,
-         "reasoning_effort": True, "reasoning_efforts": ["none", "minimal", "low", "medium", "high", "xhigh"], "thinking_budget": True, "clear_thinking": True, "repetition_penalty": True},
         {"id": "glm-5.2",            "name": "GLM 5.2",          "group": "第三方", "desc": "智譜 GLM 最新版（1M context）", "thinking": True,
          "reasoning_effort": True, "reasoning_efforts": ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "thinking_budget": True, "clear_thinking": True, "repetition_penalty": True},
+        {"id": "glm-5.1",            "name": "GLM 5.1",          "group": "第三方", "desc": "智譜 GLM 前一版",        "thinking": True,
+         "reasoning_effort": True, "reasoning_efforts": ["none", "minimal", "low", "medium", "high", "xhigh"], "thinking_budget": True, "clear_thinking": True, "repetition_penalty": True},
         # ── ByteDance Seed（字節跳動豆包大模型；seed-2.0 系列無條件會回思考過程
         #    reasoning_content，實測過 enable_thinking:false 對它們沒有效果
         #    （跟 Gemini 3.x 系列同樣「關不掉」），thinking 維持 False 不顯示
         #    會誤導使用者以為能控制的開關；seed-sc 則完全沒有思考過程）──
-        {"id": "dola-seed-sc",       "name": "Seed SC",          "group": "ByteDance", "desc": "字節跳動豆包，一般對話", "thinking": False},
-        {"id": "dola-seed-2.0-lite", "name": "Seed 2.0 Lite",    "group": "ByteDance", "desc": "字節跳動豆包，輕量推理", "thinking": False},
-        {"id": "dola-seed-2.0-pro",  "name": "Seed 2.0 Pro",     "group": "ByteDance", "desc": "字節跳動豆包，旗艦推理", "thinking": False},
         # ── seed-2.1-turbo：enable_thinking 同樣無效（true/false 各 3 次全都有
         #    reasoning_content），thinking 維持 False；但它吃 reasoning_effort，而且
         #    none 真的能關思考（3 次 reasoning 全 0）——是 seed 家族唯一能控制思考的
@@ -537,6 +534,9 @@ MODELS = {
         #    輕（low/medium）、深（high/xhigh/max）。圖片輸入 data URI 實測可用。──
         {"id": "dola-seed-2.1-turbo", "name": "Seed 2.1 Turbo",  "group": "ByteDance", "desc": "字節跳動豆包新一代，支援看圖，推理深度可調", "thinking": False, "vision": True,
          "reasoning_effort": True, "reasoning_efforts": ["none", "minimal", "low", "medium", "high", "xhigh", "max"]},
+        {"id": "dola-seed-sc",       "name": "Seed SC",          "group": "ByteDance", "desc": "字節跳動豆包，一般對話", "thinking": False},
+        {"id": "dola-seed-2.0-lite", "name": "Seed 2.0 Lite",    "group": "ByteDance", "desc": "字節跳動豆包，輕量推理", "thinking": False},
+        {"id": "dola-seed-2.0-pro",  "name": "Seed 2.0 Pro",     "group": "ByteDance", "desc": "字節跳動豆包，旗艦推理", "thinking": False},
         # ── 月之暗面 Kimi（走阿里百煉直供，僅華北2/北京地域）──────────────────
         # 純思考模型，**思考關不掉**：送 enable_thinking:false 或 reasoning_effort:none
         # 都會 400。而且錯誤訊息會誤導——它回的是
@@ -565,6 +565,12 @@ MODELS = {
         # 不是照家族推的。先前一顆都沒標 vision，客戶在文字頁籤看不到圖片上傳區。
         # claude-opus-4-8 首次回 Bedrock 暫時性錯誤、claude-fable-5 首次回空字串
         #（max_tokens 給太小），兩顆各重試 2 次都正常——**單次失敗不足以判定不支援**。
+        # claude-fable-5-1（2026-09-02 上架，正式站；測試站沒有這顆）。實測：
+        #   temperature 送出被上游拒（`temperature` is deprecated for this model）→ no_sampling
+        #   不回 reasoning_content、reasoning_tokens=0
+        #   **看得到圖**（1x1 PNG 實測答得出顏色）——Claude 家族目前只有這顆標了 vision，
+        #   但那是既有缺漏不是差異：claude-sonnet-5 同樣實測看得到圖卻沒標。詳見 update.md。
+        {"id": "claude-fable-5-1",            "name": "Claude Fable 5.1",  "group": "Claude", "desc": "創意寫作模型，支援看圖", "thinking": False, "no_sampling": True, "vision": True},
         {"id": "claude-opus-5",               "name": "Claude Opus 5",     "group": "Claude", "desc": "最新旗艦",         "thinking": False, "no_sampling": True, "vision": True},
         {"id": "claude-opus-4-8",             "name": "Claude Opus 4.8",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True, "vision": True},
         {"id": "claude-opus-4-7",             "name": "Claude Opus 4.7",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True, "vision": True},
@@ -575,12 +581,6 @@ MODELS = {
         {"id": "claude-sonnet-4-6",           "name": "Claude Sonnet 4.6", "group": "Claude", "desc": "前代均衡模型",     "thinking": False, "no_sampling": True, "vision": True},
         {"id": "claude-sonnet-4-5-20250929",  "name": "Claude Sonnet 4.5", "group": "Claude", "desc": "前代均衡模型",     "thinking": False, "no_sampling": True, "vision": True},
         {"id": "claude-haiku-4-5-20251001",   "name": "Claude Haiku 4.5",  "group": "Claude", "desc": "極速模型",         "thinking": False, "no_sampling": True, "vision": True},
-        # claude-fable-5-1（2026-09-02 上架，正式站；測試站沒有這顆）。實測：
-        #   temperature 送出被上游拒（`temperature` is deprecated for this model）→ no_sampling
-        #   不回 reasoning_content、reasoning_tokens=0
-        #   **看得到圖**（1x1 PNG 實測答得出顏色）——Claude 家族目前只有這顆標了 vision，
-        #   但那是既有缺漏不是差異：claude-sonnet-5 同樣實測看得到圖卻沒標。詳見 update.md。
-        {"id": "claude-fable-5-1",            "name": "Claude Fable 5.1",  "group": "Claude", "desc": "創意寫作模型，支援看圖", "thinking": False, "no_sampling": True, "vision": True},
         {"id": "claude-fable-5",              "name": "Claude Fable 5",    "group": "Claude", "desc": "創意寫作模型",     "thinking": False, "no_sampling": True, "vision": True},
         # ── GPT（推理強度用 reasoning_effort 字串控制，不是 enable_thinking 布林值——
         #    實測過對 GPT 模型送 enable_thinking 會直接 400 "Unknown parameter"；
@@ -607,15 +607,6 @@ MODELS = {
         #                         所以不給開關、一律顯示思考過程
         #   gemini-2.5-flash-lite 思考關得掉，但過程拿不到（送 includeThoughts 直接
         #                         400），所以有開關、但不會顯示思考區塊
-        {"id": "gemini-3.1-pro-preview",      "name": "Gemini 3.1 Pro Preview",      "group": "Gemini", "desc": "旗艦，最強推理",   "thinking": True},
-        # gemini-3.7-flash：thinkingBudget=0 **會大幅降低思考但不歸零**。
-        # ⚠️ 我一度寫成「關不掉、靜默忽略」——那是**只用一個提示詞**測出來的錯誤結論。
-        # 用會觸發大量思考的題目背對背重測（各 5 次，正式環境）才看得出來：
-        #     多步算術題   budget=0 → 76~94（中位 89）   不帶設定 → 180~294（中位 208）  完全不重疊
-        #     短句陷阱題   budget=0 → 0~158（中位 132）  不帶設定 → 121~183（中位 167）  重疊
-        # 陷阱題的基準思考量本來就低（~167），沒有下降空間，所以看不出差別。
-        # 結論：開關是有作用的（推理重的題目可省約一半 thinking token），因此給開關。
-        # 這是 memory.md 4d「樣本數解決雜訊，解決不了變因沒被控制」的第三個實例。
         # gemini-3.8-flash（2026-09-04 正式站實測，$0.014）：預設就思考（240～362）；
         # budget=0 → 126～247（中位 136）vs 不帶 → 170～245（中位 237），多步算術題各 5 次，
         # 跟 3.7 一樣「大幅降低但不歸零」，區間有一格重疊（247 vs 170），開關仍給。
@@ -625,18 +616,27 @@ MODELS = {
         # presencePenalty／frequencyPenalty 任一 >0 都 400 "Penalty is not enabled for this
         # model"——3.7、3.6 各驗一次同樣被拒，三顆一起標 no_penalties；其餘 Gemini 未逐顆驗、不標。
         {"id": "gemini-3.8-flash",            "name": "Gemini 3.8 Flash",            "group": "Gemini", "desc": "最新均衡模型，支援看圖", "thinking": True, "vision": True, "no_penalties": True},
+        # gemini-3.7-flash：thinkingBudget=0 **會大幅降低思考但不歸零**。
+        # ⚠️ 我一度寫成「關不掉、靜默忽略」——那是**只用一個提示詞**測出來的錯誤結論。
+        # 用會觸發大量思考的題目背對背重測（各 5 次，正式環境）才看得出來：
+        #     多步算術題   budget=0 → 76~94（中位 89）   不帶設定 → 180~294（中位 208）  完全不重疊
+        #     短句陷阱題   budget=0 → 0~158（中位 132）  不帶設定 → 121~183（中位 167）  重疊
+        # 陷阱題的基準思考量本來就低（~167），沒有下降空間，所以看不出差別。
+        # 結論：開關是有作用的（推理重的題目可省約一半 thinking token），因此給開關。
+        # 這是 memory.md 4d「樣本數解決雜訊，解決不了變因沒被控制」的第三個實例。
         {"id": "gemini-3.7-flash",            "name": "Gemini 3.7 Flash",            "group": "Gemini", "desc": "新一代均衡模型",   "thinking": True, "no_penalties": True},
         {"id": "gemini-3.6-flash",            "name": "Gemini 3.6 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": True, "no_penalties": True},
         {"id": "gemini-3.5-flash",            "name": "Gemini 3.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
-        {"id": "gemini-3-flash-preview",      "name": "Gemini 3 Flash Preview",      "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
-        {"id": "gemini-2.5-pro",              "name": "Gemini 2.5 Pro",              "group": "Gemini", "desc": "前代旗艦，深度推理", "thinking": False},
-        {"id": "gemini-2.5-flash",            "name": "Gemini 2.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
-        {"id": "gemini-2.5-flash-lite",       "name": "Gemini 2.5 Flash Lite",       "group": "Gemini", "desc": "前代輕量極速", "thinking": True},
         # gemini-3.5-flash-lite 跟 2.5-flash-lite 一樣「思考預設是關的、要送 budget=-1
         # 才會啟動」，但它**接受** includeThoughts（2.5 版送了會 400），所以思考過程
         # 看得到。實測：無 thinkingConfig → thoughts=None；budget=-1 → 186；
         # budget=-1 + includeThoughts → 180 且有 thought 區塊
         {"id": "gemini-3.5-flash-lite",       "name": "Gemini 3.5 Flash Lite",       "group": "Gemini", "desc": "新一代輕量極速", "thinking": True},
+        {"id": "gemini-3.1-pro-preview",      "name": "Gemini 3.1 Pro Preview",      "group": "Gemini", "desc": "旗艦，最強推理",   "thinking": True},
+        {"id": "gemini-3-flash-preview",      "name": "Gemini 3 Flash Preview",      "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
+        {"id": "gemini-2.5-pro",              "name": "Gemini 2.5 Pro",              "group": "Gemini", "desc": "前代旗艦，深度推理", "thinking": False},
+        {"id": "gemini-2.5-flash",            "name": "Gemini 2.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
+        {"id": "gemini-2.5-flash-lite",       "name": "Gemini 2.5 Flash Lite",       "group": "Gemini", "desc": "前代輕量極速", "thinking": True},
         # ── xAI Grok（reasoning / non-reasoning 是兩個獨立型號，不是同一模型的參數）──
         # 實測四個型號的行為（2026-08-11，正式環境）：
         #   -reasoning 版預設就思考，-non-reasoning 版完全不思考（reasoning_tokens 恆為 0）

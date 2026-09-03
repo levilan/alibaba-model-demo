@@ -205,14 +205,21 @@
     // 手動拉一條 prompt 連線——避免使用者以為「接了圖就會自動帶 prompt」卻其實
     // 沒有的落差。用 duck-typing 找「有 _buildPrompt 方法」的上游節點（目前只
     // 有 CameraAngleNode 有），這樣未來如果有其他節點想比照辦理也不用改這裡。
+    // 掛在非 prompt 插槽上、有 _buildPrompt() 的上游節點（相機角度、標記）各自貢獻一段
+    // 前綴，全部串起來。同一個節點接了多個插槽只算一次。先前只取第一個，相機角度與
+    // 標記同時接時會漏掉其中一個。
     function _autoCameraAnglePrefix(node, promptSlot) {
         const promptSrc = promptSlot != null ? node.getInputNode(promptSlot) : null;
+        const seen = new Set(), parts = [];
         for (let i = 0; i < (node.inputs || []).length; i++) {
             if (i === promptSlot) continue;
             const src = node.getInputNode(i);
-            if (src && src !== promptSrc && typeof src._buildPrompt === 'function') return src._buildPrompt();
+            if (!src || src === promptSrc || typeof src._buildPrompt !== 'function' || seen.has(src)) continue;
+            seen.add(src);
+            const t = src._buildPrompt();
+            if (t) parts.push(t);
         }
-        return '';
+        return parts.join(' ');
     }
     function _combinePrompt(node, promptSlot, basePrompt) {
         const prefix = _autoCameraAnglePrefix(node, promptSlot);
@@ -570,6 +577,13 @@
     function connectToFirstCompatibleInput(sourceNode, outSlot, targetNode) {
         const outType = sourceNode.outputs[outSlot].type;
         const inputs = targetNode.inputs || [];
+        // 來源節點可以指定「接到對方哪個插槽」（例如標記節點接影片節點時要接「參考圖 1」
+        // 走參考生影片，而不是第一個相容的 first_frame——接首幀圖會把記號直接畫進成片）
+        const pref = sourceNode.preferredInputFor && sourceNode.preferredInputFor(targetNode);
+        if (pref) {
+            const pi = targetNode.findInputSlot(pref);
+            if (pi >= 0 && inputs[pi].type === outType) { sourceNode.connect(outSlot, targetNode, pi); return true; }
+        }
         for (let i = 0; i < inputs.length; i++) {
             if (inputs[i].type === outType) { sourceNode.connect(outSlot, targetNode, i); return true; }
         }
@@ -1630,7 +1644,7 @@
     function AnnotateNode() {
         this.addInput('image', 'image');
         this.addOutput('image', 'image');
-        this.properties = { strokes: [], tool: 'brush', color: ANNOTATE_COLORS[0], size: 6, nextMarker: 1 };
+        this.properties = { strokes: [], tool: 'brush', color: ANNOTATE_COLORS[0], size: 6, nextMarker: 1, burnIn: false };
         this.srcUrl = null; this._srcKey = null; this.img = null; this.imageUrl = null;
         this._temp = null;
         this._contentHeight = 120;
@@ -1647,7 +1661,10 @@
                 <div class="cv-an-colors"></div>
                 <label>線寬 <span class="cv-an-size-val">6</span></label>
                 <input type="range" class="cv-an-size" min="1" max="16" step="1" value="6">
-                <div class="cv-hint" style="margin-top:6px">把輸出接到影片節點的首幀圖或參考圖，並在提示詞說明記號的意思，例如：「紅色箭頭是人物的移動方向，1 到 2 是行進路線，成片不要出現箭頭與數字」。記號為參考性質，實際生成以模型理解為準</div>
+                <label>自動加進提示詞的動作描述<span class="cv-hint">（由記號位置算出，接到影片／圖片節點時自動附在提示詞前面）</span></label>
+                <textarea class="cv-an-desc" rows="3" readonly placeholder="畫記號後這裡會出現描述"></textarea>
+                <label class="cv-check-row"><input type="checkbox" class="cv-an-burn"> 把記號畫進輸出圖片</label>
+                <div class="cv-hint" style="margin-top:6px">預設輸出不含記號的原圖，記號只轉成文字：模型不會把箭頭與數字當成畫面內容重現。提示詞裡可直接用編號指涉位置，例如「葉子從 1 飄到 2」。「畫進圖片」只給會讀草圖標註的模型使用。</div>
             </div>
             <div class="cv-an-body">
                 <div class="cv-an-tools"></div>
@@ -1677,6 +1694,10 @@
 
         this.toolsEl = panel.querySelector('.cv-an-tools');
         this._rebuildTools();
+        this.descEl = panel.querySelector('.cv-an-desc');
+        this.burnEl = panel.querySelector('.cv-an-burn');
+        this.burnEl.checked = !!this.properties.burnIn;
+        this.burnEl.addEventListener('change', () => { this.properties.burnIn = this.burnEl.checked; this._refreshOutput(); });
 
         const ec = this.editCanvas;
         ec.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -1720,6 +1741,11 @@
         attachNodeChrome(this);
     }
     AnnotateNode.title = '標記 Annotate';
+    // 接影片節點時預設走「參考圖 1」（參考生影片）（Levi 2026-09-04 指示）。輸出圖已經
+    // 不含記號，接 first_frame 也安全，只是參考模式給模型的自由度較大。
+    AnnotateNode.prototype.preferredInputFor = function (target) {
+        return target.type === 'nenai/video' ? '參考圖 1' : null;
+    };
     AnnotateNode.prototype._rebuildColors = function () {
         this.colorsEl.innerHTML = '';
         ANNOTATE_COLORS.forEach(c => {
@@ -1830,10 +1856,50 @@
         if (this._temp) this._drawStroke(lctx, this._temp, W, H);
         ctx.drawImage(this._layer, 0, 0);
     };
+    // 輸出圖片：預設是**不含記號的原圖**——記號轉成文字走 _buildPrompt()，模型永遠看不到
+    // 箭頭與數字（2026-09-04 實測 wan3.0 參考模式會把記號當畫面內容重現）。開了「畫進圖片」
+    // 才輸出編輯畫布上的合成圖。
     AnnotateNode.prototype._refreshOutput = function () {
         if (!this.img) return;
-        this.imageUrl = this.editCanvas.toDataURL('image/png');
+        if (this.properties.burnIn) {
+            this.imageUrl = this.editCanvas.toDataURL('image/png');
+        } else {
+            const c = document.createElement('canvas');
+            c.width = this.editCanvas.width; c.height = this.editCanvas.height;
+            c.getContext('2d').drawImage(this.img, 0, 0, c.width, c.height);
+            this.imageUrl = c.toDataURL('image/png');
+        }
         this.setOutputData(0, this.imageUrl);
+        if (this.descEl) this.descEl.value = this._buildPrompt();
+    };
+    // 記號 → 方位文字。畫面切九宮格，用中文方位描述；箭頭給起點與終點，筆畫給起中終三點，
+    // 編號給位置。文字會由 _autoCameraAnglePrefix() 接到下游節點的提示詞前面。
+    AnnotateNode.prototype._buildPrompt = function () {
+        const strokes = this.properties.strokes || [];
+        if (!strokes.length) return '';
+        const zone = ([x, y]) => {
+            const col = x < 1 / 3 ? 0 : x < 2 / 3 ? 1 : 2, row = y < 1 / 3 ? 0 : y < 2 / 3 ? 1 : 2;
+            return [['左上', '上方', '右上'], ['左側', '中央', '右側'], ['左下', '下方', '右下']][row][col];
+        };
+        const colourName = { '#E53935': '紅色', '#43A047': '綠色', '#1E88E5': '藍色', '#FDD835': '黃色', '#FFFFFF': '白色' };
+        const path = (pts) => {
+            const zs = pts.map(zone).filter((z, i, a) => i === 0 || z !== a[i - 1]);
+            return zs.join('→');
+        };
+        const markers = strokes.filter(s => s.tool === 'marker').sort((a, b) => a.n - b.n)
+            .map(s => `編號 ${s.n} 在畫面${zone(s.pts[0])}`);
+        const arrows = strokes.filter(s => s.tool === 'arrow' && s.pts.length >= 2)
+            .map(s => `${colourName[s.color] || ''}箭頭從${zone(s.pts[0])}指向${zone(s.pts[s.pts.length - 1])}`);
+        const lines = strokes.filter(s => s.tool === 'brush' && s.pts.length >= 2).map(s => {
+            const p = s.pts, mid = p[Math.floor(p.length / 2)];
+            const route = path([p[0], mid, p[p.length - 1]]);
+            return route.includes('→') ? `${colourName[s.color] || ''}路線 ${route}` : `${colourName[s.color] || ''}記號在${route}`;
+        });
+        const parts = [...markers, ...arrows, ...lines];
+        if (!parts.length) return '';
+        let text = `動作指引：${parts.join('；')}。`;
+        if (this.properties.burnIn) text += '圖上的箭頭、線條與數字只是動作指引，成片中不要出現。';
+        return text;
     };
     AnnotateNode.prototype.onExecute = function () {
         const url = this.getInputData(0);
@@ -1846,6 +1912,8 @@
         if (!ANNOTATE_TOOLS[this.properties.tool]) this.properties.tool = 'brush';
         this._rebuildColors(); this._rebuildTools();
         if (this.sizeEl) { this.sizeEl.value = this.properties.size; this.sizeVal.textContent = this.properties.size; }
+        if (this.burnEl) this.burnEl.checked = !!this.properties.burnIn;
+        if (this.descEl) this.descEl.value = this._buildPrompt();
         // 記號存得下來，底圖不一定：接了上游會在 onExecute 重新載入；自己上傳的要重選
         this.statusEl.textContent = this.getInputNode(0) ? '等待上游圖片…' : '請重新選擇圖片（記號已保留）';
     };
@@ -4100,7 +4168,8 @@
             id: 'annotate-to-video', name: '上傳圖片 → 畫記號 → 圖生影片',
             desc: '在首幀圖上畫箭頭／編號指引動作，接到影片節點',
             nodes: [{ type: 'load_image', pos: [0, 0] }, { type: 'annotate', pos: [400, 0] }, { type: 'video', pos: [800, 0] }],
-            edges: [[0, 0, 1, 0], [1, 0, 2, 1]],
+            // 標記圖接「參考圖 1」走參考生影片（插槽用名稱指定，LiteGraph 的 connect 吃字串）
+            edges: [[0, 0, 1, 0], [1, 0, 2, '參考圖 1']],
         },
         {
             id: 'greybox-camera-ref', name: '3D 灰模 → 運鏡參考 → NenAI Spicy',
