@@ -142,7 +142,7 @@ NenAI（nen.com.tw）模型測試平台。只要一把 NenAI API Key，就能在
 | dola-seed-2.1-turbo | ByteDance Seed（支援圖片輸入） | reasoning_effort 7 段（none 可關思考） |
 | claude-opus-5、claude-opus-4-8～4-1 | Claude Opus | — |
 | claude-sonnet-5／4-6／4-5、claude-haiku-4-5、claude-fable-5 | Claude | — |
-| gpt-5.6-terra／sol／luna、gpt-5.5～5-mini | GPT | reasoning_effort |
+| gpt-6-astra（支援圖片輸入）、gpt-5.6-terra／sol／luna、gpt-5.5～5-mini | GPT | reasoning_effort |
 | gemini-3.8-flash 等 10 個型號 | Gemini（走原生 API；3.8-flash 支援圖片輸入） | thinkingConfig |
 | grok-4.3（支援圖片輸入）、grok-4-20-*、grok-4-1-fast-* | xAI Grok | 依型號 |
 

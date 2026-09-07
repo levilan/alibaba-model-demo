@@ -197,6 +197,21 @@ def test_pricing_override_shows_list_price_for_discounted_gemini_flash():
     assert "cached_input" not in app._pricing_entry({"model_name": "x", "quota_type": 0, "model_ratio": 1, "completion_ratio": 1})
 
 
+def test_gpt6_astra_flags_and_sampling_gate():
+    """gpt-6-astra（2026-09-07 正式站實測）：拒收 max_tokens／temperature≠1／top_p／penalty／stop，
+    收 max_completion_tokens 與 seed；reasoning_effort 五檔；看得到圖。
+    同時鎖住「no_sampling 改讀旗標」不會漏掉任何一顆 Claude（先前是 startswith("claude-")）。"""
+    meta = {m["id"]: m for m in app.MODELS["text"]}
+    m = meta["gpt-6-astra"]
+    assert m["reasoning_efforts"] == ["none", "low", "medium", "high", "xhigh"]
+    for flag in ("vision", "no_sampling", "no_penalties", "no_stop", "max_completion_tokens"):
+        assert m.get(flag) is True, flag
+    assert "gpt-6-astra" in app._TEXT_MAX_COMPLETION_TOKENS and "gpt-6-astra" in app._TEXT_NO_STOP
+    claude_ids = {i for i in meta if i.startswith("claude-")}
+    assert claude_ids and claude_ids <= app._TEXT_NO_SAMPLING, "Claude 全家都不能送 temperature/top_p"
+    assert "gpt-5.5" not in app._TEXT_MAX_COMPLETION_TOKENS, "其他 GPT 維持 max_tokens，沒逐顆驗過不推"
+
+
 def test_gemini_38_flash_flags_match_prod_measurements():
     """gemini-3.8-flash（2026-09-04 正式站實測）：預設思考、budget=0 有作用（中位 237→136）、
     思考過程拿得到、看得到圖、penalty 任一 >0 就 400。3.7／3.6 的 penalty 各驗一次同樣被拒。"""

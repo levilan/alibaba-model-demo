@@ -247,6 +247,8 @@ def test_models_fields_are_known_to_mcp():
         # 一律歸內部欄位。⚠️ 之後若新增 chat 類工具，這一組要重新分類。
         "no_sampling",       # 不接受 temperature/top_p（Claude 系）
         "no_penalties",      # 連 0.0 都不接受 presence/frequency_penalty（grok-4.6）
+        "no_stop",           # 不接受 stop（gpt-6-astra）
+        "max_completion_tokens",   # 只收 max_completion_tokens、拒收 max_tokens（gpt-6-astra）
         "thinking_budget", "clear_thinking", "preserve_thinking",
         "repetition_penalty",
     }

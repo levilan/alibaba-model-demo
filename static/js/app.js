@@ -784,6 +784,8 @@ function onTextModelChange() {
     // frequency penalty（上游收到就 400），滑桿留著只會讓使用者以為調了有效——同樣收起來
     document.getElementById('textPresencePenaltyGroup').style.display = modelInfo.no_penalties ? 'none' : '';
     document.getElementById('textFrequencyPenaltyGroup').style.display = modelInfo.no_penalties ? 'none' : '';
+    // no_stop：gpt-6-astra 送 stop 直接 400，後端不送、這裡也收起輸入框
+    document.getElementById('textStopGroup').style.display = modelInfo.no_stop ? 'none' : '';
 
     // 百煉方言四參數：依 MODELS 旗標分家族顯示（適用清單見 reference §2.3.24）。
     // clear_thinking（GLM）與 preserve_thinking（qwen3.7/3.6 系）是兩顆給不同家族的

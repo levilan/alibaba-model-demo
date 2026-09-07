@@ -588,9 +588,17 @@ MODELS = {
         #    OpenAI 官方文件常見的 minimal/low/medium/high），reasoning_effort=none
         #    會讓 reasoning_tokens 掉到 0，證實真的有效，但這個閘道沒有回傳可讀的
         #    思考過程文字，只影響耗費的 token 數/延遲）──
-        {"id": "gpt-5.6-terra", "name": "GPT 5.6 Terra", "group": "GPT", "desc": "最新特化模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
-        {"id": "gpt-5.6-sol",   "name": "GPT 5.6 Sol",   "group": "GPT", "desc": "最新特化模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
-        {"id": "gpt-5.6-luna",  "name": "GPT 5.6 Luna",  "group": "GPT", "desc": "最新特化模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
+        # gpt-6-astra（2026-09-07 正式站實測，$0.01）：**只收 max_completion_tokens**（送 max_tokens
+        # 直接 400「Use 'max_completion_tokens' instead」）；temperature 只接受預設 1、top_p／
+        # presence_penalty／frequency_penalty／stop 全部 400 "not supported with this model"；
+        # seed 可送；reasoning_effort 五檔 none/low/medium/high/xhigh（送 minimal 或亂值上游會列出
+        # 合法值）；不回 reasoning_content；看得到圖（隨機三位數字 222 讀對）。這是家族裡第一顆
+        # 拒收 max_tokens／stop 的，故新增 max_completion_tokens／no_stop 兩個旗標，其他 GPT 不動。
+        {"id": "gpt-6-astra",   "name": "GPT 6 Astra",   "group": "GPT", "desc": "最新旗艦，支援看圖", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"],
+         "vision": True, "no_sampling": True, "no_penalties": True, "no_stop": True, "max_completion_tokens": True},
+        {"id": "gpt-5.6-terra", "name": "GPT 5.6 Terra", "group": "GPT", "desc": "特化模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
+        {"id": "gpt-5.6-sol",   "name": "GPT 5.6 Sol",   "group": "GPT", "desc": "特化模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
+        {"id": "gpt-5.6-luna",  "name": "GPT 5.6 Luna",  "group": "GPT", "desc": "特化模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
         {"id": "gpt-5.5",       "name": "GPT 5.5",       "group": "GPT", "desc": "均衡模型",     "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
         {"id": "gpt-5.4",       "name": "GPT 5.4",       "group": "GPT", "desc": "均衡模型",     "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
         {"id": "gpt-5.4-mini",  "name": "GPT 5.4 Mini",  "group": "GPT", "desc": "輕量極速",     "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
@@ -1748,6 +1756,14 @@ _GEMINI_THINKING_OFF_BY_DEFAULT = {"gemini-2.5-flash-lite", "gemini-3.5-flash-li
 _NO_ENABLE_THINKING_MODELS = {"kimi/kimi-k3"}
 # 連 0.0 都不收 presence_penalty／frequency_penalty 的模型（MODELS 的 no_penalties 旗標）
 _TEXT_NO_PENALTIES = {m["id"] for m in MODELS["text"] if m.get("no_penalties")}
+# 不收 temperature／top_p 的模型（MODELS 的 no_sampling 旗標）：Claude 全家（Bedrock 限制）
+# 與 gpt-6-astra（temperature 只接受預設 1、top_p 直接 400）。先前是用 startswith("claude-")
+# 判斷，第一顆非 Claude 的出現後改讀旗標。
+_TEXT_NO_SAMPLING = {m["id"] for m in MODELS["text"] if m.get("no_sampling")}
+# 不收 stop 的模型（gpt-6-astra：400 "'stop' is not supported with this model"）
+_TEXT_NO_STOP = {m["id"] for m in MODELS["text"] if m.get("no_stop")}
+# 只收 max_completion_tokens、拒收 max_tokens 的模型（gpt-6-astra）
+_TEXT_MAX_COMPLETION_TOKENS = {m["id"] for m in MODELS["text"] if m.get("max_completion_tokens")}
 
 
 def _gemini_parts(content) -> list:
@@ -1974,10 +1990,15 @@ async def text_generate(request: Request, data: TextGenerateRequest, api_key: st
     create_kwargs = dict(
         model=data.model,
         messages=messages,
-        max_tokens=data.max_tokens,
         stream=data.stream,
         extra_body=extra_body or None,
     )
+    # gpt-6-astra 拒收 max_tokens（400「Use 'max_completion_tokens' instead」），其他模型維持
+    # max_tokens——不要全部改成 max_completion_tokens，舊模型／其他家族收不收沒逐顆驗過
+    if data.model in _TEXT_MAX_COMPLETION_TOKENS:
+        create_kwargs["max_completion_tokens"] = data.max_tokens
+    else:
+        create_kwargs["max_tokens"] = data.max_tokens
     # presence_penalty／frequency_penalty：有些模型連 0.0 都不收。grok-4.6 實測**只要
     # 帶了其中任一個就 400**（`openai_error`／`bad_response_status_code`，Grok 不說是哪個
     # 欄位的問題），而同家族的 grok-4.3 收得好好的——又一次「同家族不能互推」。
@@ -1987,7 +2008,7 @@ async def text_generate(request: Request, data: TextGenerateRequest, api_key: st
         create_kwargs["frequency_penalty"] = data.frequency_penalty
     # Claude 系列在此平台的 Bedrock 後端不接受 temperature/top_p（部分模型視為已棄用參數，
     # 部分模型不允許兩者同時指定），一律不送這兩個參數，讓後端使用預設取樣設定
-    if not data.model.startswith("claude-"):
+    if data.model not in _TEXT_NO_SAMPLING:
         create_kwargs["temperature"] = data.temperature
         if data.top_p is not None:
             create_kwargs["top_p"] = data.top_p
@@ -1995,7 +2016,7 @@ async def text_generate(request: Request, data: TextGenerateRequest, api_key: st
         create_kwargs["extra_body"] = {**(extra_body or {}), "top_k": data.top_k}
     if data.seed is not None:
         create_kwargs["seed"] = data.seed
-    if data.stop:
+    if data.stop and data.model not in _TEXT_NO_STOP:
         create_kwargs["stop"] = data.stop[:4]
     if data.stream:
         # 要求上游在最後一個 chunk 附上 usage（token 數），供前端計算即時花費
