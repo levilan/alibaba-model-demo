@@ -579,7 +579,7 @@
         const inputs = targetNode.inputs || [];
         // 來源節點可以指定「接到對方哪個插槽」（例如標記節點接影片節點時要接「參考圖 1」
         // 走參考生影片，而不是第一個相容的 first_frame——接首幀圖會把記號直接畫進成片）
-        const pref = sourceNode.preferredInputFor && sourceNode.preferredInputFor(targetNode);
+        const pref = sourceNode.preferredInputFor && sourceNode.preferredInputFor(targetNode, outSlot);
         if (pref) {
             const pi = targetNode.findInputSlot(pref);
             if (pi >= 0 && inputs[pi].type === outType) { sourceNode.connect(outSlot, targetNode, pi); return true; }
@@ -2267,6 +2267,10 @@
         this.refSlots = [];
         this._addRefSlot();
         this._addRefSlot();
+        // 參考影片：r2v 端點的 reference_files 本來就收影片（後端依副檔名上傳成雲端網址
+        // 送 reference_video），只是 Canvas 先前沒有插槽可接——灰模節點的運鏡影片因此只能
+        // 接 Spicy 節點。只有沒標 ref_images_only 的 r2v 模型會用到，其餘模型忽略並提示。
+        this.addInput('參考影片', 'video');
         const models = getModelsFor('video', 't2v');
         this.properties = {
             model: (models[0] && models[0].id) || '', prompt: '', resolution: '720P', duration: 5, ratio: '', status: '',
@@ -2400,8 +2404,12 @@
     VideoGenNode.prototype._hasClip = function () {
         return (this.clipSlot >= 0 && !!this.getInputNode(this.clipSlot)) || !!this.localClipUrl;
     };
+    VideoGenNode.prototype._refVideoSlot = function () { return this.findInputSlot('參考影片'); };
+    VideoGenNode.prototype._hasRefVideo = function () {
+        const i = this._refVideoSlot(); return i >= 0 && !!this.getInputNode(i);
+    };
     VideoGenNode.prototype._detectMode = function () {
-        const hasRef = this.refSlots.some(i => !!this.getInputNode(i));
+        const hasRef = this.refSlots.some(i => !!this.getInputNode(i)) || this._hasRefVideo();
         if (hasRef) return 'r2v';
         if (this.getInputNode(1) || this._hasClip()) return 'i2v';
         return 't2v';
@@ -2421,7 +2429,8 @@
     VideoGenNode.prototype.onConnectionsChange = function (type) {
         if (type !== LiteGraph.INPUT || !this.modelSelect) return;
         const mode = this._detectMode();
-        const list = getModelsFor('video', mode);
+        // 接了參考影片時只列吃得下影片的 r2v 模型（ref_images_only 的會把影片丟掉或被上游拒）
+        const list = getModelsFor('video', mode).filter(m => !(this._hasRefVideo() && m.ref_images_only));
         const values = list.map(m => m.id);
         if (!values.includes(this.properties.model)) this.properties.model = values[0] || '';
         this.modelSelect.innerHTML = values.map(v => `<option value="${v}"${v === this.properties.model ? ' selected' : ''}>${v}</option>`).join('');
@@ -2437,7 +2446,8 @@
             return;
         }
         this.modeHintEl.textContent = mode === 'r2v'
-            ? (firstFrameAlsoConnected ? '（參考生影片 / 多圖，first_frame 將被忽略）' : '（參考生影片 / 多圖）')
+            ? (firstFrameAlsoConnected ? '（參考生影片 / 多圖，first_frame 將被忽略）'
+               : this._hasRefVideo() ? '（參考生影片 / 含參考影片）' : '（參考生影片 / 多圖）')
             : mode === 'i2v' ? '（圖生影片）' : '（文生影片）';
     };
     VideoGenNode.prototype.generate = async function () {
@@ -2469,9 +2479,14 @@
             if (mode === 'r2v') {
                 endpoint = '/api/video/r2v';
                 const refUrls = this.refSlots.map(i => this.getInputData(i, true)).filter(Boolean);
-                if (!refUrls.length) throw new Error('參考圖節點尚未生成完成，請先按上游圖片節點的「生成圖片」');
+                const refVideoUrl = this._hasRefVideo() ? this.getInputData(this._refVideoSlot(), true) : null;
+                if (!refUrls.length && !refVideoUrl) throw new Error('參考節點尚未生成完成，請先按上游節點的生成鈕');
                 for (const url of refUrls) {
                     fd.append('reference_files', await fetchAsBlob(url), 'ref.png');
+                }
+                if (refVideoUrl) {
+                    // 檔名副檔名決定後端把它當影片（上傳成網址）還是圖片，一定要是 .mp4
+                    fd.append('reference_files', await fetchAsBlob(refVideoUrl), 'ref.mp4');
                 }
             } else if (mode === 'i2v') {
                 endpoint = '/api/video/i2v';
@@ -2512,6 +2527,8 @@
         this.textarea.value = this.properties.prompt || '';
         if (this.modelSelect) this.modelSelect.value = this.properties.model;
         this.refSlots = _collectRefSlots(this);
+        // 2026-09-07 之前的存檔沒有「參考影片」插槽，缺了就補（LiteGraph 照序列化的 inputs 重建）
+        if (this.findInputSlot('參考影片') < 0) { const w = this.size[0]; this.addInput('參考影片', 'video'); this.size[0] = w; }
         restoreAdvancedParams(this);
         // 還原存檔後也要重算限制：解析度下拉的選項是動態產生的，不先重建就只剩空清單；
         // 而且舊存檔可能存著現在已經不合法的值（例如更早版本存下來的 1080P + seedance 2.5）
@@ -3691,6 +3708,7 @@
             </div>
             <div class="cv-gb-body">
                 <canvas class="cv-gb-view" style="width:100%;border-radius:6px;display:block"></canvas>
+                <div class="cv-preview cv-gb-video-box" style="display:none;min-height:0"></div>
                 <button class="cv-generate cv-gb-render" style="margin-top:6px">▶ 產生灰模影片</button>
                 <div class="cv-status"></div>
             </div>`;
@@ -3701,6 +3719,7 @@
         this.camHintEl = panel.querySelector('.cv-gb-cam-hint');
         this.statusEl = panel.querySelector('.cv-status');
         this.viewCanvas = panel.querySelector('.cv-gb-view');
+        this._previewBox = panel.querySelector('.cv-gb-video-box');   // setPreviewVideo() 會往這裡放播放器
         this.specEl.value = this.properties.spec;
         this.specEl.addEventListener('input', () => {
             this.properties.spec = this.specEl.value;
@@ -3982,6 +4001,10 @@
             this.setOutputData(1, this.videoUrl);
             this.statusEl.textContent = `完成（${this.properties.duration} 秒 / ${w}×${h}）`;
             this._renderPreview();
+            // 產好的影片直接在節點裡播（Levi 2026-09-07：先前只有第一格預覽、看不到成片）
+            this._previewBox.style.display = '';
+            setPreviewVideo(this, this.videoUrl);
+            lgCanvas.setDirty(true, true);
         } catch (e) {
             this.statusEl.textContent = '編碼失敗：' + (e && e.message ? e.message : e);
         }
@@ -4026,7 +4049,14 @@
         this._rebuildScene();
         // blob: 網址重整後就失效，還原時不要假裝影片還在
         this.videoUrl = null;
+        if (this._previewBox) { this._previewBox.style.display = 'none'; this._previewBox.innerHTML = ''; }
         this.statusEl.textContent = '請重新產生灰模影片';
+    };
+    // 「+」快速新增：image 輸出接影片節點走「參考圖 1」（構圖參考），video 輸出走「參考影片」
+    // （運鏡參考）；接 Spicy 節點時 video 型別本來就只有「參考影片」一個插槽
+    GreyboxNode.prototype.preferredInputFor = function (target, outSlot) {
+        if (target.type !== 'nenai/video') return null;
+        return outSlot === 1 ? '參考影片' : '參考圖 1';
     };
     GreyboxNode.prototype.onRemoved = sharedOnRemoved;
 
@@ -4176,6 +4206,12 @@
             desc: '灰模影片接到 Spicy 節點的「參考影片」，提示詞裡用「Video 1」指涉運鏡',
             nodes: [{ type: 'greybox', pos: [0, 0] }, { type: 'muleai', pos: [440, 0] }],
             edges: [[0, 1, 1, 3]],
+        },
+        {
+            id: 'greybox-to-video', name: '3D 灰模 → 參考影片 → 影片節點',
+            desc: '灰模影片接到影片節點的「參考影片」（參考生影片，限吃得下影片的模型）',
+            nodes: [{ type: 'greybox', pos: [0, 0] }, { type: 'video', pos: [440, 0] }],
+            edges: [[0, 1, 1, '參考影片']],
         },
         {
             id: 'video-camera-ref', name: '上傳影片 → 運鏡參考 → NenAI Spicy',

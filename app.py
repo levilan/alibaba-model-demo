@@ -1087,14 +1087,17 @@ MODELS = {
         {"id": "veo-3.1-lite-generate-001", "name": "Veo 3.1 Lite（圖生影片）", "group": "Veo",
          "desc": "Google 輕量圖生影片，含原生配音", "type": "i2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
          "resolutions": ["720P", "1080P"]},
+        # ── 以下 r2v 只吃圖片（ref_images_only）：Veo 的 referenceImages 官方只收圖片；Seedance 家族
+        #    在閘道只吃圖片參考（2026-09-01 記錄）；Omni 的 r2v 處理只送 image_files、影片會被靜默丟掉。
+        #    標了旗標後：後端 /api/video/r2v 對影片檔回明確錯誤、主測試台藏影片上傳、Canvas 接參考影片時不列這些模型。
         {"id": "veo-3.1-generate-001", "name": "Veo 3.1（參考生影片）", "group": "Veo",
-         "desc": "Google 旗艦參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
+         "desc": "Google 旗艦參考生影片，含原生配音", "type": "r2v", "ref_images_only": True, "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
          "resolutions": ["720P", "1080P"]},
         {"id": "veo-3.1-fast-generate-001", "name": "Veo 3.1 Fast（參考生影片）", "group": "Veo",
-         "desc": "Google 極速參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
+         "desc": "Google 極速參考生影片，含原生配音", "type": "r2v", "ref_images_only": True, "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
          "resolutions": ["720P", "1080P"]},
         {"id": "veo-3.1-lite-generate-001", "name": "Veo 3.1 Lite（參考生影片）", "group": "Veo",
-         "desc": "Google 輕量參考生影片，含原生配音", "type": "r2v", "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
+         "desc": "Google 輕量參考生影片，含原生配音", "type": "r2v", "ref_images_only": True, "audio": True, "min_dur": 4, "max_dur": 8, "dur_step": 2,
          "resolutions": ["720P", "1080P"]},
         # ── ByteDance Seedance（字節跳動/即夢文生/圖生/參考生影片，走一般 /v1/videos
         #    任務制流程——跟萬相系列共用的 media/image/images 三欄位注入機制。
@@ -1171,17 +1174,17 @@ MODELS = {
          "audio": True, "no_negative_prompt": True, "no_prompt_extend": True,
          "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
         {"id": "dreamina-seedance-2.5", "name": "Seedance 2.5（即夢，參考生影片）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance 最新版參考生影片，參考圖 3 張起、最多 30 張，最長 30 秒，支援 480P/720P", "type": "r2v",
+         "desc": "即夢 Seedance 最新版參考生影片，參考圖 3 張起、最多 30 張，最長 30 秒，支援 480P/720P", "type": "r2v", "ref_images_only": True,
          "audio": True, "no_negative_prompt": True, "no_prompt_extend": True, "max_ref": 30,
          "min_dur": 4, "max_dur": 30, "resolutions": ["480P", "720P"]},
         {"id": "bytedance-seedance-1.5-pro", "name": "Seedance 1.5 Pro（參考生影片）", "group": "ByteDance Seedance",
-         "desc": "字節跳動 Seedance，旗艦參考生影片", "type": "r2v",
+         "desc": "字節跳動 Seedance，旗艦參考生影片", "type": "r2v", "ref_images_only": True,
          "audio": True, "no_negative_prompt": True, "no_prompt_extend": True, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0", "name": "Seedance 2.0（即夢，參考生影片）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance，標準參考生影片", "type": "r2v",
+         "desc": "即夢 Seedance，標準參考生影片", "type": "r2v", "ref_images_only": True,
          "audio": True, "no_negative_prompt": True, "no_prompt_extend": True, "min_dur": 2, "max_dur": 15},
         {"id": "dreamina-seedance-2.0-fast", "name": "Seedance 2.0 Fast（即夢，參考生影片）", "group": "ByteDance Seedance",
-         "desc": "即夢 Seedance，極速參考生影片，支援 480P/720P", "type": "r2v",
+         "desc": "即夢 Seedance，極速參考生影片，支援 480P/720P", "type": "r2v", "ref_images_only": True,
          "audio": True, "no_negative_prompt": True, "no_prompt_extend": True,
          "min_dur": 2, "max_dur": 15, "resolutions": ["480P", "720P"]},
         # ── Gemini Omni（走 /v1beta/interactions，模型自行決定長度/解析度，固定含原生配音）──
@@ -1190,7 +1193,7 @@ MODELS = {
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview（圖生影片）", "group": "Gemini",
          "desc": "Google 多模態圖生影片（預覽版），長度與解析度由模型決定（約 10 秒），自動含原生配音", "type": "i2v", "audio": False, "no_duration": True, "no_resolution": True},
         {"id": "gemini-omni-flash-preview", "name": "Gemini Omni Flash Preview（參考生影片）", "group": "Gemini",
-         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），長度與解析度由模型決定（約 10 秒），自動含原生配音", "type": "r2v", "audio": False, "no_duration": True, "no_resolution": True, "max_ref": 3},
+         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），長度與解析度由模型決定（約 10 秒），自動含原生配音", "type": "r2v", "ref_images_only": True, "audio": False, "no_duration": True, "no_resolution": True, "max_ref": 3},
         # gemini-omni-1.1-flash-preview：帶版號的 omni flash，與上面同家族、同價
         # （輸入 $1.50/1M、文字輸出 $9、影片輸出 $17.50）。同樣走 /v1beta/interactions，
         # 模型自行決定長度與解析度，聲音隨影片產出。
@@ -1199,7 +1202,7 @@ MODELS = {
         {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview（圖生影片）", "group": "Gemini",
          "desc": "Google 多模態圖生影片（預覽版），3–10 秒、可選 360P／720P／1080P／4K，自動含原生配音", "type": "i2v", "audio": False, "min_dur": 3, "max_dur": 10, "resolutions": ["360P", "720P", "1080P", "4K"], "ratios": ["16:9", "9:16"]},
         {"id": "gemini-omni-1.1-flash-preview", "name": "Gemini Omni 1.1 Flash Preview（參考生影片）", "group": "Gemini",
-         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），3–10 秒、可選 360P／720P／1080P／4K，自動含原生配音", "type": "r2v", "audio": False, "min_dur": 3, "max_dur": 10, "max_ref": 3, "resolutions": ["360P", "720P", "1080P", "4K"], "ratios": ["16:9", "9:16"]},
+         "desc": "Google 多模態參考生影片（預覽版，最多 3 張參考圖），3–10 秒、可選 360P／720P／1080P／4K，自動含原生配音", "type": "r2v", "ref_images_only": True, "audio": False, "min_dur": 3, "max_dur": 10, "max_ref": 3, "resolutions": ["360P", "720P", "1080P", "4K"], "ratios": ["16:9", "9:16"]},
     ],
     "muleai": [
         # ── w3.0 影片四顆（2026-09-01 上架）────────────────────────────
