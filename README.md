@@ -23,7 +23,7 @@ NenAI（nen.com.tw）模型測試平台。只要一把 NenAI API Key，就能在
 | 圖片生成 | 文生圖 (T2I) 與圖像編輯 (I2I)，支援多張參考圖、自訂尺寸、點擊放大預覽 |
 | 影片生成 | 文生影片／圖生影片／參考生影片／視頻編輯／動作動畫，即時輪詢進度、配音選項 |
 | NenAI Spicy | Wan 2.7 I2V Spicy、Z-Image Spicy、圖像編輯 Spicy、圖像換臉 |
-| 語音與音樂 | 語音辨識（ASR，含串流）、語音合成（TTS）、即時語音對話（Realtime）、音樂生成（Lyria） |
+| 語音與音樂 | 語音辨識（ASR，含串流）、語音合成（TTS）、即時語音對話（Realtime）、音訊對話（Audio Chat）、音樂生成（Lyria） |
 
 貫穿各頁籤的輔助功能：
 
@@ -159,7 +159,7 @@ NenAI（nen.com.tw）模型測試平台。只要一把 NenAI API Key，就能在
 | wan2.7-image-pro／wan2.7-image | 萬相文生圖 | 支援組圖模式（一次生成連貫故事圖組）；pro 支援 2K／4K |
 | wan2.6-t2i | 萬相文生圖 | |
 | z-image-turbo | Z-Image | |
-| MAI-Image-2.5-Pro／2.5／2.5-Flash | MAI Image | 支援自訂寬高（即時驗證與對齊提示） |
+| MAI-Image-2.6／2.6-Flash、2.5-Pro／2.5／2.5-Flash | MAI Image | 支援自訂寬高（即時驗證與對齊提示）；2.6 系可開「自動畫面比例」。2.6 兩顆目前只在測試網關驗過，正式站列出後才顯示 |
 | gpt-image-2／1.5 | GPT Image | 支援 quality／background（透明背景）／output_format |
 | dola-seedream-5.0-pro／lite | ByteDance Seedream | 尺寸 `WIDTHxHEIGHT`，也接受 2k／3k／4k |
 | gemini-3-pro-image、gemini-3.1-flash-image、gemini-2.5-flash-image、gemini-3.1-flash-lite-image | Gemini Image | 以比例（10 種）＋像素等級（1K／2K／4K，依型號）控制輸出 |
@@ -198,6 +198,8 @@ NenAI（nen.com.tw）模型測試平台。只要一把 NenAI API Key，就能在
 
 | 模型 | 分類 | 功能 |
 |---|---|---|
+| gpt-realtime-2.1／2.1-mini／2 | 即時語音 | OpenAI 即時語音對話（GA 版 session 格式、24kHz），10 個音色，支援語意斷句與插話。目前只在測試網關驗過，正式站列出後才顯示 |
+| gpt-audio-1.5 | 音訊對話 | 上傳一段語音或輸入文字，模型以語音與逐字稿回答（非即時）。同上，測試網關驗過 |
 | qwen3.5-omni-plus／flash-realtime | 即時語音 | WebSocket 雙向串流，可聽可說、看得懂圖片與影片，支援語意斷句與插話 |
 | qwen-audio-3.0-realtime-plus／flash | 即時語音 | 純語音即時對話，15 個專屬音色 |
 | qwen-audio-3.0-asr-flash（＋串流版） | 語音辨識 | 上傳音檔回逐字稿；串流版 SSE 回傳中間結果 |

@@ -363,6 +363,21 @@ _GEMINI_TTS_VOICES = [
 # 兩次的音訊位元**不相同**（長度相同、內容不同）。
 #
 # 舊清單裡的 `Chelsie` 已移除——實測不支援（那是 qwen2.5-omni 的音色）。
+# OpenAI gpt-realtime-2 家族與 gpt-audio-1.5 的音色（Azure 音訊快速入門列的十個）。
+# 2026-09-08 測試網關：realtime 三顆每個音色各開一條新連線真的 response.create 一次，30/30 有音訊
+# （GA 版規則：對話裡已有 AI 語音就不准換 voice，所以要換音色得重新連線）。
+_GPT_REALTIME_VOICES = [
+    {"id": "alloy", "name": "Alloy", "desc": "中性平穩"},
+    {"id": "ash", "name": "Ash", "desc": "沉穩低音"},
+    {"id": "ballad", "name": "Ballad", "desc": "柔和敘事"},
+    {"id": "coral", "name": "Coral", "desc": "明亮親切"},
+    {"id": "echo", "name": "Echo", "desc": "清晰男聲"},
+    {"id": "sage", "name": "Sage", "desc": "溫和沉靜"},
+    {"id": "shimmer", "name": "Shimmer", "desc": "輕快女聲"},
+    {"id": "verse", "name": "Verse", "desc": "富表現力"},
+    {"id": "marin", "name": "Marin", "desc": "自然對話"},
+    {"id": "cedar", "name": "Cedar", "desc": "穩重男聲"},
+]
 _QWEN35_OMNI_REALTIME_VOICES = [
     {"id": "Tina", "name": "Tina 甜甜", "desc": "甜美暖心"},
     {"id": "Cindy", "name": "Cindy 林欣宜", "desc": "台灣嗲嗲"},
@@ -780,6 +795,23 @@ MODELS = {
         # 閘道端已把多收錢的部分修掉（計費改以上游回報的 token 為準），但（📄 轉述自
         # 閘道端 2026-08-16）**Azure 上游本來就靜默忽略 n，n=3 永遠只會回 1 張**——
         # 所以這裡不是等修好解鎖，而是 n>1 這個選項對 MAI 從來就不存在。
+        # MAI-Image-2.6／2.6-Flash（2026-09-08 測試網關實測，$0.26 含編輯）：1024x1024 各一張、
+        # 對帳與牌價吻合到小數第四位；auto_aspect_ratio:true 兩顆都轉發且生效——同一提示詞
+        # 輸出從 1024² 變 1536²（2304 tokens，費用 2.25 倍），UI 用開關並註明可能放大。
+        # web_grounding 閘道在預扣費前擋下（定價未確認），不露出。尺寸限制官方說與 2.5 相同，
+        # 只實測 1024x1024。走部署閘門 _DEPLOY_GATED_MODELS：正式站 /v1/models 出現前不顯示。
+        {
+            "id": "MAI-Image-2.6", "name": "MAI-Image-2.6", "group": "MAI Image",
+            "desc": "最新旗艦圖像生成，可自動決定畫面比例", "type": "t2i", "max_n": 1, "auto_aspect_ratio": True,
+            "sizes": _MAI_IMAGE_SIZES, "custom_size": _MAI_CUSTOM_SIZE,
+            "no_seed": True, "no_negative_prompt": True, "no_watermark": True, "no_prompt_extend": True,
+        },
+        {
+            "id": "MAI-Image-2.6-Flash", "name": "MAI-Image-2.6-Flash", "group": "MAI Image",
+            "desc": "最新極速圖像生成，可自動決定畫面比例", "type": "t2i", "max_n": 1, "auto_aspect_ratio": True,
+            "sizes": _MAI_IMAGE_SIZES, "custom_size": _MAI_CUSTOM_SIZE,
+            "no_seed": True, "no_negative_prompt": True, "no_watermark": True, "no_prompt_extend": True,
+        },
         {
             "id": "MAI-Image-2.5-Pro", "name": "MAI-Image-2.5-Pro", "group": "MAI Image",
             "desc": "旗艦圖像生成 Pro", "type": "t2i", "max_n": 1,
@@ -936,6 +968,21 @@ MODELS = {
             "sizes": ["2048x2048","2k","3k","4k"],
         },
         # ── MAI Image 編輯（Azure OpenAI 管道，沿用一般 /v1/images/edits 流程，不支援 ref_strength）──
+        # 2.6 編輯實測（2026-09-08 測試網關）：multipart image＋prompt，1024x1024 各一張成功、對帳吻合。
+        # ⚠️ edits 帶 response_format 會被上游拒（"Invalid parameters: response_format"），本後端本來就不送。
+        # auto_aspect_ratio 官方說 edits 也收，但只在 generations 實測過，編輯這裡不標。
+        {
+            "id": "MAI-Image-2.6", "name": "MAI-Image-2.6（編輯）", "group": "MAI Image",
+            "desc": "最新旗艦圖像編輯", "type": "i2i",
+            "no_seed": True, "no_negative_prompt": True, "no_watermark": True, "no_prompt_extend": True, "max_n": 1, "no_ref_strength": True, "max_ref": 1,
+            "sizes": _MAI_IMAGE_SIZES,
+        },
+        {
+            "id": "MAI-Image-2.6-Flash", "name": "MAI-Image-2.6-Flash（編輯）", "group": "MAI Image",
+            "desc": "最新極速圖像編輯", "type": "i2i",
+            "no_seed": True, "no_negative_prompt": True, "no_watermark": True, "no_prompt_extend": True, "max_n": 1, "no_ref_strength": True, "max_ref": 1,
+            "sizes": _MAI_IMAGE_SIZES,
+        },
         {
             "id": "MAI-Image-2.5-Pro", "name": "MAI-Image-2.5-Pro（編輯）", "group": "MAI Image",
             "desc": "旗艦圖像編輯 Pro", "type": "i2i",
@@ -1258,6 +1305,26 @@ MODELS = {
         # input_image_buffer.append **靜默忽略**（不報錯、usage 也沒有 video_tokens，
         # 模型口頭回「看不到圖片」），所以這個開關不能少。
         "realtime": [
+            # gpt-realtime-2 家族（2026-09-08 測試網關實測，總費用約 $0.05）：走 GA 版 session 形狀
+            # （session.type 必填、audio.input/output.format、output_modalities），前端依 session_ga
+            # 旗標切換；輸入取樣率上游要求 ≥24000（16k 直接 400）。文字→語音、語音→語音、十個音色、
+            # 斷句 server_vad／semantic_vad／手動都實測通過（smart_turn 被拒）；四檔計費與牌價吻合。
+            # audio_only：畫面輸入 GA 版支援但未實測，先不露出附件鈕。走部署閘門。
+            {"id": "gpt-realtime-2.1", "name": "GPT Realtime 2.1", "group": "即時語音",
+             "desc": "OpenAI 最新即時語音對話，可聽可說，支援語意斷句與插話",
+             "voices": _GPT_REALTIME_VOICES, "default_voice": "alloy",
+             "turn_modes": ["semantic_vad", "server_vad", "none"], "audio_only": True, "session_ga": True,
+             "input_rate": 24000, "output_rate": 24000},
+            {"id": "gpt-realtime-2.1-mini", "name": "GPT Realtime 2.1 Mini", "group": "即時語音",
+             "desc": "OpenAI 即時語音對話輕量版，可聽可說，支援語意斷句與插話",
+             "voices": _GPT_REALTIME_VOICES, "default_voice": "alloy",
+             "turn_modes": ["semantic_vad", "server_vad", "none"], "audio_only": True, "session_ga": True,
+             "input_rate": 24000, "output_rate": 24000},
+            {"id": "gpt-realtime-2", "name": "GPT Realtime 2", "group": "即時語音",
+             "desc": "OpenAI 即時語音對話，可聽可說，支援語意斷句與插話",
+             "voices": _GPT_REALTIME_VOICES, "default_voice": "alloy",
+             "turn_modes": ["semantic_vad", "server_vad", "none"], "audio_only": True, "session_ga": True,
+             "input_rate": 24000, "output_rate": 24000},
             {"id": "qwen3.5-omni-plus-realtime", "name": "Qwen3.5 Omni Plus Realtime", "group": "即時語音",
              "desc": "全模態即時對話，可聽可說、看得懂圖片與影片，支援語意斷句與插話",
              "voices": _QWEN35_OMNI_REALTIME_VOICES, "default_voice": "Tina",
@@ -1280,6 +1347,15 @@ MODELS = {
              "voices": _QWEN_AUDIO30_REALTIME_VOICES, "default_voice": "longanqian",
              "turn_modes": ["server_vad", "smart_turn", "none"], "audio_only": True,
              "input_rate": 16000, "output_rate": 24000},
+        ],
+        # 音訊對話（非即時）：一次上傳一段語音或輸入文字，模型以語音＋文字回答（Chat Completions
+        # 的 modalities ["text","audio"]）。gpt-audio-1.5 2026-09-08 測試網關實測：**純文字請求會被拒**
+        # （"requires that either input content or output modality contain audio"），所以這裡永遠要求
+        # 語音輸出；串流時輸出格式只收 pcm16（wav 被拒），本端點走非串流拿 wav。計費四檔與牌價吻合。
+        "audiochat": [
+            {"id": "gpt-audio-1.5", "name": "GPT Audio 1.5", "group": "音訊對話",
+             "desc": "上傳一段語音或輸入文字，模型以語音與逐字稿回答",
+             "voices": _GPT_REALTIME_VOICES, "default_voice": "alloy"},
         ],
         "asr": [
             {"id": "qwen-audio-3.0-asr-flash", "name": "Qwen Audio 3.0 ASR Flash", "group": "語音辨識",
@@ -1439,7 +1515,10 @@ async def login(data: LoginRequest, request: Request):
 # 之後每一批「測試網關先上」的模型都會再用到）。
 # 目前是空的：上一批六個（realtime 三個＋Lyria 三個）在 2026-08-17 全部部署上正式
 # 環境並實測通過，依裁示把集合清空。下一批「測試網關先上」的模型直接把 id 加回來。
-_DEPLOY_GATED_MODELS: set = set()
+# 2026-09-08：MAI-Image-2.6 兩顆只在測試網關驗過，正式站 /v1/models 還沒有——列出但正式站
+# 抓不到就不顯示（機制 2026-08-18 留下的，見 memory.md）。正式站上線後把這裡清空。
+_DEPLOY_GATED_MODELS: set = {"MAI-Image-2.6", "MAI-Image-2.6-Flash",
+                             "gpt-realtime-2.1", "gpt-realtime-2.1-mini", "gpt-realtime-2", "gpt-audio-1.5"}
 _UPSTREAM_IDS_CACHE: Dict[str, Any] = {"ids": None, "ts": 0.0}
 
 async def _upstream_model_ids(api_key: str) -> Optional[set]:
@@ -1466,9 +1545,11 @@ async def get_models(api_key: str = Depends(get_api_key)):
         return m["id"] not in _DEPLOY_GATED_MODELS or (upstream is not None and m["id"] in upstream)
 
     out = dict(MODELS)
+    out["image"] = [m for m in MODELS["image"] if _keep(m)]
     out["voice"] = dict(MODELS["voice"])
     out["voice"]["realtime"] = [m for m in MODELS["voice"]["realtime"] if _keep(m)]
     out["voice"]["music"] = [m for m in MODELS["voice"]["music"] if _keep(m)]
+    out["voice"]["audiochat"] = [m for m in MODELS["voice"]["audiochat"] if _keep(m)]
     return out
 
 
@@ -2628,6 +2709,8 @@ _QWEN_FUSION_EDIT_MODELS = {"qwen-image-2.0-pro", "qwen-image-2.0",
                             "qwen-image-3.0-pro", "qwen-image-3.0"}
 # GPT Image 系列額外支援 OpenAI 標準的 quality/background/output_format 三個參數（已實測確認有效）
 _GPT_IMAGE_MODELS = {"gpt-image-2", "gpt-image-1.5"}
+# 支援 auto_aspect_ratio 的圖片模型（MODELS 旗標；目前 MAI-Image-2.6 兩顆的 t2i）
+_IMAGE_AUTO_ASPECT_MODELS = {m["id"] for m in MODELS["image"] if m.get("auto_aspect_ratio")}
 
 # 千問圖像 3.0 系列：negative_prompt 要巢狀放 parameters（平台 marshal 實測
 # 2026-08-25：扁平會被收進 Extra 但沒有任何程式碼去讀、靜默失效；巢狀
@@ -2685,6 +2768,7 @@ class ImageGenerateRequest(BaseModel):
     watermark: bool = False
     seed: Optional[int] = None
     aspect_ratio: Optional[str] = None       # 僅 Gemini 圖片模型使用
+    auto_aspect_ratio: Optional[bool] = None # 僅 MAI-Image-2.6 系：模型依提示詞自選長寬比（實測會放大到 1536²）
     quality: Optional[str] = None            # 僅 GPT Image 使用：auto/low/medium/high
     background: Optional[str] = None         # 僅 GPT Image 使用：auto/opaque/transparent
     output_format: Optional[str] = None      # 僅 GPT Image 使用：png/jpeg/webp
@@ -2718,6 +2802,9 @@ async def image_generate(request: Request, data: ImageGenerateRequest, api_key: 
     # 一層是為了 Canvas 與其他直接打這支 API 的呼叫方。長期維持，不是暫時措施。
     if data.model.startswith("MAI-Image"):
         payload["n"] = 1
+        # 只有標了 auto_aspect_ratio 的型號（2.6 系）才送；顯式 False 也照送（Rule 6 語意）
+        if data.auto_aspect_ratio is not None and data.model in _IMAGE_AUTO_ASPECT_MODELS:
+            payload["auto_aspect_ratio"] = bool(data.auto_aspect_ratio)
     # 自訂尺寸選了「width / height」那條路時，改送這兩個欄位、並把 size 拿掉。
     # 上游本來就以 width/height 為準（實測會蓋過 size），拿掉 size 只是讓送出的
     # 請求跟使用者選的機制一致，看日誌時不會誤以為兩個都在生效。
@@ -4042,6 +4129,82 @@ async def voice_asr_stream(request: Request, api_key: str = Depends(get_api_key)
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+# ─── 音訊對話（Chat Completions 的 modalities ["text","audio"]）────────────────
+_AUDIO_CHAT_INPUT_FORMATS = {"wav": "wav", "mp3": "mp3"}   # OpenAI input_audio.format 只收這兩種
+
+def _audio_chat_messages(prompt: str, instructions: str, audio_b64: Optional[str], audio_format: Optional[str]) -> list:
+    """組 Chat Completions 的 messages：可只有文字（模型仍以語音回答）、可附一段 input_audio。"""
+    msgs: list = []
+    if instructions:
+        msgs.append({"role": "system", "content": instructions})
+    content: list = []
+    if audio_b64:
+        content.append({"type": "input_audio", "input_audio": {"data": audio_b64, "format": audio_format or "wav"}})
+    if prompt:
+        content.append({"type": "text", "text": prompt})
+    msgs.append({"role": "user", "content": content})
+    return msgs
+
+@app.post("/api/voice/audio_chat")
+async def voice_audio_chat(request: Request, api_key: str = Depends(get_api_key)):
+    form = await request.form()
+    model = str(form.get("model", "gpt-audio-1.5"))
+    request.state.model = model
+    prompt = str(form.get("prompt", "") or "").strip()
+    voice = str(form.get("voice", "") or "").strip() or "alloy"
+    instructions = str(form.get("instructions", "") or "").strip()
+    audio = form.get("audio")
+    audio_b64 = audio_format = None
+    if audio is not None and hasattr(audio, "read"):
+        raw = await audio.read()
+        if raw:
+            ext = (getattr(audio, "filename", "") or "").rsplit(".", 1)[-1].lower()
+            audio_format = _AUDIO_CHAT_INPUT_FORMATS.get(ext)
+            if not audio_format:
+                raise HTTPException(status_code=400, detail="語音檔只接受 WAV 或 MP3")
+            audio_b64 = base64.b64encode(raw).decode()
+    if not prompt and not audio_b64:
+        raise HTTPException(status_code=400, detail="請輸入文字或上傳語音")
+    # 固定要求語音輸出：這個模型純文字請求會被上游拒；非串流才能拿 wav（串流只收 pcm16）
+    payload = {"model": model, "messages": _audio_chat_messages(prompt, instructions, audio_b64, audio_format),
+               "modalities": ["text", "audio"], "audio": {"voice": voice, "format": "wav"},
+               "max_completion_tokens": 2048}
+    try:
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            resp = await client.post(f"{NENAI_V1}/chat/completions",
+                                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                                     json=payload)
+            try:
+                rj = resp.json()
+            except Exception:
+                return JSONResponse(status_code=502, content={"error": resp.text[:300]})
+            if resp.status_code != 200:
+                err = rj.get("error", {})
+                return JSONResponse(status_code=resp.status_code,
+                                    content={"error": (err.get("message") if isinstance(err, dict) else str(err)) or resp.text[:300]})
+            msg = (rj.get("choices") or [{}])[0].get("message") or {}
+            audio_out = msg.get("audio") or {}
+            result: dict = {"success": True, "model": model, "content": msg.get("content") or "",
+                            "transcript": audio_out.get("transcript") or "",
+                            "usage": rj.get("usage"), "request": _debug_req("/v1/chat/completions", payload)}
+            if audio_out.get("data"):
+                audio_bytes = base64.b64decode(audio_out["data"])
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                name = f"audiochat_{ts}_{uuid.uuid4().hex[:6]}.wav"
+                cloud_url = _output_put(audio_bytes, f"audio/{name}")
+                if cloud_url:
+                    result["audio_url"] = cloud_url
+                else:
+                    fp = OUTPUT_AUD_DIR / name
+                    fp.write_bytes(audio_bytes)
+                    result["audio_url"] = f"/outputs/audio/{fp.name}"
+            return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 class VoiceTtsRequest(BaseModel):
     model: str = "qwen-audio-3.0-tts-flash"

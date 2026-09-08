@@ -410,6 +410,10 @@
             </div>
             <div class="sidebar-section">
                 <div class="sidebar-section-title">進階參數</div>
+                <div class="toggle-row" id="imgAutoAspectGroup" style="display:none">
+                    <label data-tip="由模型依提示詞自行決定畫面比例與尺寸；開啟後可能輸出較大的圖（例如 1536×1536），費用依實際輸出計算">自動畫面比例 (auto_aspect_ratio)</label>
+                    <label class="toggle"><input type="checkbox" id="imgAutoAspect"><span class="toggle-slider"></span></label>
+                </div>
                 <div class="form-group" id="imgSeedGroup">
                     <label class="form-label" data-tip="設定隨機種子以重現相近圖片結果。相同 Prompt + 相同 Seed 可生成高度相似的圖片，方便對比參數差異">Seed
                         <span class="param-hint">（留空 = 隨機）</span>
@@ -940,6 +944,7 @@
                         <option value="asr">語音辨識 (ASR)</option>
                         <option value="tts">語音合成 (TTS)</option>
                         <option value="realtime">即時語音對話 (Realtime)</option>
+                        <option value="audiochat">音訊對話 (Audio Chat)</option>
                         <option value="music">音樂生成 (Music)</option>
                     </select>
                 </div>
@@ -975,6 +980,25 @@
                         <option value="server_vad">自動判斷（聽停頓）</option>
                         <option value="none">我自己按按鈕</option>
                     </select>
+                </div>
+            </div>
+
+            <!-- 音訊對話（audiochat 專用）：上傳一段語音（選填）＋音色＋系統指令 -->
+            <div class="sidebar-section" id="voiceAudioChatSection" style="display:none">
+                <div class="sidebar-section-title">語音輸入（選填）</div>
+                <div class="upload-zone" id="voiceAcUpZone" onclick="document.getElementById('voiceAcFileInput').click()">
+                    <input type="file" id="voiceAcFileInput" accept=".wav,.mp3,audio/wav,audio/mpeg" style="display:none" onchange="onVoiceAcFileChange(event)">
+                    <div class="upload-zone-icon" id="voiceAcIcon">🎙</div>
+                    <p id="voiceAcLabel">上傳語音檔<br><span style="font-size:11px;color:var(--text-muted)">WAV 或 MP3；也可以只輸入文字，模型一樣會用語音回答</span></p>
+                </div>
+                <button class="btn btn-ghost btn-sm" id="voiceAcClearBtn" style="display:none;margin-top:6px;width:100%" onclick="clearVoiceAcFile()">清除語音檔</button>
+                <div class="form-group" style="margin-top:10px">
+                    <label class="form-label" data-tip="模型回答時使用的聲音">音色 (voice)</label>
+                    <select id="voiceAcVoice" class="select-input"></select>
+                </div>
+                <div class="form-group" style="margin-bottom:0">
+                    <label class="form-label" data-tip="設定模型的角色與回答風格">系統指令 (instructions)</label>
+                    <textarea id="voiceAcInstructions" class="textarea-input" rows="2" placeholder="你是友善的中文語音助理，回答簡潔自然。">你是友善的中文語音助理，回答簡潔自然。</textarea>
                 </div>
             </div>
 
@@ -1091,6 +1115,22 @@
                             開始辨識
                         </button>
                     </div>
+                </div>
+            </div>
+            <div class="prompt-panel" id="voiceAudioChatPromptPanel" style="display:none">
+                <div class="prompt-row">
+                    <div class="prompt-col">
+                        <div class="form-group" style="margin-bottom:0">
+                            <label class="form-label">文字內容 <span class="param-hint" id="voiceAcFileName">（未附語音檔）</span></label>
+                            <textarea id="voiceAcText" class="textarea-input" rows="2" placeholder="輸入要對模型說的話，或只上傳語音檔…" onkeydown="if((event.ctrlKey || event.metaKey) && event.key === 'Enter') sendVoiceAudioChat()"></textarea>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;justify-content:flex-end">
+                        <button id="voiceAcSendBtn" class="btn btn-primary" onclick="sendVoiceAudioChat()" style="height:40px">送出</button>
+                    </div>
+                </div>
+                <div class="chat-actions-row" style="padding-top:8px;">
+                    <span style="font-size:0.75rem;color:var(--text-muted)">Ctrl+Enter 快速發送；回答一律含語音與逐字稿</span>
                 </div>
             </div>
             <div class="prompt-panel" id="voiceTtsPromptPanel" style="display:none">
@@ -1212,6 +1252,6 @@
     </div>
 </div>
 
-<script src="/static/js/app.js?v=104"></script>
+<script src="/static/js/app.js?v=106"></script>
 </body>
 </html>

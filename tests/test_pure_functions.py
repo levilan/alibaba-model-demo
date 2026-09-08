@@ -197,6 +197,41 @@ def test_pricing_override_shows_list_price_for_discounted_gemini_flash():
     assert "cached_input" not in app._pricing_entry({"model_name": "x", "quota_type": 0, "model_ratio": 1, "completion_ratio": 1})
 
 
+def test_gpt_realtime_and_audio_chat_entries():
+    """gpt-realtime-2／2.1／2.1-mini（GA 版 session）與 gpt-audio-1.5（音訊對話），2026-09-08 測試網關實測。
+    十個音色三顆全過、輸入取樣率 ≥24000、smart_turn 被拒；四顆都走部署閘門。"""
+    rt = {m["id"]: m for m in app.MODELS["voice"]["realtime"]}
+    for mid in ("gpt-realtime-2.1", "gpt-realtime-2.1-mini", "gpt-realtime-2"):
+        m = rt[mid]
+        assert m["session_ga"] is True and m["input_rate"] == 24000 and m["output_rate"] == 24000
+        assert m["turn_modes"] == ["semantic_vad", "server_vad", "none"], "smart_turn 上游拒收"
+        assert [v["id"] for v in m["voices"]] == ["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"]
+        assert mid in app._DEPLOY_GATED_MODELS
+    ac = {m["id"]: m for m in app.MODELS["voice"]["audiochat"]}
+    assert "gpt-audio-1.5" in ac and "gpt-audio-1.5" in app._DEPLOY_GATED_MODELS
+    # messages 組法：純文字也要有 user content（模型靠 audio 輸出才不會被拒），附語音時 input_audio 在前
+    msgs = app._audio_chat_messages("hi", "be brief", "QUJD", "mp3")
+    assert msgs[0] == {"role": "system", "content": "be brief"}
+    assert msgs[1]["content"][0] == {"type": "input_audio", "input_audio": {"data": "QUJD", "format": "mp3"}}
+    assert msgs[1]["content"][1] == {"type": "text", "text": "hi"}
+    assert app._audio_chat_messages("hi", "", None, None) == [{"role": "user", "content": [{"type": "text", "text": "hi"}]}]
+
+
+def test_mai_image_26_entries_and_gate():
+    """MAI-Image-2.6／2.6-Flash（2026-09-08 測試網關實測）：t2i＋i2i 各一筆、n 鎖 1、
+    auto_aspect_ratio 只標在 t2i；兩顆走部署閘門，正式站 /v1/models 出現前不顯示。"""
+    by = {}
+    for m in app.MODELS["image"]:
+        by.setdefault(m["id"], {})[m["type"]] = m
+    for mid in ("MAI-Image-2.6", "MAI-Image-2.6-Flash"):
+        assert set(by[mid]) == {"t2i", "i2i"}
+        assert by[mid]["t2i"]["max_n"] == 1 and by[mid]["i2i"]["max_n"] == 1
+        assert by[mid]["t2i"].get("auto_aspect_ratio") is True
+        assert not by[mid]["i2i"].get("auto_aspect_ratio"), "編輯路徑未實測，不標"
+        assert mid in app._DEPLOY_GATED_MODELS and mid in app._IMAGE_AUTO_ASPECT_MODELS
+    assert "MAI-Image-2.5" not in app._IMAGE_AUTO_ASPECT_MODELS
+
+
 def test_gpt6_astra_flags_and_sampling_gate():
     """gpt-6-astra（2026-09-07 正式站實測）：拒收 max_tokens／temperature≠1／top_p／penalty／stop，
     收 max_completion_tokens 與 seed；reasoning_effort 五檔；看得到圖。
@@ -432,6 +467,10 @@ def test_realtime_voices_verified():
     """
     rt = app.MODELS["voice"]["realtime"]
     assert [m["id"] for m in rt] == [
+        # gpt-realtime-2 家族（2026-09-08 測試網關）：十個音色三顆各開新連線逐一出聲，30/30 有音訊
+        "gpt-realtime-2.1",
+        "gpt-realtime-2.1-mini",
+        "gpt-realtime-2",
         "qwen3.5-omni-plus-realtime",
         "qwen3.5-omni-flash-realtime",
         "qwen-audio-3.0-realtime-plus",
@@ -441,7 +480,9 @@ def test_realtime_voices_verified():
     for m in rt:
         ids = {v["id"] for v in m["voices"]}
         assert m["default_voice"] in ids, m["id"]
-        assert (m["input_rate"], m["output_rate"]) == (16000, 24000), m["id"]
+        # qwen 家族 16k 進 24k 出；gpt-realtime-2 家族（GA 版）輸入上游要求 ≥24000
+        expect = (24000, 24000) if m.get("session_ga") else (16000, 24000)
+        assert (m["input_rate"], m["output_rate"]) == expect, m["id"]
 
     omni = [by_id["qwen3.5-omni-plus-realtime"], by_id["qwen3.5-omni-flash-realtime"]]
     for m in omni:
@@ -510,7 +551,7 @@ def test_mai_image_n_locked_to_one():
     把這裡改回去只會做出一個沒有作用的選項。"""
     mai = [m for m in app.MODELS["image"]
            if m["id"].startswith("MAI-Image") and m.get("type") == "t2i"]
-    assert len(mai) == 3
+    assert len(mai) == 5   # 2.5 ×3 ＋ 2.6 ×2（2026-09-08）
     for m in mai:
         assert m["max_n"] == 1, m["id"]
 

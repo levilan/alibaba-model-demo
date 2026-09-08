@@ -233,6 +233,7 @@ def test_models_fields_are_known_to_mcp():
         "id", "name", "desc", "group", "vendor",
         # 計價／UI 專用，MCP 由 pricing 與 description 另行涵蓋
         "input_rate", "output_rate", "duration_hint", "default_voice", "voices",
+        "session_ga",   # gpt-realtime-2 家族：前端用 GA 版 session 形狀
         # 行為開關（轉譯層內部使用，agent 不需要知道）
         "fusion_edit", "no_negative_prompt", "no_prompt_extend", "no_ref_strength",
         "no_watermark",   # MCP 沒有 watermark 參數，這旗標只給 UI 用
@@ -240,6 +241,7 @@ def test_models_fields_are_known_to_mcp():
         "shot_type",      # MCP 沒有 shot_type 參數；運鏡下拉僅 UI（wan2.6 系）
         "no_resolution",  # gemini-omni 專用：UI 藏解析度下拉；MCP 的 resolution 驗證已由 resolutions 缺席涵蓋
         "no_size", "supports_gpt_params", "supports_sequential",
+        "auto_aspect_ratio",   # MAI-Image-2.6 系：UI 開關；MCP 圖片工具尚未開放此參數
         "sequential_max_size", "image_input", "audio_only", "turn_modes",
         "reasoning_effort",
         # 文字模型專屬的行為旗標。MCP **目前沒有任何對話／文字工具**（只有

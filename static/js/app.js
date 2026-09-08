@@ -679,6 +679,8 @@ function populateSelectors() {
     // 部署閘門：後端會把正式環境還沒部署的模型從 /api/models 拿掉（app.py 的
     // _DEPLOY_GATED_MODELS）。音樂整類都被拿掉時，連任務選項一起藏——留一個
     // 選了之後模型下拉是空白的任務類型，比沒有更糟
+    const acOpt = document.querySelector('#voiceTaskType option[value="audiochat"]');
+    if (acOpt) acOpt.style.display = (models.voice?.audiochat || []).length ? '' : 'none';
     const musicOpt = document.querySelector('#voiceTaskType option[value="music"]');
     if (musicOpt) {
         const hasMusic = (models.voice?.music || []).length > 0;
@@ -1366,6 +1368,8 @@ function onImgModelChange() {
     // GPT Image 專屬參數（quality/background/output_format），T2I/I2I 皆適用；
     // moderation 是 generations 專屬參數，edits 端點沒有——I2I 時單獨收起來
     document.getElementById('imgGptParamsSection').style.display = modelInfo.supports_gpt_params ? '' : 'none';
+    // MAI-Image-2.6 系：auto_aspect_ratio 只在文生圖驗過，I2I 收起
+    document.getElementById('imgAutoAspectGroup').style.display = (modelInfo.auto_aspect_ratio && t === 't2i') ? '' : 'none';
     document.getElementById('imgModerationGroup').style.display = (t === 't2i') ? '' : 'none';
 
     // 參考圖張數上限（qwen-image-2.0 系列最多 3 張，其餘模型最多 9 張）
@@ -2202,6 +2206,7 @@ async function sendImage() {
             if (background) body.background = background;
             if (outputFormat) body.output_format = outputFormat;
             if (moderation) body.moderation = moderation;   // 僅 generations 有這個參數，edits 沒有
+            if (document.getElementById('imgAutoAspectGroup').style.display !== 'none' && document.getElementById('imgAutoAspect').checked) body.auto_aspect_ratio = true;
             res = await apiPost('/api/image/generate', body);
         } else {
             const fd = new FormData();
@@ -2823,6 +2828,8 @@ function onVoiceTaskChange() {
     document.getElementById('voiceRealtimePromptPanel').style.display = t === 'realtime' ? 'flex' : 'none';
     document.getElementById('voiceMusicSection').style.display = t === 'music' ? '' : 'none';
     document.getElementById('voiceMusicPromptPanel').style.display = t === 'music' ? '' : 'none';
+    document.getElementById('voiceAudioChatSection').style.display = t === 'audiochat' ? '' : 'none';
+    document.getElementById('voiceAudioChatPromptPanel').style.display = t === 'audiochat' ? '' : 'none';
     // 即時對話有自己的訊息區，ASR/TTS/音樂 的結果區在這個模式下要收起來
     document.getElementById('voiceResults').style.display = t === 'realtime' ? 'none' : '';
     // 離開即時對話頁面就把連線收掉——WebSocket 連著不會自己斷，而使用者切走之後
@@ -2858,6 +2865,12 @@ function onVoiceModelChange() {
         // 看不到），所以附件鈕直接藏起來，殘留的附件也一併清掉
         document.getElementById('voiceRtAttachBtn').style.display = info?.audio_only ? 'none' : '';
         if (info?.audio_only && rtPendingFrames.length) clearRealtimeFile();
+        return;
+    }
+    if (t === 'audiochat') {
+        const info = (models.voice?.audiochat || []).find(m => m.id === document.getElementById('voiceModel').value);
+        document.getElementById('voiceAcVoice').innerHTML = (info?.voices || [])
+            .map(v => `<option value="${v.id}"${v.id === info.default_voice ? ' selected' : ''}>${v.name} — ${v.desc}</option>`).join('');
         return;
     }
     if (t === 'music') {
@@ -2904,6 +2917,77 @@ function clearVoiceAsrFile() {
     document.getElementById('voiceAsrClearBtn').style.display = 'none';
 }
 
+// ── 音訊對話（audiochat：一次一段語音或文字，回語音＋逐字稿）─────────────────
+let voiceAcFile = null;
+function onVoiceAcFileChange(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (!/\.(wav|mp3)$/i.test(file.name)) { toast('語音檔只接受 WAV 或 MP3', 'error'); event.target.value = ''; return; }
+    voiceAcFile = file;
+    document.getElementById('voiceAcFileName').textContent = `（已附語音：${file.name}）`;
+    document.getElementById('voiceAcLabel').innerHTML = `已選擇：${file.name}`;
+    document.getElementById('voiceAcIcon').textContent = '✅';
+    document.getElementById('voiceAcClearBtn').style.display = '';
+}
+function clearVoiceAcFile() {
+    voiceAcFile = null;
+    document.getElementById('voiceAcFileInput').value = '';
+    document.getElementById('voiceAcFileName').textContent = '（未附語音檔）';
+    document.getElementById('voiceAcLabel').innerHTML = '上傳語音檔<br><span style="font-size:11px;color:var(--text-muted)">WAV 或 MP3；也可以只輸入文字，模型一樣會用語音回答</span>';
+    document.getElementById('voiceAcIcon').textContent = '🎙';
+    document.getElementById('voiceAcClearBtn').style.display = 'none';
+}
+async function sendVoiceAudioChat() {
+    const model = document.getElementById('voiceModel').value;
+    const text = document.getElementById('voiceAcText').value.trim();
+    if (!text && !voiceAcFile) { toast('請輸入文字或上傳語音檔', 'error'); return; }
+    const btn = document.getElementById('voiceAcSendBtn');
+    btn.disabled = true;
+    showLoading('模型回答中，請稍候...');
+    const startTime = Date.now();
+    try {
+        const fd = new FormData();
+        fd.append('model', model); fd.append('prompt', text);
+        fd.append('voice', document.getElementById('voiceAcVoice').value);
+        fd.append('instructions', document.getElementById('voiceAcInstructions').value.trim());
+        if (voiceAcFile) fd.append('audio', voiceAcFile);
+        const res = await apiPostForm('/api/voice/audio_chat', fd);
+        if (res.success) {
+            const elapsed = fmtElapsed(Date.now() - startTime);
+            const card = addVoiceResultCard(`${model}（耗時 ${elapsed}）`);
+            if (res.audio_url) { const audioEl = el('audio', { controls: true }); audioEl.src = res.audio_url; card.appendChild(audioEl); }
+            const body = el('div', { className: 'voice-result-meta' });
+            const said = res.transcript || res.content || '';
+            body.innerHTML = (said ? `<div style="white-space:pre-wrap;color:var(--text-primary);margin:6px 0">${said.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</div>` : '')
+                + (res.audio_url ? `<a href="${res.audio_url}" download>下載音檔</a>` : '');
+            card.appendChild(body);
+            // 四檔計費：文字入／出、語音入／出，單價都在 /api/pricing（audio_* 只有帶 audio_ratio 的模型才有）
+            const u = res.usage || {}; const inD = u.prompt_tokens_details || {}; const outD = u.completion_tokens_details || {};
+            const inAudio = inD.audio_tokens || 0, outAudio = outD.audio_tokens || 0;
+            const inText = (u.prompt_tokens || 0) - inAudio, outText = (u.completion_tokens || 0) - outAudio;
+            const p = pricingMap[model];
+            let cost = null;
+            if (p && p.type === 'token') {
+                cost = inText / 1e6 * p.input + outText / 1e6 * p.output
+                     + inAudio / 1e6 * (p.audio_input || p.input) + outAudio / 1e6 * (p.audio_output || p.output);
+                addCost(cost);
+            }
+            const usageEl = el('div', { className: 'voice-result-meta' });
+            usageEl.textContent = `輸入 ${inText} 文字${inAudio ? `、${inAudio} 語音` : ''}　輸出 ${outText} 文字、${outAudio} 語音` + (cost != null ? `　約 $${formatUsd(Number(cost.toFixed(6)))}` : '');
+            card.appendChild(usageEl);
+            const reqPanel = buildRequestPanel(res.request);
+            if (reqPanel) card.appendChild(reqPanel);
+            toast('回答完成！', 'success');
+        } else {
+            toast(res.error || res.detail || '失敗', 'error');
+        }
+    } catch (e) {
+        toast(`錯誤：${e.message}`, 'error');
+    }
+    hideLoading();
+    btn.disabled = false;
+}
+
 // ── 即時語音對話（realtime）────────────────────────────────────────────────
 // 走後端的 /ws/omni 代理，不直連閘道：瀏覽器的 WebSocket 建構子不能帶 header，
 // 直連只能把金鑰塞進子協定（openai-insecure-api-key.<key>），那會讓金鑰出現在
@@ -2911,7 +2995,13 @@ function clearVoiceAsrFile() {
 //
 // 音訊格式（實測）：上行 PCM 16kHz、下行 PCM 24kHz，都是 mono s16le 裸流。
 // 下行沒有 wav 檔頭，要自己塞進 AudioBuffer 播放。
-const RT_IN_RATE = 16000, RT_OUT_RATE = 24000;
+// 取樣率依模型：qwen 家族收 16k 輸入／24k 輸出；gpt-realtime-2 家族（GA 版）輸入要求 ≥24000
+// （送 16k 直接 400），值來自 MODELS 的 input_rate／output_rate，連線當下讀取
+let RT_IN_RATE = 16000, RT_OUT_RATE = 24000;
+function rtModelInfo() {
+    const model = document.getElementById('voiceModel').value;
+    return (models.voice?.realtime || []).find(m => m.id === model) || {};
+}
 
 let rtWs = null;            // 與後端代理的連線
 let rtMicStream = null;     // getUserMedia 拿到的麥克風
@@ -2987,6 +3077,8 @@ function startRealtime() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     rtWs = new WebSocket(`${proto}://${location.host}/ws/omni?api_key=${encodeURIComponent(key)}&model=${encodeURIComponent(model)}`);
 
+    RT_IN_RATE = rtModelInfo().input_rate || 16000;
+    RT_OUT_RATE = rtModelInfo().output_rate || 24000;
     rtWs.onopen = async () => {
         rtSetStatus('已連線', 'on');
         document.getElementById('voiceRtConnectBtn').innerHTML = '結束對話';
@@ -3008,17 +3100,21 @@ function rtSendSessionUpdate() {
     if (!rtWs || rtWs.readyState !== WebSocket.OPEN) return;
     const modalities = document.getElementById('voiceRtModalities').value.split(',');
     const td = document.getElementById('voiceRtTurnDetection').value;
-    rtWs.send(JSON.stringify({
-        type: 'session.update',
-        session: {
-            modalities,
-            voice: document.getElementById('voiceRtVoice').value,
-            input_audio_format: 'pcm16',
-            output_audio_format: 'pcm',
-            instructions: document.getElementById('voiceRtInstructions').value,
-            turn_detection: td === 'none' ? null : { type: td },
-        },
-    }));
+    const voice = document.getElementById('voiceRtVoice').value;
+    const instructions = document.getElementById('voiceRtInstructions').value;
+    const turn = td === 'none' ? null : { type: td };
+    // gpt-realtime-2 家族走 GA 版 session 形狀：type 必填、音訊格式與斷句都在 audio.input/output 底下、
+    // output_modalities 只能 ['audio'] 或 ['text']（audio 就附逐字稿）。2026-09-08 實測。
+    const session = rtModelInfo().session_ga ? {
+        type: 'realtime',
+        output_modalities: modalities.includes('audio') ? ['audio'] : ['text'],
+        audio: { input: { format: { type: 'audio/pcm', rate: RT_IN_RATE }, turn_detection: turn },
+                 output: { voice, format: { type: 'audio/pcm', rate: RT_OUT_RATE } } },
+        instructions,
+    } : {
+        modalities, voice, input_audio_format: 'pcm16', output_audio_format: 'pcm', instructions, turn_detection: turn,
+    };
+    rtWs.send(JSON.stringify({ type: 'session.update', session }));
     rtUpdateCommitButton();
 }
 
@@ -3158,10 +3254,13 @@ function rtHandleEvent(ev) {
             if (ev.transcript) rtLog('你說的', ev.transcript, 'me');
             break;
         case 'response.audio.delta':
+        case 'response.output_audio.delta':            // GA 版事件名
             if (ev.delta) rtPlayChunk(ev.delta);
             break;
         case 'response.audio_transcript.delta':
+        case 'response.output_audio_transcript.delta': // GA 版事件名
         case 'response.text.delta':
+        case 'response.output_text.delta':             // GA 版事件名
             if (!rtAssistantLine) rtAssistantLine = rtLog('AI', '', 'ai');
             rtAssistantLine.textContent += ev.delta || '';
             rtScrollToBottom();
@@ -3285,7 +3384,8 @@ function rtEnterFrameTurnMode() {
     rtUpdateCommitButton();
     if (!rtWs || rtWs.readyState !== WebSocket.OPEN) return;
     if (document.getElementById('voiceRtTurnDetection').value !== 'none') {
-        rtWs.send(JSON.stringify({ type: 'session.update', session: { turn_detection: null } }));
+        rtWs.send(JSON.stringify({ type: 'session.update', session: rtModelInfo().session_ga
+            ? { type: 'realtime', audio: { input: { turn_detection: null } } } : { turn_detection: null } }));
         rtVadOverridden = true;
     }
     rtSetStatus(rtMicStream ? '已附上畫面：說完後按「說完了，送出」' : '已附上畫面：可以打字送出，或開麥克風說', 'on');
@@ -3367,10 +3467,11 @@ let rtVadOverridden = false;
 function rtSendFramesIfAny() {
     if (!rtPendingFrames.length) return false;
     if (document.getElementById('voiceRtTurnDetection').value !== 'none') {
-        rtWs.send(JSON.stringify({ type: 'session.update', session: { turn_detection: null } }));
+        rtWs.send(JSON.stringify({ type: 'session.update', session: rtModelInfo().session_ga
+            ? { type: 'realtime', audio: { input: { turn_detection: null } } } : { turn_detection: null } }));
         rtVadOverridden = true;
     }
-    const silence = new Uint8Array(RT_IN_RATE * 0.6 * 2);   // 0.6 秒的 16kHz 靜音
+    const silence = new Uint8Array(RT_IN_RATE * 0.6 * 2);   // 0.6 秒的靜音（取樣率依模型）
     rtWs.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: rtBytesToBase64(silence) }));
     rtPendingFrames.forEach(f => rtWs.send(JSON.stringify({ type: 'input_image_buffer.append', image: f })));
     return true;

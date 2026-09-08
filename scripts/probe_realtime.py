@@ -59,8 +59,24 @@ def _ws_url(gateway: str, model: str) -> str:
     return f"{base}/v1/realtime?model={model}"
 
 
+_GA = {"on": False}   # --ga：gpt-realtime-2 家族的 GA 版 session 形狀（2026-09-08 實測）
+
 def _session_update(voice: str | None, modalities: list[str], turn_detection,
                     instructions: str = "你是友善的中文語音助理，回答簡潔自然。") -> dict:
+    if _GA["on"]:
+        # GA 版：session.type 必填；音訊格式與斷句都在 audio.input/output 底下；output_modalities
+        # 只能 ["audio"]（自帶逐字稿）或 ["text"]；輸入取樣率上游要求 ≥24000（16k 直接 400）。
+        # 對話裡已有 AI 語音後不能再換 voice——要換音色得重新連線（voices 測試已照此做）。
+        session = {
+            "type": "realtime",
+            "output_modalities": ["audio"] if "audio" in modalities else ["text"],
+            "audio": {"input": {"format": {"type": "audio/pcm", "rate": 24000}, "turn_detection": turn_detection},
+                      "output": {"format": {"type": "audio/pcm", "rate": 24000}}},
+            "instructions": instructions,
+        }
+        if voice:
+            session["audio"]["output"]["voice"] = voice
+        return {"type": "session.update", "session": session}
     session = {
         "modalities": modalities,
         "input_audio_format": "pcm16",
@@ -104,11 +120,11 @@ async def _collect(ws, deadline_s: float = 60.0) -> dict:
         t = ev.get("type", "?")
         if t not in out["events"]:
             out["events"].append(t)
-        if t == "response.audio.delta":
+        if t in ("response.audio.delta", "response.output_audio.delta"):
             if out["first_audio_ms"] is None:
                 out["first_audio_ms"] = round((time.monotonic() - t0) * 1000)
             out["audio"].extend(base64.b64decode(ev.get("delta", "")))
-        elif t == "response.audio_transcript.delta":
+        elif t in ("response.audio_transcript.delta", "response.output_audio_transcript.delta"):
             out["transcript"] += ev.get("delta", "")
         elif t == "response.text.delta":
             out["text"] += ev.get("delta", "")
@@ -269,6 +285,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("model")
     ap.add_argument("--gateway", choices=list(GATEWAYS), default="prod")
+    ap.add_argument("--ga", action="store_true", help="gpt-realtime-2 家族：用 GA 版 session 形狀（voices 測試每個音色會各開一條連線）")
     ap.add_argument("--key-file")
     ap.add_argument("--test", choices=list(TESTS), default="basic")
     ap.add_argument("--voice", help="basic/audio/image/turn 用的音色（不帶就用模型預設）")
@@ -278,6 +295,7 @@ def main():
     ap.add_argument("--image", action="append", help="image 測試的輸入，可重複")
     ap.add_argument("--save-audio", help="把回覆音訊存成 wav（24kHz）")
     args = ap.parse_args()
+    _GA["on"] = bool(args.ga)
     asyncio.run(TESTS[args.test](args, _key(args)))
 
 
