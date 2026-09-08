@@ -197,6 +197,25 @@ def test_pricing_override_shows_list_price_for_discounted_gemini_flash():
     assert "cached_input" not in app._pricing_entry({"model_name": "x", "quota_type": 0, "model_ratio": 1, "completion_ratio": 1})
 
 
+def test_whisper_wav_to_pcm24k():
+    """gpt-realtime-whisper 的 WAV → 24k 單聲道 PCM16（純 Python，image 沒 ffmpeg）。
+    16k 立體聲 0.5 秒 → 24k 單聲道 12000 個樣本；非 PCM／非 16-bit 回 400。"""
+    import io, wave, array, pytest as _pt
+    from fastapi import HTTPException
+    buf = io.BytesIO(); w = wave.open(buf, "wb"); w.setnchannels(2); w.setsampwidth(2); w.setframerate(16000)
+    frames = array.array("h", [1000, -1000] * 8000)   # 8000 frames × 2ch = 0.5 s；左右平均 = 0
+    w.writeframes(frames.tobytes()); w.close()
+    pcm, seconds = app._wav_to_pcm24k(buf.getvalue())
+    assert seconds == 0.5 and len(pcm) == 12000 * 2
+    assert set(array.array("h", pcm).tolist()) == {0}, "雙聲道取平均"
+    with _pt.raises(HTTPException) as e:
+        app._wav_to_pcm24k(b"ID3\x03\x00not a wav")
+    assert e.value.status_code == 400
+    a = {m["id"]: m for m in app.MODELS["voice"]["asr"]}["gpt-realtime-whisper"]
+    assert a["ws_transcription"] is True and a["per_minute"] is True and "gpt-realtime-whisper" in app._ASR_WS_MODELS
+    assert "gpt-realtime-whisper" in app._DEPLOY_GATED_MODELS
+
+
 def test_gpt_realtime_and_audio_chat_entries():
     """gpt-realtime-2／2.1／2.1-mini（GA 版 session）與 gpt-audio-1.5（音訊對話），2026-09-08 測試網關實測。
     十個音色三顆全過、輸入取樣率 ≥24000、smart_turn 被拒；四顆都走部署閘門。"""
@@ -208,7 +227,7 @@ def test_gpt_realtime_and_audio_chat_entries():
         assert [v["id"] for v in m["voices"]] == ["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"]
         assert mid in app._DEPLOY_GATED_MODELS
     ac = {m["id"]: m for m in app.MODELS["voice"]["audiochat"]}
-    assert "gpt-audio-1.5" in ac and "gpt-audio-1.5" in app._DEPLOY_GATED_MODELS
+    assert "gpt-audio-1.5" in ac and "gpt-audio-1.5" not in app._DEPLOY_GATED_MODELS   # 2026-09-09 正式站上線
     # messages 組法：純文字也要有 user content（模型靠 audio 輸出才不會被拒），附語音時 input_audio 在前
     msgs = app._audio_chat_messages("hi", "be brief", "QUJD", "mp3")
     assert msgs[0] == {"role": "system", "content": "be brief"}
@@ -228,7 +247,8 @@ def test_mai_image_26_entries_and_gate():
         assert by[mid]["t2i"]["max_n"] == 1 and by[mid]["i2i"]["max_n"] == 1
         assert by[mid]["t2i"].get("auto_aspect_ratio") is True
         assert not by[mid]["i2i"].get("auto_aspect_ratio"), "編輯路徑未實測，不標"
-        assert mid in app._DEPLOY_GATED_MODELS and mid in app._IMAGE_AUTO_ASPECT_MODELS
+        assert mid not in app._DEPLOY_GATED_MODELS, "2026-09-09 正式站核對通過後已移出閘門"
+        assert mid in app._IMAGE_AUTO_ASPECT_MODELS
     assert "MAI-Image-2.5" not in app._IMAGE_AUTO_ASPECT_MODELS
 
 

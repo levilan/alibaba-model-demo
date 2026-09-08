@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="data:,">
+<title>Playground 使用紀錄</title>
+<style>
+  /* 照 DESIGN-AESTHETIC.md：暖白紙面、單一彩度（汝窯天青）、髮絲線分區、10px 圓角、字重單一 */
+  :root { --ground:#FBFAF8; --ink:#2B2724; --body:#5C564F; --rain:#787168; --line:#E6E2DB;
+          --flash:#7FA39E; --flash-ink:#3F625F; --ember:#8C4A3F; --ground-2:#F6F2E9; --r:10px; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ground:#191715; --ink:#EDEAE4; --body:#CFC9C0; --rain:#9A938A; --line:#33302B;
+            --flash:#9CC0BA; --flash-ink:#A9CCC6; --ember:#E8B9AC; --ground-2:#221F1B; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--ground); color:var(--body); font: 14px/1.6 -apple-system, "PingFang TC", "Noto Sans TC", system-ui, sans-serif; }
+  header { display:flex; align-items:baseline; gap:18px; padding:22px 32px 14px; border-bottom:1px solid var(--line); }
+  header h1 { margin:0; font: 400 20px/1.3 Spectral, "Noto Serif TC", serif; color:var(--ink); }
+  header .who { color:var(--rain); font-size:12px; margin-left:auto; }
+  header a { color:var(--flash-ink); text-decoration:none; }
+  main { padding: 20px 32px 40px; max-width: 1280px; }
+  .range { display:flex; gap:6px; align-items:center; margin-bottom:18px; }
+  .range a { padding:5px 12px; border:1px solid var(--line); border-radius:var(--r); color:var(--body); text-decoration:none; font-size:13px; }
+  .range a.on { border-color:var(--flash); color:var(--flash-ink); }
+  .range .note { color:var(--rain); font-size:12px; margin-left:8px; }
+  .cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:22px; }
+  .card { border:1px solid var(--line); border-radius:var(--r); padding:14px 16px; background:var(--ground-2); }
+  .card .k { color:var(--rain); font-size:12px; }
+  .card .v { color:var(--ink); font-size:24px; font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+  h2 { font: 400 15px/1.4 Spectral, "Noto Serif TC", serif; color:var(--ink); margin: 26px 0 10px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--rain); font-weight:400; font-size:12px; }
+  td code { font-family:"JetBrains Mono", ui-monospace, Menlo, monospace; font-size:12px; color:var(--ink); }
+  .bar { height:6px; background:var(--flash); border-radius:3px; display:inline-block; vertical-align:middle; }
+  .err { color:var(--ember); }
+  .ok { color:var(--flash-ink); }
+  iframe { width:100%; height:1400px; border:1px solid var(--line); border-radius:var(--r); background:#fff; }
+  .muted { color:var(--rain); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Playground 使用紀錄</h1>
+  <span class="muted">模式：{{MODE}}</span>
+  <span class="who">{{USER}} · <a href="/admin/logout">登出</a></span>
+</header>
+<main>
+  <div class="range" id="range">
+    <span class="muted">區間</span>
+    <a href="/admin?days=1">1 天</a><a href="/admin?days=7">7 天</a><a href="/admin?days=30">30 天</a><a href="/admin?days=90">90 天</a>
+    <span class="note">資料每 60 秒重新讀取一次；時間顯示為台北時間。uid 是金鑰的雜湊，不可反推。</span>
+  </div>
+  <div class="cards" id="cards"><div class="card"><div class="k">讀取中…</div></div></div>
+
+  <h2>每日呼叫數</h2>
+  <table id="perDay"><thead><tr><th>日期</th><th>呼叫數</th><th></th></tr></thead><tbody></tbody></table>
+
+  <h2>各模型</h2>
+  <table id="perModel"><thead><tr><th>模型</th><th>呼叫數</th><th></th></tr></thead><tbody></tbody></table>
+
+  <h2>各使用者（uid）</h2>
+  <table id="perUid"><thead><tr><th>uid</th><th>呼叫數</th><th></th></tr></thead><tbody></tbody></table>
+
+  <h2>最近呼叫（最新 200 筆）</h2>
+  <table id="recent"><thead><tr><th>時間</th><th>uid</th><th>端點</th><th>模型</th><th>狀態</th><th>耗時</th></tr></thead><tbody></tbody></table>
+
+  <h2>完整報表<span class="muted">（與 scripts/usage_stats.py 產生的本機報表相同，不含來源 IP）</span></h2>
+  <iframe id="report" src="/admin/report?days={{DAYS}}" sandbox="allow-same-origin allow-scripts"></iframe>
+</main>
+<script>
+(async () => {
+  const days = {{DAYS}};
+  document.querySelectorAll('#range a').forEach(a => { if (a.getAttribute('href').endsWith('days=' + days)) a.classList.add('on'); });
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const fill = (id, obj, nameOf) => {
+    const tb = document.querySelector('#' + id + ' tbody'); const max = Math.max(1, ...Object.values(obj));
+    tb.innerHTML = Object.entries(obj).map(([k, v]) => `<tr><td><code>${esc(nameOf ? nameOf(k) : k)}</code></td><td>${v}</td><td><span class="bar" style="width:${Math.round(v / max * 160)}px"></span></td></tr>`).join('') || '<tr><td colspan="3" class="muted">沒有資料</td></tr>';
+  };
+  try {
+    const [stats, rowsRes] = await Promise.all([
+      fetch(`/admin/api/stats?days=${days}`, { credentials: 'same-origin' }).then(r => r.json()),
+      fetch(`/admin/api/rows?days=${days}&limit=200`, { credentials: 'same-origin' }).then(r => r.json()),
+    ]);
+    const okPct = stats.total ? Math.round(stats.ok / stats.total * 100) : 0;
+    document.getElementById('cards').innerHTML = [
+      ['呼叫總數', stats.total], ['成功率', okPct + '%'], ['使用者數（uid）', Object.keys(stats.per_uid).length],
+      ['模型數', Object.keys(stats.per_model).length], ['區間', days + ' 天'],
+    ].map(([k, v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+    const names = rowsRes.model_names || {};
+    fill('perDay', stats.per_day);
+    fill('perModel', stats.per_model, k => names[k] ? `${names[k]}（${k}）` : k);
+    fill('perUid', stats.per_uid);
+    const tpe = ts => { const d = new Date(ts + 'Z'); return isNaN(d) ? ts : new Date(d.getTime() + 8 * 3600e3).toISOString().replace('T', ' ').slice(0, 19); };
+    document.querySelector('#recent tbody').innerHTML = (rowsRes.rows || []).map(r =>
+      `<tr><td><code>${esc(tpe(r.ts))}</code></td><td><code>${esc(r.uid)}</code></td><td><code>${esc(r.endpoint)}</code></td><td>${esc(r.model ? (names[r.model] || r.model) : '')}</td><td class="${r.ok ? 'ok' : 'err'}">${r.status}</td><td>${r.ms != null ? r.ms + ' ms' : ''}</td></tr>`
+    ).join('') || '<tr><td colspan="6" class="muted">沒有資料</td></tr>';
+  } catch (e) {
+    document.getElementById('cards').innerHTML = `<div class="card"><div class="k err">讀取失敗</div><div class="muted">${esc(e.message)}</div></div>`;
+  }
+})();
+</script>
+</body>
+</html>

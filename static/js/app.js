@@ -934,6 +934,34 @@ function addVideoCost(modelId, costInfo) {
     if (est) addCost(est);
 }
 
+// 語音頁各分類（asr/tts/realtime/music/audiochat）裡找模型的中繼資料
+function _voiceModelInfo(modelId) {
+    for (const list of Object.values(models.voice || {})) {
+        const hit = (list || []).find(m => m.id === modelId);
+        if (hit) return hit;
+    }
+    return null;
+}
+// 上傳的音檔在瀏覽器解成 24k 單聲道 16-bit WAV（gpt-realtime-whisper 用）：部署 image 沒有 ffmpeg，
+// 後端只收 PCM WAV；瀏覽器的 decodeAudioData 什麼格式都吃，所以轉檔放這裡。
+async function _fileToPcmWav24k(file) {
+    const rate = 24000;
+    const buf = await file.arrayBuffer();
+    const probe = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 1, rate);
+    const decoded = await probe.decodeAudioData(buf);
+    const frames = Math.ceil(decoded.duration * rate);
+    const ctx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, frames, rate);
+    const src = ctx.createBufferSource(); src.buffer = decoded; src.connect(ctx.destination); src.start(0);
+    const mono = (await ctx.startRendering()).getChannelData(0);
+    const pcm = new Int16Array(mono.length);
+    for (let i = 0; i < mono.length; i++) { const v = Math.max(-1, Math.min(1, mono[i])); pcm[i] = v < 0 ? v * 0x8000 : v * 0x7FFF; }
+    const header = new ArrayBuffer(44), dv = new DataView(header);
+    const wstr = (o, str) => { for (let i = 0; i < str.length; i++) dv.setUint8(o + i, str.charCodeAt(i)); };
+    wstr(0, 'RIFF'); dv.setUint32(4, 36 + pcm.length * 2, true); wstr(8, 'WAVE'); wstr(12, 'fmt ');
+    dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, rate, true);
+    dv.setUint32(28, rate * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); wstr(36, 'data'); dv.setUint32(40, pcm.length * 2, true);
+    return new File([header, pcm.buffer], file.name.replace(/\.[^.]+$/, '') + '.wav', { type: 'audio/wav' });
+}
 function addFixedCost(modelId, count = 1) {
     const p = pricingMap[modelId];
     if (p && p.type === 'fixed') addCost(p.price * count);
@@ -1154,7 +1182,7 @@ function formatPriceSuffix(modelId, resolution) {
         const tier = _resolveVideoTier(modelId, res, baseline) || res;
         return ` ・ 約 $${formatUsd(Number(perSec.toFixed(4)))}/秒（${tier}${note}）`;
     }
-    if (p.type === 'fixed') return ` ・ $${formatUsd(p.price)}/次`;
+    if (p.type === 'fixed') return _voiceModelInfo(modelId)?.per_minute ? ` ・ $${formatUsd(p.price)}/分鐘` : ` ・ $${formatUsd(p.price)}/次`;
     return ` ・ $${formatUsd(p.input)}→$${formatUsd(p.output)}/1M`;
 }
 
@@ -3593,16 +3621,32 @@ async function sendVoiceAsr() {
         } else {
             const fd = new FormData();
             fd.append('model', model);
-            fd.append('audio', voiceAsrFile);
-            appendAsrExtraFields(fd);
+            const info = _voiceModelInfo(model) || {};
+            // WS 轉錄模型：先在瀏覽器轉成 24k WAV（後端只收 PCM WAV、沒有 ffmpeg）
+            let upload = voiceAsrFile;
+            if (info.ws_transcription) {
+                try { upload = await _fileToPcmWav24k(voiceAsrFile); }
+                catch (e) { throw new Error('這個音檔瀏覽器解不開，請改用 WAV／MP3：' + e.message); }
+            }
+            fd.append('audio', upload);
+            if (!info.ws_transcription) appendAsrExtraFields(fd);
             const res = await apiPostForm('/api/voice/asr', fd);
             if (res.success) {
                 textEl.textContent = res.text || '（無辨識結果）';
                 card.querySelector('.voice-result-header span').textContent = `${model}（耗時 ${fmtElapsed(Date.now() - startTime)}）`;
+                if (info.per_minute) {
+                    // 按音訊長度計費：以回報的秒數為準（whisper 會把 3.29 秒記成 4 秒），沒回報就用本地量到的
+                    const secs = res.usage?.seconds ?? res.audio_seconds;
+                    const p = pricingMap[model];
+                    if (p && p.type === 'fixed' && secs != null) {
+                        const cost = secs / 60 * p.price; addCost(cost);
+                        card.appendChild(el('div', { className: 'voice-result-meta', textContent: `計費長度 ${secs} 秒　約 $${formatUsd(Number(cost.toFixed(6)))}` }));
+                    }
+                }
                 const reqPanel = buildRequestPanel(res.request);
                 if (reqPanel) card.appendChild(reqPanel);
                 toast('語音辨識完成！', 'success');
-                addFixedCost(model);
+                if (!info.per_minute) addFixedCost(model);
             } else {
                 throw new Error(res.error || '辨識失敗');
             }

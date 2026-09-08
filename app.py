@@ -312,6 +312,10 @@ for d in (UPLOAD_DIR, OUTPUT_IMG_DIR, OUTPUT_VID_DIR, OUTPUT_AUD_DIR):
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 app.mount("/outputs", StaticFiles(directory=Path(__file__).parent / "outputs"), name="outputs")
 
+# 管理後台（/admin）：Google SSO 守門的使用紀錄查詢，實作在 admin.py（fail closed：沒設環境變數就 404）
+from admin import router as _admin_router  # noqa: E402
+app.include_router(_admin_router)
+
 # ─── TTS 音色清單 ───────────────────────────────────────────────
 # 來源：qwen-audio-3.0-tts-* 官方音色列表（每個模型支援的音色不同，不可混用）
 # https://www.alibabacloud.com/help/en/model-studio/qwen-audio-tts-voice-list
@@ -1358,6 +1362,15 @@ MODELS = {
              "voices": _GPT_REALTIME_VOICES, "default_voice": "alloy"},
         ],
         "asr": [
+            # gpt-realtime-whisper（2026-09-08 測試網關實測）：走 WebSocket 轉錄 session
+            # （/v1/realtime?model=…&intent=transcription），不是 HTTP /v1/audio/transcriptions。
+            # 後端代開連線：session.update 帶 type "transcription"、audio.input.format pcm 24000、
+            # transcription.model；上傳的 WAV 在這裡轉 24k 單聲道 PCM16。**按音訊長度固定價計費**
+            # （$0.017/分鐘，completed 事件 usage {"type":"duration","seconds":N}，3.29 秒記 4 秒），
+            # 結算在連線關閉時發生。前端把非 WAV 的檔先用 WebAudio 解成 24k WAV 再上傳。走部署閘門。
+            {"id": "gpt-realtime-whisper", "name": "GPT Realtime Whisper", "group": "語音辨識",
+             "desc": "OpenAI 語音辨識，上傳完整音檔回傳逐字稿，依音訊長度計費",
+             "ws_transcription": True, "per_minute": True},
             {"id": "qwen-audio-3.0-asr-flash", "name": "Qwen Audio 3.0 ASR Flash", "group": "語音辨識",
              "desc": "極速語音辨識，上傳完整音檔一次回傳逐字稿"},
             {"id": "qwen-audio-3.0-asr-flash-streaming", "name": "Qwen Audio 3.0 ASR Flash（串流）", "group": "語音辨識",
@@ -1517,8 +1530,8 @@ async def login(data: LoginRequest, request: Request):
 # 環境並實測通過，依裁示把集合清空。下一批「測試網關先上」的模型直接把 id 加回來。
 # 2026-09-08：MAI-Image-2.6 兩顆只在測試網關驗過，正式站 /v1/models 還沒有——列出但正式站
 # 抓不到就不顯示（機制 2026-08-18 留下的，見 memory.md）。正式站上線後把這裡清空。
-_DEPLOY_GATED_MODELS: set = {"MAI-Image-2.6", "MAI-Image-2.6-Flash",
-                             "gpt-realtime-2.1", "gpt-realtime-2.1-mini", "gpt-realtime-2", "gpt-audio-1.5"}
+# 2026-09-09：MAI-Image-2.6／2.6-Flash／gpt-audio-1.5 正式站三項核對通過（清單、倍率、渠道），已移出。
+_DEPLOY_GATED_MODELS: set = {"gpt-realtime-2.1", "gpt-realtime-2.1-mini", "gpt-realtime-2", "gpt-realtime-whisper"}
 _UPSTREAM_IDS_CACHE: Dict[str, Any] = {"ids": None, "ts": 0.0}
 
 async def _upstream_model_ids(api_key: str) -> Optional[set]:
@@ -1550,6 +1563,7 @@ async def get_models(api_key: str = Depends(get_api_key)):
     out["voice"]["realtime"] = [m for m in MODELS["voice"]["realtime"] if _keep(m)]
     out["voice"]["music"] = [m for m in MODELS["voice"]["music"] if _keep(m)]
     out["voice"]["audiochat"] = [m for m in MODELS["voice"]["audiochat"] if _keep(m)]
+    out["voice"]["asr"] = [m for m in MODELS["voice"]["asr"] if _keep(m)]
     return out
 
 
@@ -4050,6 +4064,76 @@ def _asr_extra_fields(form, streaming: bool) -> dict:
     return out
 
 
+# ── WebSocket 轉錄（gpt-realtime-whisper）────────────────────────────────────
+_ASR_WS_MODELS = {m["id"] for m in MODELS["voice"]["asr"] if m.get("ws_transcription")}
+_ASR_WS_RATE = 24000   # 上游要求 ≥24000
+
+def _wav_to_pcm24k(data: bytes) -> tuple[bytes, float]:
+    """PCM WAV → 24 kHz 單聲道 PCM16 bytes。回 (pcm, 原始秒數)。
+
+    只收 PCM 16-bit（8/24/32 位元回錯），多聲道取平均，取樣率不同時線性重取樣——
+    純 Python 實作，因為部署 image 沒有 ffmpeg、Python 3.13 起也沒有 audioop。
+    前端會先把非 WAV 的檔用 WebAudio 解成 24k WAV，所以這裡通常只是驗證與兜底。
+    """
+    import io, wave, array
+    try:
+        w = wave.open(io.BytesIO(data), "rb")
+    except Exception:
+        raise HTTPException(status_code=400, detail="音檔不是 PCM WAV；請上傳 WAV，或用支援的瀏覽器讓平台先轉檔")
+    ch, width, rate, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
+    frames = w.readframes(n); w.close()
+    if width != 2:
+        raise HTTPException(status_code=400, detail="WAV 只接受 16-bit PCM")
+    samples = array.array("h"); samples.frombytes(frames)
+    if ch > 1:
+        mono = array.array("h", (int(sum(samples[i:i + ch]) / ch) for i in range(0, len(samples) - ch + 1, ch)))
+    else:
+        mono = samples
+    seconds = len(mono) / rate if rate else 0.0
+    if rate != _ASR_WS_RATE:
+        ratio = rate / _ASR_WS_RATE
+        out_len = int(len(mono) / ratio)
+        mono = array.array("h", (mono[min(len(mono) - 1, int(i * ratio))] for i in range(out_len)))
+    return mono.tobytes(), seconds
+
+
+async def _asr_ws_transcribe(model: str, pcm: bytes, api_key: str) -> dict:
+    """代開 /v1/realtime 轉錄 session：session.update → append → commit → 等 completed。"""
+    import websockets
+    base_ws = NENAI_BASE.replace("https://", "wss://").replace("http://", "ws://")
+    url = f"{base_ws}/v1/realtime?model={model}&intent=transcription"
+    session = {"type": "transcription",
+               "audio": {"input": {"format": {"type": "audio/pcm", "rate": _ASR_WS_RATE},
+                                   "transcription": {"model": model}, "turn_detection": None}}}
+    text, usage, err = "", None, None
+    async with websockets.connect(url, additional_headers={"Authorization": f"Bearer {api_key}"},
+                                  max_size=None, open_timeout=20) as ws:
+        first = json.loads(await asyncio.wait_for(ws.recv(), 20))
+        if first.get("type") == "error":
+            raise HTTPException(status_code=502, detail=(first.get("error") or {}).get("message") or str(first))
+        await ws.send(json.dumps({"type": "session.update", "session": session}))
+        step = _ASR_WS_RATE * 2 // 5   # 200ms
+        for i in range(0, len(pcm), step):
+            await ws.send(json.dumps({"type": "input_audio_buffer.append",
+                                      "audio": base64.b64encode(pcm[i:i + step]).decode()}))
+        await ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+        deadline = time.time() + 120
+        while time.time() < deadline:
+            ev = json.loads(await asyncio.wait_for(ws.recv(), 60))
+            t = ev.get("type", "")
+            if t == "error":
+                err = (ev.get("error") or {}).get("message") or str(ev); break
+            if t == "conversation.item.input_audio_transcription.delta":
+                text += ev.get("delta") or ""
+            if t == "conversation.item.input_audio_transcription.completed":
+                text = ev.get("transcript") or text
+                usage = ev.get("usage"); break
+    # 結算在連線關閉時發生（with 區塊結束就關）
+    if err:
+        raise HTTPException(status_code=502, detail=err)
+    return {"text": text, "usage": usage}
+
+
 @app.post("/api/voice/asr")
 async def voice_asr(request: Request, api_key: str = Depends(get_api_key)):
     form = await request.form()
@@ -4061,6 +4145,23 @@ async def voice_asr(request: Request, api_key: str = Depends(get_api_key)):
     filename = getattr(audio_file, "filename", None) or "audio.wav"
     content_type = getattr(audio_file, "content_type", None) or mimetypes.guess_type(filename)[0] or "audio/wav"
     audio_bytes = await audio_file.read()
+
+    if model in _ASR_WS_MODELS:
+        pcm, seconds = _wav_to_pcm24k(audio_bytes)
+        try:
+            out = await _asr_ws_transcribe(model, pcm, api_key)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"轉錄連線失敗：{e}")
+        return {"success": True, "text": out["text"], "model": model,
+                "usage": out["usage"], "audio_seconds": round(seconds, 2),
+                "request": _debug_req("/v1/realtime?model=" + model + "&intent=transcription", method="WS",
+                                      body={"type": "session.update", "session": {"type": "transcription",
+                                            "audio": {"input": {"format": {"type": "audio/pcm", "rate": _ASR_WS_RATE},
+                                                                "transcription": {"model": model}, "turn_detection": None}}}},
+                                      note="WebSocket 轉錄 session：session.update → input_audio_buffer.append（24k PCM16 base64）→ commit，"
+                                           "逐字稿在 conversation.item.input_audio_transcription.completed；依音訊秒數計費")}
 
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:

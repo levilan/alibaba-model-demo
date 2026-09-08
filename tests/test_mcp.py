@@ -234,6 +234,7 @@ def test_models_fields_are_known_to_mcp():
         # 計價／UI 專用，MCP 由 pricing 與 description 另行涵蓋
         "input_rate", "output_rate", "duration_hint", "default_voice", "voices",
         "session_ga",   # gpt-realtime-2 家族：前端用 GA 版 session 形狀
+        "ws_transcription", "per_minute",   # gpt-realtime-whisper：走 WS 轉錄、按分鐘固定價
         # 行為開關（轉譯層內部使用，agent 不需要知道）
         "fusion_edit", "no_negative_prompt", "no_prompt_extend", "no_ref_strength",
         "no_watermark",   # MCP 沒有 watermark 參數，這旗標只給 UI 用

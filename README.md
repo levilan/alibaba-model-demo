@@ -159,7 +159,7 @@ NenAI（nen.com.tw）模型測試平台。只要一把 NenAI API Key，就能在
 | wan2.7-image-pro／wan2.7-image | 萬相文生圖 | 支援組圖模式（一次生成連貫故事圖組）；pro 支援 2K／4K |
 | wan2.6-t2i | 萬相文生圖 | |
 | z-image-turbo | Z-Image | |
-| MAI-Image-2.6／2.6-Flash、2.5-Pro／2.5／2.5-Flash | MAI Image | 支援自訂寬高（即時驗證與對齊提示）；2.6 系可開「自動畫面比例」。2.6 兩顆目前只在測試網關驗過，正式站列出後才顯示 |
+| MAI-Image-2.6／2.6-Flash、2.5-Pro／2.5／2.5-Flash | MAI Image | 支援自訂寬高（即時驗證與對齊提示）；2.6 系可開「自動畫面比例」。2.6 兩顆 2026-09-09 正式站上線 |
 | gpt-image-2／1.5 | GPT Image | 支援 quality／background（透明背景）／output_format |
 | dola-seedream-5.0-pro／lite | ByteDance Seedream | 尺寸 `WIDTHxHEIGHT`，也接受 2k／3k／4k |
 | gemini-3-pro-image、gemini-3.1-flash-image、gemini-2.5-flash-image、gemini-3.1-flash-lite-image | Gemini Image | 以比例（10 種）＋像素等級（1K／2K／4K，依型號）控制輸出 |
@@ -199,7 +199,8 @@ NenAI（nen.com.tw）模型測試平台。只要一把 NenAI API Key，就能在
 | 模型 | 分類 | 功能 |
 |---|---|---|
 | gpt-realtime-2.1／2.1-mini／2 | 即時語音 | OpenAI 即時語音對話（GA 版 session 格式、24kHz），10 個音色，支援語意斷句與插話。目前只在測試網關驗過，正式站列出後才顯示 |
-| gpt-audio-1.5 | 音訊對話 | 上傳一段語音或輸入文字，模型以語音與逐字稿回答（非即時）。同上，測試網關驗過 |
+| gpt-audio-1.5 | 音訊對話 | 上傳一段語音或輸入文字，模型以語音與逐字稿回答（非即時）。2026-09-09 正式站上線 |
+| gpt-realtime-whisper | 語音辨識 | OpenAI 語音辨識，走 WebSocket 轉錄 session、依音訊長度計費（$0.017/分鐘）；瀏覽器先把音檔轉成 24k WAV。同上，測試網關驗過 |
 | qwen3.5-omni-plus／flash-realtime | 即時語音 | WebSocket 雙向串流，可聽可說、看得懂圖片與影片，支援語意斷句與插話 |
 | qwen-audio-3.0-realtime-plus／flash | 即時語音 | 純語音即時對話，15 個專屬音色 |
 | qwen-audio-3.0-asr-flash（＋串流版） | 語音辨識 | 上傳音檔回逐字稿；串流版 SSE 回傳中間結果 |
@@ -244,6 +245,22 @@ python app.py            # http://localhost:5050
 ```
 
 ---
+
+## 管理後台（`/admin`，選用）
+
+查看 playground 的使用紀錄（呼叫數、成功率、各模型、各使用者、最近呼叫、完整報表）。資料就是
+`scripts/usage_stats.py` 讀的那份統計（GCS 的 `stats/*.jsonl`，沒雲端時讀本機 `outputs/stats/`），
+不含來源 IP；uid 是金鑰的雜湊，不可反推。守門方式參考官網後台，三種模式依環境變數自動選：
+
+| 模式 | 條件 | 說明 |
+|---|---|---|
+| Google 登入（正式環境） | 設 `ADMIN_EMAILS`＋`GOOGLE_OAUTH_CLIENT_ID`／`GOOGLE_OAUTH_CLIENT_SECRET` | 只放行 `OAUTH_EMAIL_DOMAINS`（預設 `highercloud.com.tw`）網域且在 `ADMIN_EMAILS` 名單上的帳號；`ADMIN_SESSION_SECRET` 簽 session cookie（不設則每次啟動隨機，重啟或多實例會被登出）；`OAUTH_REDIRECT_URL` 選填，不設就用請求的 host 組 `https://<host>/admin/callback` |
+| Basic Auth（本機／測試） | 沒設 `ADMIN_EMAILS` 但設 `ADMIN_USER`／`ADMIN_PASS` | 瀏覽器帳密框 |
+| 關閉 | 兩組都沒設 | `/admin` 底下一律 404 |
+
+Google Cloud Console 一次性設定：APIs & Services → Credentials → OAuth client ID（Web application），
+Authorized redirect URI 填 `https://<playground 網域>/admin/callback`；OAuth consent screen 選 Internal。
+本機試：`ADMIN_USER=ops ADMIN_PASS=pw venv/bin/python app.py` 後開 `http://localhost:5050/admin`。
 
 ## 雲端物件儲存（選用）
 
