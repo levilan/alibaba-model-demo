@@ -198,9 +198,9 @@ NenAI（nen.com.tw）模型測試平台。只要一把 NenAI API Key，就能在
 
 | 模型 | 分類 | 功能 |
 |---|---|---|
-| gpt-realtime-2.1／2.1-mini／2 | 即時語音 | OpenAI 即時語音對話（GA 版 session 格式、24kHz），10 個音色，支援語意斷句與插話。目前只在測試網關驗過，正式站列出後才顯示 |
+| gpt-realtime-2.1／2.1-mini／2 | 即時語音 | OpenAI 即時語音對話（GA 版 session 格式、24kHz），10 個音色，支援語意斷句與插話。2026-09-09 正式站上線 |
 | gpt-audio-1.5 | 音訊對話 | 上傳一段語音或輸入文字，模型以語音與逐字稿回答（非即時）。2026-09-09 正式站上線 |
-| gpt-realtime-whisper | 語音辨識 | OpenAI 語音辨識，走 WebSocket 轉錄 session、依音訊長度計費（$0.017/分鐘）；瀏覽器先把音檔轉成 24k WAV。同上，測試網關驗過 |
+| gpt-realtime-whisper | 語音辨識 | OpenAI 語音辨識，走 WebSocket 轉錄 session、依音訊長度計費（$0.017/分鐘）；瀏覽器先把音檔轉成 24k WAV。2026-09-09 正式站上線 |
 | qwen3.5-omni-plus／flash-realtime | 即時語音 | WebSocket 雙向串流，可聽可說、看得懂圖片與影片，支援語意斷句與插話 |
 | qwen-audio-3.0-realtime-plus／flash | 即時語音 | 純語音即時對話，15 個專屬音色 |
 | qwen-audio-3.0-asr-flash（＋串流版） | 語音辨識 | 上傳音檔回逐字稿；串流版 SSE 回傳中間結果 |

@@ -213,7 +213,7 @@ def test_whisper_wav_to_pcm24k():
     assert e.value.status_code == 400
     a = {m["id"]: m for m in app.MODELS["voice"]["asr"]}["gpt-realtime-whisper"]
     assert a["ws_transcription"] is True and a["per_minute"] is True and "gpt-realtime-whisper" in app._ASR_WS_MODELS
-    assert "gpt-realtime-whisper" in app._DEPLOY_GATED_MODELS
+    assert "gpt-realtime-whisper" not in app._DEPLOY_GATED_MODELS   # 2026-09-09 正式站上線
 
 
 def test_gpt_realtime_and_audio_chat_entries():
@@ -225,9 +225,10 @@ def test_gpt_realtime_and_audio_chat_entries():
         assert m["session_ga"] is True and m["input_rate"] == 24000 and m["output_rate"] == 24000
         assert m["turn_modes"] == ["semantic_vad", "server_vad", "none"], "smart_turn 上游拒收"
         assert [v["id"] for v in m["voices"]] == ["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"]
-        assert mid in app._DEPLOY_GATED_MODELS
+        assert mid not in app._DEPLOY_GATED_MODELS, "2026-09-09 正式站核對通過後已移出閘門"
     ac = {m["id"]: m for m in app.MODELS["voice"]["audiochat"]}
     assert "gpt-audio-1.5" in ac and "gpt-audio-1.5" not in app._DEPLOY_GATED_MODELS   # 2026-09-09 正式站上線
+    assert app._DEPLOY_GATED_MODELS == set(), "這批已全數上線；下一批要用時再放名字進去"
     # messages 組法：純文字也要有 user content（模型靠 audio 輸出才不會被拒），附語音時 input_audio 在前
     msgs = app._audio_chat_messages("hi", "be brief", "QUJD", "mp3")
     assert msgs[0] == {"role": "system", "content": "be brief"}

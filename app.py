@@ -1530,8 +1530,10 @@ async def login(data: LoginRequest, request: Request):
 # 環境並實測通過，依裁示把集合清空。下一批「測試網關先上」的模型直接把 id 加回來。
 # 2026-09-08：MAI-Image-2.6 兩顆只在測試網關驗過，正式站 /v1/models 還沒有——列出但正式站
 # 抓不到就不顯示（機制 2026-08-18 留下的，見 memory.md）。正式站上線後把這裡清空。
-# 2026-09-09：MAI-Image-2.6／2.6-Flash／gpt-audio-1.5 正式站三項核對通過（清單、倍率、渠道），已移出。
-_DEPLOY_GATED_MODELS: set = {"gpt-realtime-2.1", "gpt-realtime-2.1-mini", "gpt-realtime-2", "gpt-realtime-whisper"}
+# 2026-09-09：這批（MAI-Image-2.6／2.6-Flash／gpt-audio-1.5／gpt-realtime-2／2.1／2.1-mini／
+# gpt-realtime-whisper）正式站三項核對全部通過（清單、倍率與測試站一致、渠道皆 Azure type 3），
+# 已全數移出。機制保留給下一批：只在正式站還沒配好時放名字進去，配好核對過再清空。
+_DEPLOY_GATED_MODELS: set = set()
 _UPSTREAM_IDS_CACHE: Dict[str, Any] = {"ids": None, "ts": 0.0}
 
 async def _upstream_model_ids(api_key: str) -> Optional[set]:
