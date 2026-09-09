@@ -65,7 +65,7 @@ def test_session_roundtrip_and_tamper(env):
 
 def test_routes_404_when_off(env):
     c = TestClient(app.app)
-    for path in ("/admin", "/admin/", "/admin/login", "/admin/report", "/admin/api/stats", "/admin/callback?code=x&state=y"):
+    for path in ("/admin", "/admin/", "/admin/login", "/admin/api/rows", "/admin/api/stats", "/admin/callback?code=x&state=y"):
         assert c.get(path, follow_redirects=False).status_code == 404, path
 
 
@@ -84,6 +84,39 @@ def test_basic_mode_challenges_then_serves(env):
         assert {"id", "name", "calls", "ok", "statuses"} <= set(item), item
     bad = {"Authorization": "Basic " + base64.b64encode(b"ops:wrong").decode()}
     assert c.get("/admin", headers=bad, follow_redirects=False).status_code == 401
+    # 舊版報表已移除（Levi 2026-09-09：不需要分新舊表）——登入了也不該還在
+    assert c.get("/admin/report", headers=h, follow_redirects=False).status_code == 404
+
+
+def test_rows_filters(env):
+    """呼叫紀錄的時間與條件查詢：start/end 是台北時間（要換回 UTC 才對得上統計的 ts）、
+    uid/model 精確、ok 是 1/0、q 對端點與 IP 做子字串比對，並回 total 供分頁。"""
+    env.setenv("ADMIN_USER", "ops"); env.setenv("ADMIN_PASS", "pw")
+    from datetime import datetime, timedelta
+    assert admin._parse_tpe("2026-09-09T10:30") == datetime(2026, 9, 9, 2, 30)
+    assert admin._parse_tpe("2026-09-09") == datetime(2026, 9, 8, 16, 0)
+    assert admin._parse_tpe("") is None and admin._parse_tpe("亂寫") is None
+
+    c = TestClient(app.app)
+    h = {"Authorization": "Basic " + base64.b64encode(b"ops:pw").decode()}
+    base = c.get("/admin/api/rows?days=90&limit=1000", headers=h).json()
+    assert {"rows", "total", "offset", "model_names"} <= set(base)
+    assert len(base["rows"]) <= 1000 and base["total"] >= len(base["rows"])
+    if base["total"]:
+        first = base["rows"][0]
+        # 只看失敗：回來的每一筆 ok 都必須是 false
+        err = c.get("/admin/api/rows?days=90&limit=100&ok=0", headers=h).json()
+        assert all(not r["ok"] for r in err["rows"])
+        # 端點關鍵字
+        q = c.get(f"/admin/api/rows?days=90&limit=100&q={first['endpoint']}", headers=h).json()
+        assert q["total"] >= 1 and all(first["endpoint"] in r["endpoint"] for r in q["rows"])
+        # 時間往未來設，結果必為空（證明 start 真的有生效，不是被忽略）
+        future = c.get("/admin/api/rows?days=90&start=2099-01-01T00:00", headers=h).json()
+        assert future["total"] == 0
+        # 分頁：offset 前進後不會重複拿到第一筆
+        if base["total"] > 1:
+            p2 = c.get("/admin/api/rows?days=90&limit=1&offset=1", headers=h).json()
+            assert p2["rows"][0]["ts"] <= first["ts"] and p2["offset"] == 1
 
 
 def test_oauth_mode_redirects_and_builds_google_url(env):

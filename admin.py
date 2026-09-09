@@ -476,16 +476,8 @@ async def admin_home(request: Request, days: int = 7):
                         .replace("{{MODE}}", admin_mode()))
 
 
-@router.get("/report", response_class=HTMLResponse)
-async def admin_report(request: Request, days: int = 7):
-    _require(request)
-    days = _clamp_days(days)
-    rows = await load_rows(days)
-    us = _usage_stats()
-    rows = [dict(r) for r in rows]
-    await attach_ips(rows, days)
-    html = us.build_html(rows, days, uid_names=await uid_names(), model_names=_model_names())
-    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+# 舊版報表（usage_stats.build_html 嵌 iframe）已於 2026-09-09 移除——Levi：「不需要分新舊表，
+# 把舊的移除」。同一份資料現在只有一種呈現；本機腳本 scripts/usage_stats.py 仍可自己產 HTML。
 
 
 @router.get("/api/stats")
@@ -550,20 +542,65 @@ async def admin_api_stats(request: Request, days: int = 7):
                         headers={"Cache-Control": "no-store"})
 
 
+def _parse_tpe(v: str) -> Optional[datetime]:
+    """把畫面上的台北時間（datetime-local 的 'YYYY-MM-DDTHH:MM'）轉成統計用的 naive UTC。
+
+    統計紀錄的 ts 是容器的 datetime.now()＝UTC（Cloud Run 沒設 TZ），畫面一律顯示 +8，
+    所以查詢條件要往回減 8 小時才對得上。只給日期時視為當天 00:00。
+    """
+    v = (v or "").strip()
+    if not v:
+        return None
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(v, fmt) - timedelta(hours=8)
+        except ValueError:
+            continue
+    return None
+
+
 @router.get("/api/rows")
-async def admin_api_rows(request: Request, days: int = 7, limit: int = 500):
-    """原始紀錄（最新在前），給後台的「最近呼叫」表。"""
+async def admin_api_rows(request: Request, days: int = 7, limit: int = 50, offset: int = 0,
+                         start: str = "", end: str = "", uid: str = "", model: str = "",
+                         ok: str = "", q: str = ""):
+    """近期呼叫。支援時間區間與條件查詢（Levi 2026-09-09：「近期呼叫可以跟隨時間查詢」）。
+
+    start／end 是台北時間；uid／model 精確比對；ok 是 "1"／"0"；q 對端點、使用者名稱、IP
+    做不分大小寫的子字串比對。回傳 total（符合條件的總數）讓畫面能顯示「N / M」與分頁。
+    """
     _require(request)
     days = _clamp_days(days)
     rows = await load_rows(days)
     us = _usage_stats()
     rows = [dict(r) for r in rows]
     await attach_ips(rows, days)
-    rows = sorted(rows, key=us._ts, reverse=True)[: max(1, min(5000, limit))]
     who = await uid_names()
     for r in rows:
         r["user"] = who.get(r.get("uid", ""), "")
         r["ip"] = r.pop("_ip", "") or ""
         r.pop("_ua", None)
-    return JSONResponse({"rows": rows, "model_names": _model_names()},
+
+    t0, t1 = _parse_tpe(start), _parse_tpe(end)
+    ql = q.strip().lower()
+    def _keep(r: dict) -> bool:
+        t = us._ts(r)
+        if t0 and t < t0:
+            return False
+        if t1 and t > t1:
+            return False
+        if uid and r.get("uid") != uid:
+            return False
+        if model and r.get("model") != model:
+            return False
+        if ok in ("0", "1") and bool(r.get("ok")) != (ok == "1"):
+            return False
+        if ql and ql not in " ".join(str(r.get(k) or "") for k in ("endpoint", "user", "ip", "uid", "model")).lower():
+            return False
+        return True
+
+    hits = sorted([r for r in rows if _keep(r)], key=us._ts, reverse=True)
+    off = max(0, offset)
+    page = hits[off: off + max(1, min(1000, limit))]
+    return JSONResponse({"rows": page, "total": len(hits), "offset": off,
+                         "model_names": _model_names()},
                         headers={"Cache-Control": "no-store"})
