@@ -462,8 +462,29 @@ def _model_names() -> dict[str, str]:
     return names
 
 
+# 一筆紀錄是不是「真的呼叫了模型」。統計檔對每個 HTTP 請求都記一筆，所以裡面混著
+# 兩種完全不是呼叫的東西，而且量遠比呼叫本身大：
+#   輪詢——非同步任務要每隔幾秒問一次進度，一支影片就產生 30 筆 /status/；
+#   頁面——開一次頁就打 /api/models 與 /api/pricing。
+# 兩者都算進去的話「使用者佔比」會嚴重失真：產一支影片的人會比產一張圖的人重 30 倍，
+# 而純粹開著頁面沒用任何模型的人也會佔到版面。（2026-09-09 實測 30 天 338 筆裡，
+# 只有 78 筆是真的呼叫。）分類刻意讓未知端點落在 "call"，新加的生成端點才不會被漏掉。
+_META_ENDPOINTS = {"/api/models", "/api/pricing", "/login", "/api/proxy/fetch", "/api/key/info"}
+
+
+def row_kind(r: dict) -> str:
+    ep = str(r.get("endpoint") or "")
+    if "/status/" in ep:
+        return "poll"
+    if ep in _META_ENDPOINTS or not ep.startswith("/api/"):
+        return "meta"
+    return "call"
+
+
 def _clamp_days(days: int) -> int:
-    return max(1, min(90, int(days or 7)))
+    # 上限 30 天（Levi 2026-09-09：「不需要 90 天 最多 30 天」）。天數越大要掃的
+    # 統計檔越多，90 天在正式站是上千個小檔，換來的是幾乎沒人看的區間。
+    return max(1, min(30, int(days or 7)))
 
 
 @router.get("", response_class=HTMLResponse)
@@ -481,16 +502,22 @@ async def admin_home(request: Request, days: int = 7):
 
 
 @router.get("/api/stats")
-async def admin_api_stats(request: Request, days: int = 7):
+async def admin_api_stats(request: Request, days: int = 7, ip: str = ""):
     """給程式用的彙總：總筆數、成功率、每日、每模型、每使用者（uid）。"""
     _require(request)
     days = _clamp_days(days)
     rows = await load_rows(days)
     us = _usage_stats()
     rows = [dict(r) for r in rows]
-    matched = await attach_ips(rows, days)
+    # 來源 IP 要打 Cloud Logging（最多 10 頁），是這支最慢的一段。畫面預設不需要，
+    # 改成 ?ip=1 才查（Levi 2026-09-09：「呼叫紀錄可以精簡減少 loading」）。
+    matched = await attach_ips(rows, days) if ip == "1" else 0
     names = await uid_names()
     model_names = _model_names()
+    kinds = {"call": 0, "poll": 0, "meta": 0}
+    for r in rows:
+        kinds[row_kind(r)] += 1
+    rows = [r for r in rows if row_kind(r) == "call"]
     per_day: dict[str, int] = {}
     # 每個模型／使用者各自累計「總數、成功數、失敗的狀態碼」——版面用雙色細條表示
     # 成功率、只有真的有失敗時才展開狀態碼明細（官網 session 2026-09-09 的設計）
@@ -535,6 +562,7 @@ async def admin_api_stats(request: Request, days: int = 7):
         per_day_full.setdefault(d, n)
 
     return JSONResponse({"days": days, "total": len(rows), "ok": ok, "ip_matched": matched,
+                         "polls": kinds["poll"], "meta": kinds["meta"],
                          "per_day": dict(sorted(per_day_full.items())),
                          "models": _rows_of(agg_model, lambda k: model_names.get(k, "")),
                          "users": _rows_of(agg_uid, lambda k: names.get(k, "")),
@@ -562,7 +590,7 @@ def _parse_tpe(v: str) -> Optional[datetime]:
 @router.get("/api/rows")
 async def admin_api_rows(request: Request, days: int = 7, limit: int = 50, offset: int = 0,
                          start: str = "", end: str = "", uid: str = "", model: str = "",
-                         ok: str = "", q: str = ""):
+                         ok: str = "", q: str = "", ip: str = "", kind: str = "call"):
     """近期呼叫。支援時間區間與條件查詢（Levi 2026-09-09：「近期呼叫可以跟隨時間查詢」）。
 
     start／end 是台北時間；uid／model 精確比對；ok 是 "1"／"0"；q 對端點、使用者名稱、IP
@@ -573,11 +601,13 @@ async def admin_api_rows(request: Request, days: int = 7, limit: int = 50, offse
     rows = await load_rows(days)
     us = _usage_stats()
     rows = [dict(r) for r in rows]
-    await attach_ips(rows, days)
+    if ip == "1":
+        await attach_ips(rows, days)
     who = await uid_names()
     for r in rows:
         r["user"] = who.get(r.get("uid", ""), "")
         r["ip"] = r.pop("_ip", "") or ""
+        r["kind"] = row_kind(r)
         r.pop("_ua", None)
 
     t0, t1 = _parse_tpe(start), _parse_tpe(end)
@@ -593,6 +623,8 @@ async def admin_api_rows(request: Request, days: int = 7, limit: int = 50, offse
         if model and r.get("model") != model:
             return False
         if ok in ("0", "1") and bool(r.get("ok")) != (ok == "1"):
+            return False
+        if kind in ("call", "poll", "meta") and row_kind(r) != kind:
             return False
         if ql and ql not in " ".join(str(r.get(k) or "") for k in ("endpoint", "user", "ip", "uid", "model")).lower():
             return False

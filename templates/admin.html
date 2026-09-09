@@ -11,10 +11,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400&family=Noto+Serif+TC:wght@400&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
 <style>
 /* 版面由官網 session 設計（2026-09-09），token 對齊官網 assets/site.css。
-   一個主數字＋一行小字取代等重卡片；每日直條圖補上時間維度；模型／使用者用雙色細條，
-   狀態碼只在有失敗時展開；呼叫紀錄套第二層紙面，代表「這是真數據」。
-   2026-09-09 追加（Levi）：舊版報表整個移除、呼叫紀錄可依時間與條件查詢、版面更直覺
-   （柱子與列都可以點來篩選，篩選條件與下拉選單同步）。 */
+   2026-09-09 二修（Levi）：最多 30 天；呼叫紀錄精簡成時間／使用者／模型／狀態，
+   來源 IP 改成需要時才查（那是載入最慢的一段）；使用者佔比改用圓環圖。
+   圓環的配色刻意只用天青一個色相、以明度分階——設計規範只允許一個彩度。 */
 :root {
   --ground:#FBFAF8; --ink:#2B2724; --body:#5C564F; --rain:#787168; --line:#E6E2DB;
   --flash:#7FA39E; --flash-ink:#3F625F; --ember:#8C4A3F; --ground-2:#F6F2E9; --r:10px;
@@ -60,18 +59,35 @@ h2 .hint{font-family:var(--mono);font-size:.6875rem;letter-spacing:.04em;color:v
 .op-chart rect.sel{fill:var(--flash-ink)}
 .op-chart .axis-label{font-family:var(--mono);font-size:.625rem;fill:var(--rain)}
 
-/* 模型／使用者：雙色細條，整列可點來篩選 */
+/* 使用者佔比：圓環＋圖例，兩邊都可點來篩選 */
 .op-cols{display:grid;grid-template-columns:1fr 1fr;gap:2.5rem}
 @media (max-width:760px){.op-cols{grid-template-columns:1fr;gap:1.5rem}}
+.op-pie{display:grid;grid-template-columns:auto 1fr;gap:1.25rem;align-items:center}
+@media (max-width:420px){.op-pie{grid-template-columns:1fr}}
+.op-pie svg{width:150px;height:150px;overflow:visible}
+.op-pie path{cursor:pointer;transition:opacity .12s}
+.op-pie path:hover{opacity:.75}
+.op-pie .mid{font-family:var(--mono);font-size:11px;fill:var(--rain);text-anchor:middle}
+.op-pie .mid .big{font-family:var(--display);font-size:20px;fill:var(--ink)}
+.op-legend{display:flex;flex-direction:column;gap:.3rem;min-width:0}
+.op-legend .row{display:grid;grid-template-columns:10px 1fr auto auto;gap:.5rem;align-items:baseline;
+  cursor:pointer;border-radius:6px;padding:.12rem .3rem;margin-inline:-.3rem}
+.op-legend .row:hover,.op-legend .row.sel{background:var(--ground-2)}
+.op-legend .dot{width:10px;height:10px;border-radius:2px;align-self:center}
+.op-legend .nm{font-size:.8125rem;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.op-legend .pc{font-family:var(--mono);font-size:.75rem;color:var(--ink);font-variant-numeric:tabular-nums}
+.op-legend .ct{font-family:var(--mono);font-size:.6875rem;color:var(--rain);font-variant-numeric:tabular-nums}
+
+/* 各模型：雙色細條，整列可點來篩選 */
 .op-bar-list{display:flex;flex-direction:column;gap:.6rem}
 .op-bar-row{display:grid;grid-template-columns:1fr auto;gap:.15rem .75rem;align-items:baseline;
   cursor:pointer;border-radius:6px;padding:.15rem .35rem;margin-inline:-.35rem}
-.op-bar-row:hover{background:var(--ground-2)}
-.op-bar-row.sel{background:var(--ground-2)}
+.op-bar-row:hover,.op-bar-row.sel{background:var(--ground-2)}
 .op-bar-row .name{font-size:.875rem;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .op-bar-row .count{font-family:var(--mono);font-size:.8125rem;color:var(--rain);
   font-variant-numeric:tabular-nums;text-align:end}
 .op-bar-track{grid-column:1/-1;height:4px;border-radius:2px;background:var(--line);overflow:hidden;display:flex}
+.op-bar-track .fill-bar{display:flex;min-width:2px}
 .op-bar-track .fill-ok{background:var(--flash)}
 .op-bar-track .fill-err{background:var(--ember)}
 .op-bar-row .fail{grid-column:1/-1;font-family:var(--mono);font-size:.6875rem;color:var(--ember);letter-spacing:.02em}
@@ -83,11 +99,13 @@ h2 .hint{font-family:var(--mono);font-size:.6875rem;letter-spacing:.04em;color:v
 .op-filter input,.op-filter select{font-family:var(--mono);font-size:.8125rem;color:var(--ink);
   background:var(--ground);border:1px solid var(--line);border-radius:8px;padding:.35rem .5rem;min-height:32px}
 .op-filter input:focus,.op-filter select:focus{outline:none;border-color:var(--flash)}
-.op-filter .grow{flex:1;min-width:160px}
+.op-filter .grow{flex:1;min-width:150px}
 .op-filter .grow input{width:100%}
 .op-filter button{font-family:var(--mono);font-size:.75rem;color:var(--body);cursor:pointer;
   background:var(--ground);border:1px solid var(--line);border-radius:8px;padding:.42rem .8rem}
 .op-filter button:hover{border-color:var(--flash);color:var(--flash-ink)}
+.op-filter .chk{flex-direction:row;align-items:center;gap:.4rem;cursor:pointer;padding-bottom:.45rem}
+.op-filter .chk input{min-height:0;accent-color:var(--flash)}
 
 /* 呼叫紀錄 */
 .op-recent{background:var(--ground-2);border-radius:var(--r);padding:1.25rem clamp(1rem,3vw,1.75rem)}
@@ -99,13 +117,10 @@ h2 .hint{font-family:var(--mono);font-size:.6875rem;letter-spacing:.04em;color:v
 .op-recent td{padding-block:.55rem;padding-right:1.25rem;border-bottom:1px solid var(--line);
   font-family:var(--mono);color:var(--body);white-space:nowrap}
 .op-recent th:last-child,.op-recent td:last-child{padding-right:0}
-.op-recent td.num{font-variant-numeric:tabular-nums;text-align:end}
 .op-recent td.empty::before{content:"–";color:var(--rain)}
 .op-recent td .who{color:var(--ink)}
 .op-recent .bad{color:var(--ember)}
-/* 端點會出現 /api/muleai/status/<model>/<task id> 這種長路徑，不截斷會把狀態與耗時擠出畫面 */
-.op-recent td.path{max-width:14rem;overflow:hidden;text-overflow:ellipsis}
-.op-recent td.model{max-width:9rem;overflow:hidden;text-overflow:ellipsis}
+.op-recent td.model{max-width:14rem;overflow:hidden;text-overflow:ellipsis}
 .op-more{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;margin-top:.9rem;
   font-family:var(--mono);font-size:.6875rem;color:var(--rain)}
 .op-more button{font-family:var(--mono);font-size:.75rem;color:var(--body);cursor:pointer;
@@ -121,7 +136,7 @@ footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
   <div class="op-head">
     <h1>使用紀錄</h1>
     <span class="seg" id="seg">
-      <a href="/admin?days=1">今天</a><a href="/admin?days=7">7 天</a><a href="/admin?days=30">30 天</a><a href="/admin?days=90">90 天</a>
+      <a href="/admin?days=1">今天</a><a href="/admin?days=7">7 天</a><a href="/admin?days=30">30 天</a>
     </span>
     <span class="who">{{USER}} <a href="/admin/logout">登出</a></span>
   </div>
@@ -131,17 +146,20 @@ footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
     <div class="sub" id="summary">讀取中…</div>
   </div>
 
-  <h2>每日呼叫<span class="hint" id="chartHint"></span></h2>
+  <h2>每日模型呼叫<span class="hint" id="chartHint"></span></h2>
   <svg class="op-chart" id="chart" viewBox="0 0 700 110" preserveAspectRatio="none" role="img" aria-label="每日呼叫數"></svg>
 
   <div class="op-cols">
     <section>
-      <h2>各模型<span class="hint">點一列只看它</span></h2>
-      <div class="op-bar-list" id="models"></div>
+      <h2>使用者佔比<span class="hint">點一塊只看他</span></h2>
+      <div class="op-pie">
+        <svg id="pie" viewBox="0 0 100 100" role="img" aria-label="使用者呼叫佔比"></svg>
+        <div class="op-legend" id="legend"></div>
+      </div>
     </section>
     <section>
-      <h2>各使用者<span class="hint">點一列只看他</span></h2>
-      <div class="op-bar-list" id="users"></div>
+      <h2>各模型<span class="hint">前 10 名 · 點一列只看它</span></h2>
+      <div class="op-bar-list" id="models"></div>
     </section>
   </div>
 
@@ -151,24 +169,26 @@ footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
     <label>迄<input type="datetime-local" id="fEnd"></label>
     <label>使用者<select id="fUid"><option value="">全部</option></select></label>
     <label>模型<select id="fModel"><option value="">全部</option></select></label>
+    <label>類型<select id="fKind"><option value="call">模型呼叫</option><option value="poll">任務輪詢</option><option value="meta">頁面載入</option><option value="all">全部</option></select></label>
     <label>狀態<select id="fOk"><option value="">全部</option><option value="1">只看成功</option><option value="0">只看失敗</option></select></label>
-    <label class="grow">關鍵字<input type="search" id="fQ" placeholder="端點、IP、使用者…"></label>
+    <label class="grow">關鍵字<input type="search" id="fQ" placeholder="端點、使用者…"></label>
+    <label class="chk" title="來源 IP 要另外查平台日誌，載入會變慢，所以預設不查"><input type="checkbox" id="fIp">來源 IP</label>
     <button type="button" id="fReset">清除條件</button>
   </div>
   <div class="op-recent">
     <div class="scroll-wrap" role="region" aria-label="呼叫紀錄" tabindex="0">
       <table>
-        <thead><tr><th>時間</th><th>使用者</th><th>來源 IP</th><th>端點</th><th>模型</th><th>狀態</th><th>耗時 ms</th></tr></thead>
-        <tbody id="recent"><tr><td colspan="7">讀取中…</td></tr></tbody>
+        <thead><tr id="head"><th>時間</th><th>使用者</th><th>模型</th><th>狀態</th></tr></thead>
+        <tbody id="recent"><tr><td colspan="4">讀取中…</td></tr></tbody>
       </table>
     </div>
     <div class="op-more">
-      <span id="ipNote"></span>
+      <span id="note"></span>
       <button type="button" id="more" disabled>顯示更多</button>
     </div>
   </div>
 
-  <footer>時間一律台北時間 · uid 是金鑰雜湊，不可反推 · 來源 IP 於查詢當下向平台日誌取得，統計檔本身不存</footer>
+  <footer>時間一律台北時間 · uid 是金鑰雜湊，不可反推 · 勾「來源 IP」才會去查平台日誌，統計檔本身不存</footer>
 </div>
 
 <script>
@@ -181,48 +201,54 @@ footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
   // 統計的 ts 是 UTC（容器沒設 TZ），顯示與查詢一律台北時間
   const fmt = ts => { const d = new Date(new Date(ts + 'Z').getTime() + 8 * 3600e3);
     return isNaN(d) ? ts : d.toISOString().replace('T', ' ').slice(5, 16); };
+  // 只用天青一個色相、以明度分階（設計規範不允許第二個彩度）；深→淺對應大→小
+  const tint = (i, n) => `hsl(172 18% ${Math.round(34 + (n <= 1 ? 0 : i / (n - 1)) * 42)}%)`;
 
   let offset = 0, loaded = 0, timer = null;
 
-  const params = () => {
+  const params = extra => {
     const p = new URLSearchParams({ days, limit: PAGE, offset });
-    for (const [k, el] of [['start', 'fStart'], ['end', 'fEnd'], ['uid', 'fUid'], ['model', 'fModel'], ['ok', 'fOk'], ['q', 'fQ']]) {
+    for (const [k, el] of [['start', 'fStart'], ['end', 'fEnd'], ['uid', 'fUid'], ['model', 'fModel'], ['ok', 'fOk'], ['q', 'fQ'], ['kind', 'fKind']]) {
       const v = $(el).value.trim();
       if (v) p.set(k, v);
     }
+    if ($('fIp').checked) p.set('ip', '1');
     return p;
   };
 
   const loadRows = async (append = false) => {
-    if (!append) { offset = 0; loaded = 0; $('recent').innerHTML = '<tr><td colspan="7">讀取中…</td></tr>'; }
+    const withIp = $('fIp').checked;
+    $('head').innerHTML = '<th>時間</th><th>使用者</th><th>模型</th><th>狀態</th>' + (withIp ? '<th>來源 IP</th>' : '');
+    const cols = withIp ? 5 : 4;
+    if (!append) { offset = 0; loaded = 0; $('recent').innerHTML = `<tr><td colspan="${cols}">讀取中…</td></tr>`; }
     const res = await fetch('/admin/api/rows?' + params(), { credentials: 'same-origin' }).then(r => r.json());
     const names = res.model_names || {};
     const html = (res.rows || []).map(r => `<tr>
       <td>${esc(fmt(r.ts))}</td>
       <td class="${r.user ? '' : 'empty'}">${r.user ? `<span class="who">${esc(r.user)}</span>` : ''}</td>
-      <td class="${r.ip ? '' : 'empty'}">${esc(r.ip || '')}</td>
-      <td class="path" title="${esc(r.endpoint)}">${esc(r.endpoint)}</td>
       <td class="model ${r.model ? '' : 'empty'}" title="${esc(r.model || '')}">${r.model ? esc(names[r.model] || r.model) : ''}</td>
-      <td class="${r.ok ? '' : 'bad'}">${esc(r.status)}</td>
-      <td class="num ${r.ms == null ? 'empty' : ''}">${r.ms != null ? num(r.ms) : ''}</td>
+      <td class="${r.ok ? '' : 'bad'}" title="${esc(r.endpoint)}">${esc(r.status)}</td>
+      ${withIp ? `<td class="${r.ip ? '' : 'empty'}">${esc(r.ip || '')}</td>` : ''}
     </tr>`).join('');
     const tb = $('recent');
     if (append) tb.insertAdjacentHTML('beforeend', html);
-    else tb.innerHTML = html || '<tr><td colspan="7">沒有符合條件的紀錄</td></tr>';
+    else tb.innerHTML = html || `<tr><td colspan="${cols}">沒有符合條件的紀錄</td></tr>`;
     loaded += (res.rows || []).length;
     offset = loaded;
     $('recentHint').textContent = `${num(loaded)} / ${num(res.total)} 筆`;
     $('more').disabled = loaded >= res.total;
     $('more').textContent = loaded >= res.total ? '已全部顯示' : `顯示更多（剩 ${num(res.total - loaded)}）`;
+    $('note').textContent = withIp ? '來源 IP 取自平台日誌（保留 30 天），統計檔本身不存' : '狀態欄滑過去看端點';
   };
 
   const rerun = () => { clearTimeout(timer); timer = setTimeout(() => loadRows(false), 250); };
-  ['fStart', 'fEnd', 'fUid', 'fModel', 'fOk'].forEach(id => $(id).addEventListener('change', rerun));
+  ['fStart', 'fEnd', 'fUid', 'fModel', 'fOk', 'fIp', 'fKind'].forEach(id => $(id).addEventListener('change', rerun));
   $('fQ').addEventListener('input', rerun);
   $('more').addEventListener('click', () => loadRows(true));
   $('fReset').addEventListener('click', () => {
     ['fStart', 'fEnd', 'fUid', 'fModel', 'fOk', 'fQ'].forEach(id => { $(id).value = ''; });
-    document.querySelectorAll('.op-bar-row.sel, .op-chart rect.sel').forEach(e => e.classList.remove('sel'));
+    $('fKind').value = 'call';
+    document.querySelectorAll('.sel').forEach(e => e.classList.remove('sel'));
     loadRows(false);
   });
 
@@ -254,14 +280,60 @@ footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
     $('chartHint').textContent = `尖峰 ${max} 次／日 · 點一根柱子看那天`;
   };
 
+  // 圓環：前 8 名各一塊，其餘併成「其他」。用 path 畫扇形，不靠任何圖表庫。
+  const drawPie = (users, total) => {
+    const TOP = 8;
+    const head = users.slice(0, TOP);
+    const tail = users.slice(TOP);
+    const parts = head.map(u => ({ id: u.id, name: u.name || u.id, calls: u.calls }));
+    if (tail.length) parts.push({ id: '', name: `其他 ${tail.length} 位`, calls: tail.reduce((a, u) => a + u.calls, 0) });
+    const sum = parts.reduce((a, p) => a + p.calls, 0) || 1;
+    const R = 42, r = 26, cx = 50, cy = 50;
+    let a0 = -Math.PI / 2;
+    const arcs = parts.map((p, i) => {
+      const a1 = a0 + p.calls / sum * Math.PI * 2;
+      const big = a1 - a0 > Math.PI ? 1 : 0;
+      const pt = (ang, rad) => `${(cx + rad * Math.cos(ang)).toFixed(2)} ${(cy + rad * Math.sin(ang)).toFixed(2)}`;
+      const d = `M ${pt(a0, R)} A ${R} ${R} 0 ${big} 1 ${pt(a1, R)} L ${pt(a1, r)} A ${r} ${r} 0 ${big} 0 ${pt(a0, r)} Z`;
+      a0 = a1;
+      return `<path d="${d}" fill="${tint(i, parts.length)}" data-id="${esc(p.id)}"><title>${esc(p.name)}：${p.calls} 次（${(p.calls / sum * 100).toFixed(1)}%）</title></path>`;
+    }).join('');
+    $('pie').innerHTML = arcs +
+      `<text class="mid" x="50" y="48"><tspan class="big">${users.length}</tspan></text>` +
+      `<text class="mid" x="50" y="60">位使用者</text>`;
+    $('legend').innerHTML = parts.map((p, i) => `<div class="row" data-id="${esc(p.id)}">
+      <span class="dot" style="background:${tint(i, parts.length)}"></span>
+      <span class="nm" title="${esc(p.name)}">${esc(p.name)}</span>
+      <span class="pc">${(p.calls / sum * 100).toFixed(1)}%</span>
+      <span class="ct">${num(p.calls)}</span>
+    </div>`).join('');
+    // 圓環與圖例都能點來篩選；「其他」沒有單一 uid，不做篩選
+    const pick = (id, el, group) => {
+      if (!id) return;
+      const on = el.classList.contains('sel');
+      document.querySelectorAll('.op-legend .row.sel').forEach(e => e.classList.remove('sel'));
+      if (!on) group.forEach(e => { if (e.dataset.id === id && e.classList.contains('row')) e.classList.add('sel'); });
+      $('fUid').value = on ? '' : id;
+      loadRows(false);
+    };
+    const rows = [...$('legend').querySelectorAll('.row')];
+    rows.forEach(el => el.addEventListener('click', () => pick(el.dataset.id, el, rows)));
+    $('pie').querySelectorAll('path').forEach(el => el.addEventListener('click', () => {
+      const row = rows.find(r => r.dataset.id === el.dataset.id);
+      if (row) pick(el.dataset.id, row, rows);
+    }));
+  };
+
   const barList = (el, items, filterId) => {
+    const top = Math.max(1, ...items.map(i => i.calls));
     el.innerHTML = items.map(it => {
-      const okPct = it.calls ? it.ok / it.calls * 100 : 0;
+      const w = it.calls / top * 100;                       // 條長＝相對呼叫量
+      const okPct = it.calls ? it.ok / it.calls * 100 : 0;  // 條內比例＝成功／失敗
       const fails = Object.entries(it.statuses || {});
       return `<div class="op-bar-row" data-id="${esc(it.id)}">
         <span class="name">${esc(it.name || it.id)}</span>
         <span class="count">${num(it.calls)}</span>
-        <span class="op-bar-track"><span class="fill-ok" style="width:${okPct.toFixed(1)}%"></span><span class="fill-err" style="width:${(100 - okPct).toFixed(1)}%"></span></span>
+        <span class="op-bar-track"><span class="fill-bar" style="width:${w.toFixed(1)}%"><span class="fill-ok" style="width:${okPct.toFixed(1)}%"></span><span class="fill-err" style="width:${(100 - okPct).toFixed(1)}%"></span></span></span>
         ${fails.length ? `<span class="fail">${fails.map(([c, k]) => `${c}×${k}`).join(' · ')}</span>` : ''}
       </div>`;
     }).join('') || '<div class="op-more">沒有資料</div>';
@@ -278,17 +350,22 @@ footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
     document.querySelectorAll('#seg a').forEach(a => { if (a.getAttribute('href').endsWith('days=' + days)) a.classList.add('on'); });
     const stats = await fetch(`/admin/api/stats?days=${days}`, { credentials: 'same-origin' }).then(r => r.json());
     const okPct = stats.total ? (stats.ok / stats.total * 100) : 0;
-    $('total').innerHTML = `${num(stats.total)}<small>次呼叫</small>`;
-    $('summary').innerHTML = `<b>${stats.users.length}</b> 位使用者 · <b>${stats.models.length}</b> 個模型 · 成功率 <b>${okPct.toFixed(1)}%</b>`;
+    $('total').innerHTML = `${num(stats.total)}<small>次模型呼叫</small>`;
+    // 輪詢與頁面載入不計進佔比（一支影片會輪詢數十次），但也不隱藏，列在後面
+    $('summary').innerHTML = `<b>${stats.users.length}</b> 位使用者 · <b>${stats.models.length}</b> 個模型 · 成功率 <b>${okPct.toFixed(1)}%</b>`
+      + ` · 另有任務輪詢 <b>${num(stats.polls)}</b> 次、頁面載入 <b>${num(stats.meta)}</b> 次`;
     drawChart(stats.per_day);
-    barList($('models'), stats.models, 'fModel');
-    barList($('users'), stats.users, 'fUid');
-    // 下拉的選項就是上面兩張表的內容，兩邊永遠一致
+    drawPie(stats.users, stats.total);
+    const TOP_M = 10;
+    barList($('models'), stats.models.slice(0, TOP_M), 'fModel');
+    if (stats.models.length > TOP_M) {
+      const rest = stats.models.slice(TOP_M).reduce((a, m) => a + m.calls, 0);
+      $('models').insertAdjacentHTML('beforeend',
+        `<div class="op-more">還有 ${stats.models.length - TOP_M} 個模型，合計 ${num(rest)} 次 · 用下面的「模型」下拉查</div>`);
+    }
+    // 下拉的選項就是上面兩塊的內容，永遠一致
     $('fModel').innerHTML = '<option value="">全部</option>' + stats.models.map(m => `<option value="${esc(m.id)}">${esc(m.name || m.id)}</option>`).join('');
     $('fUid').innerHTML = '<option value="">全部</option>' + stats.users.map(u => `<option value="${esc(u.id)}">${esc(u.name || u.id)}</option>`).join('');
-    $('ipNote').textContent = stats.ip_matched
-      ? `來源 IP 對上 ${num(stats.ip_matched)}／${num(stats.total)} 筆`
-      : '來源 IP 查不到：執行身分沒有平台日誌讀取權限，或已超過保留期';
     await loadRows(false);
   } catch (e) {
     $('summary').innerHTML = `<b style="color:var(--ember)">讀取失敗</b> ${esc(e.message)}`;

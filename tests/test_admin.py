@@ -97,6 +97,10 @@ def test_rows_filters(env):
     assert admin._parse_tpe("2026-09-09") == datetime(2026, 9, 8, 16, 0)
     assert admin._parse_tpe("") is None and admin._parse_tpe("亂寫") is None
 
+    # 天數上限 30（Levi 2026-09-09：「不需要 90 天 最多 30 天」）
+    assert admin._clamp_days(90) == 30 and admin._clamp_days(30) == 30
+    assert admin._clamp_days(0) == 7 and admin._clamp_days(-5) == 1
+
     c = TestClient(app.app)
     h = {"Authorization": "Basic " + base64.b64encode(b"ops:pw").decode()}
     base = c.get("/admin/api/rows?days=90&limit=1000", headers=h).json()
@@ -117,6 +121,57 @@ def test_rows_filters(env):
         if base["total"] > 1:
             p2 = c.get("/admin/api/rows?days=90&limit=1&offset=1", headers=h).json()
             assert p2["rows"][0]["ts"] <= first["ts"] and p2["offset"] == 1
+    # 來源 IP 預設不查（那段要打平台日誌，是最慢的一環）；ip=1 才補。
+    # 欄位一定在，值可能是空字串——前端靠欄位存在與否決定要不要畫那一欄。
+    assert all(r["ip"] == "" for r in base["rows"]), "預設就不該去查 IP"
+    called = []
+    orig = admin.attach_ips
+
+    async def spy(rows, days):
+        called.append(days)
+        return await orig(rows, days)
+
+    monkeypatch_target = admin
+    monkeypatch_target.attach_ips = spy
+    try:
+        c.get("/admin/api/rows?days=7&limit=1", headers=h)
+        assert called == [], "沒帶 ip=1 就不該呼叫 attach_ips"
+        c.get("/admin/api/stats?days=7", headers=h)
+        assert called == [], "統計預設也不查 IP"
+        c.get("/admin/api/rows?days=7&limit=1&ip=1", headers=h)
+        assert called == [7], "帶了 ip=1 就要查"
+    finally:
+        monkeypatch_target.attach_ips = orig
+
+
+def test_row_kind_excludes_polls_and_page_loads(env):
+    """統計檔對每個 HTTP 請求都記一筆。一支非同步影片會產生數十筆 /status/ 輪詢、
+    開一次頁會打 /api/models 與 /api/pricing——全算進去的話「使用者佔比」會嚴重失真
+    （2026-09-09 實測：30 天 338 筆裡只有 82 筆是真的呼叫模型）。"""
+    env.setenv("ADMIN_USER", "ops"); env.setenv("ADMIN_PASS", "pw")
+    k = admin.row_kind
+    assert k({"endpoint": "/api/muleai/status/w3.0-video/task_abc"}) == "poll"
+    assert k({"endpoint": "/api/video/status/omni_123"}) == "poll"
+    assert k({"endpoint": "/api/models"}) == "meta"
+    assert k({"endpoint": "/api/pricing"}) == "meta"
+    assert k({"endpoint": "/login"}) == "meta"
+    # 未知端點一律當成真的呼叫——新增生成端點時才不會被靜默漏掉
+    assert k({"endpoint": "/api/video/t2v"}) == "call"
+    assert k({"endpoint": "/api/image/edit"}) == "call"
+    assert k({"endpoint": "/api/some/brand/new/generate"}) == "call"
+
+    c = TestClient(app.app)
+    h = {"Authorization": "Basic " + base64.b64encode(b"ops:pw").decode()}
+    st = c.get("/admin/api/stats?days=30", headers=h).json()
+    assert {"polls", "meta"} <= set(st), "輪詢與頁面載入的筆數要照樣回報，不能只是消失"
+    rows_call = c.get("/admin/api/rows?days=30&limit=1000", headers=h).json()
+    assert all(r["kind"] == "call" for r in rows_call["rows"]), "呼叫紀錄預設只列真的呼叫"
+    assert rows_call["total"] == st["total"], "摘要的總數要等於預設清單的總數"
+    rows_all = c.get("/admin/api/rows?days=30&limit=1&kind=all", headers=h).json()
+    assert rows_all["total"] == st["total"] + st["polls"] + st["meta"]
+    if st["polls"]:
+        only = c.get("/admin/api/rows?days=30&limit=50&kind=poll", headers=h).json()
+        assert only["total"] == st["polls"] and all(r["kind"] == "poll" for r in only["rows"])
 
 
 def test_oauth_mode_redirects_and_builds_google_url(env):
