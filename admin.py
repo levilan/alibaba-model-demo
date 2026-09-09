@@ -272,7 +272,7 @@ def _usage_stats():
 
 
 _rows_cache: dict = {}   # days -> (ts, rows)
-_ROWS_TTL = 60.0
+_ROWS_TTL = 120.0
 _uid_map_cache: tuple[float, dict] = (0.0, {})
 _UID_MAP_TTL = 300.0
 _UID_MAP_KEY = os.environ.get("UID_MAP_KEY", "stats-meta/uid-map.json")

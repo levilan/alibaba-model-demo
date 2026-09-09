@@ -58,6 +58,10 @@ GCLOUD_PROJECT = os.environ.get("GCLOUD_PROJECT", "ai-model-hub-newapi")
 RUN_SERVICE = os.environ.get("CLOUD_RUN_SERVICE", "nenai-testing-platform")
 TPE = timedelta(hours=8)   # 台北時間顯示位移（台灣無夏令時間，固定 +8 即可）
 
+# 已解析的統計檔內容，key 是 GCS 物件名。統計檔寫完就不再變動，所以快取永不失效；
+# 只在行程記憶體裡（腳本跑完就沒了，後台則跟著實例存活）。
+_BLOB_CACHE: dict[str, list[dict]] = {}
+
 
 def _load_local(since: datetime) -> list[dict]:
     rows: list[dict] = []
@@ -96,7 +100,7 @@ def _load_gcs(since: datetime) -> list[dict]:
                 project=info.get("project_id"))
         else:
             client = gcs_storage.Client()
-        rows: list[dict] = []
+        wanted = []
         for blob in client.list_blobs(bucket_name, prefix=f"{PREFIX}/"):
             # 檔名帶日期，先用它粗篩，省下不必要的下載
             day = blob.name.split("/")[1] if "/" in blob.name else ""
@@ -105,15 +109,39 @@ def _load_gcs(since: datetime) -> list[dict]:
                     continue
             except ValueError:
                 pass
-            for line in blob.download_as_text().splitlines():
+            wanted.append(blob)
+
+        # ⚠️ 一定要並行下載。統計是「每 50 筆或 60 秒一個小檔」，累積得很快——2026-09-09
+        # 實測 30 天有 793 個物件，每個 download_as_text() 約 0.31 秒，循序跑要四分鐘，
+        # 網頁後台看起來就像當掉（實際踩到，請求 5 分鐘沒回來）。並行後降到十幾秒。
+        from concurrent.futures import ThreadPoolExecutor
+
+        # 再加一層：統計檔是**寫完就不再改**的（檔名含實例碼與隨機碼，永不覆寫），
+        # 所以可以依檔名快取已解析的內容。長時間執行的後台（Cloud Run min-instances=1）
+        # 之後每次只需要下載當天新增的那幾個檔，25 秒降到 1 秒以內。
+        def _read(blob) -> list[dict]:
+            hit = _BLOB_CACHE.get(blob.name)
+            if hit is not None:
+                return hit
+            out: list[dict] = []
+            try:
+                text = blob.download_as_text()
+            except Exception:
+                return out          # 這次讀失敗就不要快取，下次再試
+            for line in text.splitlines():
                 if not line.strip():
                     continue
                 try:
-                    r = json.loads(line)
+                    out.append(json.loads(line))
                 except json.JSONDecodeError:
                     continue
-                if _ts(r) >= since:
-                    rows.append(r)
+            _BLOB_CACHE[blob.name] = out
+            return out
+
+        rows: list[dict] = []
+        with ThreadPoolExecutor(max_workers=24) as pool:
+            for part in pool.map(_read, wanted):
+                rows.extend(r for r in part if _ts(r) >= since)
         return rows
     except Exception as e:
         print(f"[warn] 讀取 GCS 失敗（{type(e).__name__}: {e}），只用本機資料", file=sys.stderr)
