@@ -19,8 +19,17 @@
   3. fail closed —— 兩組都沒設，/admin 底下一律 404（不透露路徑存在）。
 
 資料來源沿用 scripts/usage_stats.py 的讀取與報表函式（GCS 的 stats/*.jsonl，沒雲端就讀本機
-outputs/stats/），所以後台看到的跟本機報表一模一樣；不查 Cloud Logging（那要 gcloud 憑證），
-所以沒有來源 IP。uid 仍是 SHA256 後的識別碼，不可反推金鑰。
+outputs/stats/），所以後台看到的跟本機報表一模一樣。另外兩項是後台專屬（2026-09-09 Levi 要求
+「知道是哪個 key 的 user 登入使用、來源 IP」）：
+
+  · **uid → 使用者**：`scripts/build_uid_map.py --upload` 產生對照並上傳到同一個 bucket 的
+    `stats-meta/uid-map.json`（明文金鑰全程只在本機記憶體，落地的只有 uid→名稱）。後台讀它來顯示
+    「誰在用」。⚠️ 這是去匿名化資料，與統計同級保管；bucket 是私有的，只有服務帳戶讀得到。
+  · **來源 IP**：統計檔仍然刻意不存 IP，改成查詢時即時問 Cloud Logging（Cloud Run 的請求日誌本來
+    就記 IP，預設留 30 天）。本機腳本用 gcloud CLI，容器裡沒有 CLI，所以這裡用執行身分（Cloud Run
+    的服務帳戶）直接打 Logging REST API。查不到就退化成沒有 IP 的版本，不影響其他欄位。
+
+uid 仍是 SHA256 後的識別碼，不可反推金鑰。
 
 ⚠️ usage_stats.py 檔頭原本寫「刻意不做網頁後台，避免後台外洩」——2026-09-09 Levi 裁示改做
 後台但用 Google SSO 守門，等於把「沒有入口」換成「入口只認 Workspace 帳號」。
@@ -264,6 +273,154 @@ def _usage_stats():
 
 _rows_cache: dict = {}   # days -> (ts, rows)
 _ROWS_TTL = 60.0
+_uid_map_cache: tuple[float, dict] = (0.0, {})
+_UID_MAP_TTL = 300.0
+_UID_MAP_KEY = os.environ.get("UID_MAP_KEY", "stats-meta/uid-map.json")
+
+
+def _load_uid_map_sync() -> dict[str, str]:
+    """uid → 使用者顯示名。優先讀 GCS（部署環境），沒有就讀本機 outputs/uid-map.json（開發）。
+
+    值的形狀沿用 build_uid_map.py：{uid: {"user":…, "user_id":…, "token_name":…}}，
+    這裡壓成 uid → "名稱（token 名）"，讓報表與後台顯示得出「哪一把 key 的哪個人」。
+    """
+    raw: dict = {}
+    bucket_name = os.environ.get("GCS_BUCKET_NAME", "")
+    if bucket_name:
+        try:
+            from google.cloud import storage as gcs_storage
+            creds_json = os.environ.get("GCS_CREDENTIALS_JSON", "")
+            if creds_json:
+                import json as _json
+                from google.oauth2 import service_account
+                info = _json.loads(creds_json)
+                client = gcs_storage.Client(
+                    credentials=service_account.Credentials.from_service_account_info(info),
+                    project=info.get("project_id"))
+            else:
+                client = gcs_storage.Client()
+            blob = client.bucket(bucket_name).blob(_UID_MAP_KEY)
+            if blob.exists():
+                import json as _json
+                raw = _json.loads(blob.download_as_text())
+        except Exception as e:
+            print(f"[admin] 讀取 uid 對照失敗（{type(e).__name__}: {e}）")
+    if not raw:
+        fp = ROOT / "outputs" / "uid-map.json"
+        if fp.exists():
+            import json as _json
+            try:
+                raw = _json.loads(fp.read_text(encoding="utf-8"))
+            except Exception:
+                raw = {}
+    out: dict[str, str] = {}
+    for uid, info in raw.items():
+        if not isinstance(info, dict):
+            continue
+        name = (info.get("user") or "").strip()
+        if not name:
+            continue
+        token = (info.get("token_name") or "").strip()
+        out[uid] = f"{name}（{token}）" if token else name
+    return out
+
+
+async def uid_names() -> dict[str, str]:
+    global _uid_map_cache
+    now = time.time()
+    if _uid_map_cache[1] and now - _uid_map_cache[0] < _UID_MAP_TTL:
+        return _uid_map_cache[1]
+    data = await asyncio.to_thread(_load_uid_map_sync)
+    _uid_map_cache = (now, data)
+    return data
+
+
+# ── 來源 IP：查 Cloud Logging（容器裡沒有 gcloud CLI，直接打 REST API）─────────
+_LOG_API = "https://logging.googleapis.com/v2/entries:list"
+_ip_cache: dict = {}   # days -> (ts, logs)
+_IP_TTL = 120.0
+
+
+def _log_token_and_project() -> tuple[Optional[str], str]:
+    """用執行身分（Cloud Run 服務帳戶）取 access token。取不到就回 (None, '')。"""
+    try:
+        import google.auth
+        from google.auth.transport.requests import Request as GARequest
+        creds, project = google.auth.default(scopes=["https://www.googleapis.com/auth/logging.read"])
+        creds.refresh(GARequest())
+        return creds.token, (os.environ.get("GCLOUD_PROJECT") or project or "")
+    except Exception as e:
+        # 本機開發常常只有 gcloud CLI 登入、沒有 ADC——退回問 CLI 要 token。
+        # 容器裡沒有 gcloud，這條會直接失敗，回到「沒有 IP」的降級版本。
+        import subprocess
+        try:
+            out = subprocess.run(["gcloud", "auth", "print-access-token"],
+                                 capture_output=True, text=True, timeout=20)
+            if out.returncode == 0 and out.stdout.strip():
+                return out.stdout.strip(), os.environ.get("GCLOUD_PROJECT", "ai-model-hub-newapi")
+        except Exception:
+            pass
+        print(f"[admin] 取不到 Logging 憑證（{type(e).__name__}）——報表將不含來源 IP")
+        return None, ""
+
+
+def _fetch_logs_sync(days: int) -> list[dict]:
+    """撈這段期間 /api/* 與 /login 的請求日誌（時間、路徑、狀態、IP、UA）。"""
+    token, project = _log_token_and_project()
+    if not token or not project:
+        return []
+    service = os.environ.get("CLOUD_RUN_SERVICE", "nenai-testing-platform")
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    fil = ('resource.type="cloud_run_revision" '
+           f'AND resource.labels.service_name="{service}" '
+           'AND (httpRequest.requestUrl:"/api/" OR httpRequest.requestUrl:"/login") '
+           f'AND timestamp>="{since:%Y-%m-%dT%H:%M:%S}Z"')
+    from urllib.parse import urlparse
+    logs: list[dict] = []
+    page: Optional[str] = None
+    with httpx.Client(timeout=60.0) as client:
+        for _ in range(10):   # 最多 10 頁（10k 筆），夠用且不會拖垮頁面
+            body = {"resourceNames": [f"projects/{project}"], "filter": fil,
+                    "orderBy": "timestamp desc", "pageSize": 1000}
+            if page:
+                body["pageToken"] = page
+            r = client.post(_LOG_API, headers={"Authorization": f"Bearer {token}"}, json=body)
+            if r.status_code != 200:
+                print(f"[admin] Logging 查詢失敗 {r.status_code}: {r.text[:200]}")
+                break
+            data = r.json()
+            for e in data.get("entries", []):
+                hr = e.get("httpRequest") or {}
+                url = hr.get("requestUrl", "")
+                if not url:
+                    continue
+                try:
+                    t = datetime.fromisoformat(e.get("timestamp", "").replace("Z", "+00:00")).replace(tzinfo=None)
+                except ValueError:
+                    continue
+                logs.append({"t": t, "path": urlparse(url).path,
+                             "status": int(hr.get("status", 0) or 0),
+                             "ip": hr.get("remoteIp", ""), "ua": hr.get("userAgent", "")})
+            page = data.get("nextPageToken")
+            if not page:
+                break
+    return logs
+
+
+async def attach_ips(rows: list[dict], days: int) -> int:
+    """就地把 _ip／_ua 補進 rows（沿用 usage_stats._attach_ips 的對應規則）。回對上的筆數。"""
+    global _ip_cache
+    now = time.time()
+    hit = _ip_cache.get(days)
+    if hit and now - hit[0] < _IP_TTL:
+        logs = hit[1]
+    else:
+        logs = await asyncio.to_thread(_fetch_logs_sync, days)
+        _ip_cache[days] = (now, logs)
+    if not logs:
+        return 0
+    # _attach_ips 會在 logs 上留 _used 標記，快取的清單要複製一份再用
+    return _usage_stats()._attach_ips(rows, [dict(x) for x in logs])
 
 
 def _load_rows_sync(days: int) -> list[dict]:
@@ -325,7 +482,9 @@ async def admin_report(request: Request, days: int = 7):
     days = _clamp_days(days)
     rows = await load_rows(days)
     us = _usage_stats()
-    html = us.build_html(rows, days, uid_names=us._load_uid_names(), model_names=_model_names())
+    rows = [dict(r) for r in rows]
+    await attach_ips(rows, days)
+    html = us.build_html(rows, days, uid_names=await uid_names(), model_names=_model_names())
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
@@ -336,20 +495,57 @@ async def admin_api_stats(request: Request, days: int = 7):
     days = _clamp_days(days)
     rows = await load_rows(days)
     us = _usage_stats()
+    rows = [dict(r) for r in rows]
+    matched = await attach_ips(rows, days)
+    names = await uid_names()
+    model_names = _model_names()
     per_day: dict[str, int] = {}
-    per_model: dict[str, int] = {}
-    per_uid: dict[str, int] = {}
+    # 每個模型／使用者各自累計「總數、成功數、失敗的狀態碼」——版面用雙色細條表示
+    # 成功率、只有真的有失敗時才展開狀態碼明細（官網 session 2026-09-09 的設計）
+    agg_model: dict[str, dict] = {}
+    agg_uid: dict[str, dict] = {}
     ok = 0
     for r in rows:
-        t = us._ts(r)
-        per_day[(t + timedelta(hours=8)).strftime("%Y-%m-%d")] = per_day.get((t + timedelta(hours=8)).strftime("%Y-%m-%d"), 0) + 1
-        if r.get("model"):
-            per_model[r["model"]] = per_model.get(r["model"], 0) + 1
-        per_uid[r.get("uid", "?")] = per_uid.get(r.get("uid", "?"), 0) + 1
-        ok += 1 if r.get("ok") else 0
-    return JSONResponse({"days": days, "total": len(rows), "ok": ok, "per_day": dict(sorted(per_day.items())),
-                         "per_model": dict(sorted(per_model.items(), key=lambda x: -x[1])),
-                         "per_uid": dict(sorted(per_uid.items(), key=lambda x: -x[1])),
+        t = us._ts(r) + timedelta(hours=8)          # 顯示一律台北時間
+        per_day[t.strftime("%Y-%m-%d")] = per_day.get(t.strftime("%Y-%m-%d"), 0) + 1
+        good = bool(r.get("ok"))
+        ok += 1 if good else 0
+        code = str(r.get("status", "?"))
+        for bucket, key in ((agg_model, r.get("model")), (agg_uid, r.get("uid", "?"))):
+            if not key:
+                continue
+            e = bucket.setdefault(key, {"calls": 0, "ok": 0, "statuses": {}, "ips": set()})
+            e["calls"] += 1
+            e["ok"] += 1 if good else 0
+            if not good:
+                e["statuses"][code] = e["statuses"].get(code, 0) + 1
+            if bucket is agg_uid and (r.get("_ip") or ""):
+                e["ips"].add(r["_ip"])
+
+    def _rows_of(bucket: dict, name_of) -> list:
+        out = []
+        for k, e in sorted(bucket.items(), key=lambda x: -x[1]["calls"]):
+            item = {"id": k, "name": name_of(k), "calls": e["calls"], "ok": e["ok"],
+                    "statuses": dict(sorted(e["statuses"].items()))}
+            if e["ips"]:
+                item["ips"] = sorted(e["ips"])
+            out.append(item)
+        return out
+
+    # 沒有呼叫的日子也要有一根 0 的柱子，否則時間軸的間距是假的（柱子會擠在一起、
+    # 看起來像每天都有量）。以台北時間的今天往回補滿整個區間。
+    today = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
+    per_day_full = {}
+    for i in range(days - 1, -1, -1):
+        d = (today - timedelta(days=i)).strftime("%Y-%m-%d")
+        per_day_full[d] = per_day.get(d, 0)
+    for d, n in per_day.items():        # 落在區間外的（時區邊界）不要丟掉
+        per_day_full.setdefault(d, n)
+
+    return JSONResponse({"days": days, "total": len(rows), "ok": ok, "ip_matched": matched,
+                         "per_day": dict(sorted(per_day_full.items())),
+                         "models": _rows_of(agg_model, lambda k: model_names.get(k, "")),
+                         "users": _rows_of(agg_uid, lambda k: names.get(k, "")),
                          "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds")},
                         headers={"Cache-Control": "no-store"})
 
@@ -361,9 +557,13 @@ async def admin_api_rows(request: Request, days: int = 7, limit: int = 500):
     days = _clamp_days(days)
     rows = await load_rows(days)
     us = _usage_stats()
+    rows = [dict(r) for r in rows]
+    await attach_ips(rows, days)
     rows = sorted(rows, key=us._ts, reverse=True)[: max(1, min(5000, limit))]
-    names = _model_names()
+    who = await uid_names()
     for r in rows:
-        if r.get("model"):
-            r = r  # 原地不改；名稱由前端查 /api/stats 的 model_names 也行，這裡直接附上
-    return JSONResponse({"rows": rows, "model_names": names}, headers={"Cache-Control": "no-store"})
+        r["user"] = who.get(r.get("uid", ""), "")
+        r["ip"] = r.pop("_ip", "") or ""
+        r.pop("_ua", None)
+    return JSONResponse({"rows": rows, "model_names": _model_names()},
+                        headers={"Cache-Control": "no-store"})

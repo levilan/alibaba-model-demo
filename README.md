@@ -248,9 +248,20 @@ python app.py            # http://localhost:5050
 
 ## 管理後台（`/admin`，選用）
 
-查看 playground 的使用紀錄（呼叫數、成功率、各模型、各使用者、最近呼叫、完整報表）。資料就是
-`scripts/usage_stats.py` 讀的那份統計（GCS 的 `stats/*.jsonl`，沒雲端時讀本機 `outputs/stats/`），
-不含來源 IP；uid 是金鑰的雜湊，不可反推。守門方式參考官網後台，三種模式依環境變數自動選：
+查看 playground 的使用紀錄：本期呼叫數與成功率、每日直條圖、各模型與各使用者（含失敗狀態碼）、
+最近 50 筆呼叫（含使用者與來源 IP）。資料就是 `scripts/usage_stats.py` 讀的那份統計（GCS 的
+`stats/*.jsonl`，沒雲端時讀本機 `outputs/stats/`）。版面由官網 session 設計（2026-09-09）。
+
+兩項後台專屬的資料來源：
+
+- **uid → 使用者名稱**：跑 `venv/bin/python scripts/build_uid_map.py --upload`（唯讀查網關 DB，
+  明文金鑰只在本機記憶體）產生對照並上傳到同一個 bucket 的 `stats-meta/uid-map.json`；後台每 5 分鐘
+  重讀。**新發的 key 要重跑才對得上**，沒有對照就只顯示 uid。⚠️ 對照是去匿名化資料，與統計同級保管。
+- **來源 IP**：統計檔仍然不存 IP，改成查詢時即時問 Cloud Logging（Cloud Run 請求日誌，預設留 30 天）。
+  需要執行身分能讀 Logging（Cloud Run 的服務帳戶；本機開發會退回用 `gcloud` CLI 的 token）。查不到就
+  只是沒有 IP 欄，其餘照常。
+
+守門方式參考官網後台，三種模式依環境變數自動選：
 
 | 模式 | 條件 | 說明 |
 |---|---|---|

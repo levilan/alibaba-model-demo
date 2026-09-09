@@ -3,6 +3,7 @@
 
 用法：
     venv/bin/python scripts/build_uid_map.py            # 產生／更新對照檔
+    venv/bin/python scripts/build_uid_map.py --upload   # 同時上傳給 /admin 後台讀
     venv/bin/python scripts/build_uid_map.py --show     # 看目前對照檔內容
 
 原理：
@@ -69,7 +70,7 @@ def _uid(key: str) -> str:
     return hashlib.sha256((key + STATS_SALT).encode()).hexdigest()[:16]
 
 
-def build() -> None:
+def build(upload: bool = False) -> None:
     import psycopg2  # 僅本地腳本用，刻意不進 requirements.txt
 
     c = _db_creds()
@@ -98,6 +99,35 @@ def build() -> None:
     OUT.write_text(json.dumps(mapping, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"{len(rows)} 把 key → {len(mapping)} 個 uid 對照 → {OUT}")
     print("⚠️ 這是去匿名化對照檔，過期請刪；更新對照重跑本腳本即可。")
+    if upload:
+        _upload(mapping)
+
+
+def _upload(mapping: dict) -> None:
+    """把對照上傳到 GCS，給部署在 Cloud Run 的管理後台（/admin）讀。
+
+    bucket 與統計同一個（私有，只有服務帳戶讀得到）；路徑 stats-meta/uid-map.json。
+    ⚠️ 上傳的是去匿名化資料——但它本來就跟統計放在同一個私有 bucket，保護層級一致；
+    明文金鑰仍然沒有離開本機記憶體。要撤銷就把該物件刪掉，後台會退回只顯示 uid。
+    """
+    import os
+    bucket_name = os.environ.get("GCS_BUCKET_NAME", "")
+    if not bucket_name:
+        sys.exit("--upload 需要 GCS_BUCKET_NAME（與 app.py 用的同一個 bucket）")
+    from google.cloud import storage as gcs_storage
+    creds_json = os.environ.get("GCS_CREDENTIALS_JSON", "")
+    if creds_json:
+        from google.oauth2 import service_account
+        info = json.loads(creds_json)
+        client = gcs_storage.Client(
+            credentials=service_account.Credentials.from_service_account_info(info),
+            project=info.get("project_id"))
+    else:
+        client = gcs_storage.Client()
+    key = os.environ.get("UID_MAP_KEY", "stats-meta/uid-map.json")
+    client.bucket(bucket_name).blob(key).upload_from_string(
+        json.dumps(mapping, ensure_ascii=False), content_type="application/json")
+    print(f"已上傳到 gs://{bucket_name}/{key}（管理後台會在 5 分鐘內看到）")
 
 
 def show() -> None:
@@ -115,5 +145,7 @@ def show() -> None:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="建立 uid→user 對照檔")
     ap.add_argument("--show", action="store_true")
+    ap.add_argument("--upload", action="store_true",
+                    help="同時上傳到 GCS，給 /admin 後台讀（需要 GCS_BUCKET_NAME）")
     args = ap.parse_args()
-    show() if args.show else build()
+    show() if args.show else build(upload=args.upload)

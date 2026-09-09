@@ -76,9 +76,12 @@ def test_basic_mode_challenges_then_serves(env):
     assert r.status_code == 401 and r.headers.get("www-authenticate", "").startswith("Basic")
     h = {"Authorization": "Basic " + base64.b64encode(b"ops:pw").decode()}
     r = c.get("/admin", headers=h)
-    assert r.status_code == 200 and "Playground 使用紀錄" in r.text and "ops" in r.text
+    assert r.status_code == 200 and "使用紀錄" in r.text and "ops" in r.text
     r = c.get("/admin/api/stats?days=1", headers=h)
-    assert r.status_code == 200 and set(r.json()) >= {"total", "per_day", "per_model", "per_uid"}
+    assert r.status_code == 200 and set(r.json()) >= {"total", "ok", "per_day", "models", "users", "ip_matched"}
+    for item in r.json()["models"] + r.json()["users"]:
+        # 版面用 calls/ok 畫雙色細條、statuses 只在有失敗時展開，缺一個就畫不出來
+        assert {"id", "name", "calls", "ok", "statuses"} <= set(item), item
     bad = {"Authorization": "Basic " + base64.b64encode(b"ops:wrong").decode()}
     assert c.get("/admin", headers=bad, follow_redirects=False).status_code == 401
 

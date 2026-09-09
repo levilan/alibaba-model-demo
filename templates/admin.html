@@ -5,100 +5,217 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="data:,">
-<title>Playground 使用紀錄</title>
+<title>使用紀錄 — NenAI Playground</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:wght@400&family=Noto+Serif+TC:wght@400&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
 <style>
-  /* 照 DESIGN-AESTHETIC.md：暖白紙面、單一彩度（汝窯天青）、髮絲線分區、10px 圓角、字重單一 */
-  :root { --ground:#FBFAF8; --ink:#2B2724; --body:#5C564F; --rain:#787168; --line:#E6E2DB;
-          --flash:#7FA39E; --flash-ink:#3F625F; --ember:#8C4A3F; --ground-2:#F6F2E9; --r:10px; }
-  @media (prefers-color-scheme: dark) {
-    :root { --ground:#191715; --ink:#EDEAE4; --body:#CFC9C0; --rain:#9A938A; --line:#33302B;
-            --flash:#9CC0BA; --flash-ink:#A9CCC6; --ember:#E8B9AC; --ground-2:#221F1B; }
-  }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--ground); color:var(--body); font: 14px/1.6 -apple-system, "PingFang TC", "Noto Sans TC", system-ui, sans-serif; }
-  header { display:flex; align-items:baseline; gap:18px; padding:22px 32px 14px; border-bottom:1px solid var(--line); }
-  header h1 { margin:0; font: 400 20px/1.3 Spectral, "Noto Serif TC", serif; color:var(--ink); }
-  header .who { color:var(--rain); font-size:12px; margin-left:auto; }
-  header a { color:var(--flash-ink); text-decoration:none; }
-  main { padding: 20px 32px 40px; max-width: 1280px; }
-  .range { display:flex; gap:6px; align-items:center; margin-bottom:18px; }
-  .range a { padding:5px 12px; border:1px solid var(--line); border-radius:var(--r); color:var(--body); text-decoration:none; font-size:13px; }
-  .range a.on { border-color:var(--flash); color:var(--flash-ink); }
-  .range .note { color:var(--rain); font-size:12px; margin-left:8px; }
-  .cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:22px; }
-  .card { border:1px solid var(--line); border-radius:var(--r); padding:14px 16px; background:var(--ground-2); }
-  .card .k { color:var(--rain); font-size:12px; }
-  .card .v { color:var(--ink); font-size:24px; font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
-  h2 { font: 400 15px/1.4 Spectral, "Noto Serif TC", serif; color:var(--ink); margin: 26px 0 10px; }
-  table { border-collapse:collapse; width:100%; font-size:13px; }
-  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { color:var(--rain); font-weight:400; font-size:12px; }
-  td code { font-family:"JetBrains Mono", ui-monospace, Menlo, monospace; font-size:12px; color:var(--ink); }
-  .bar { height:6px; background:var(--flash); border-radius:3px; display:inline-block; vertical-align:middle; }
-  .err { color:var(--ember); }
-  .ok { color:var(--flash-ink); }
-  iframe { width:100%; height:1400px; border:1px solid var(--line); border-radius:var(--r); background:#fff; }
-  .muted { color:var(--rain); font-size:12px; }
+/* 版面與樣式由官網 session 設計（2026-09-09），token 對齊官網 assets/site.css。
+   四個原本的問題與對應解法：資訊層級全平→摘要條一個主數字＋一串小字；沒有時間維度
+   →每日 inline SVG 直條圖；bar 是土法 span→grid + 雙色堆疊細條；iframe 風格斷裂→拿掉，
+   改頁尾一行連結。 */
+:root {
+  --ground:#FBFAF8; --ink:#2B2724; --body:#5C564F; --rain:#787168; --line:#E6E2DB;
+  --flash:#7FA39E; --flash-ink:#3F625F; --ember:#8C4A3F; --ground-2:#F6F2E9; --r:10px;
+  --display:'Spectral','Noto Serif TC',Georgia,serif;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --ground:#191715; --ink:#EDEAE4; --rain:#8F8880; --body:#B8B1A8;
+          --line:#302C28; --flash:#9CC0BA; --flash-ink:#A9CCC6; --ember:#E8B9AC; --ground-2:#1E1B18; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--body);
+  font:400 15px/1.65 -apple-system,"PingFang TC","Noto Sans TC",system-ui,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:0 clamp(1rem,4vw,2.5rem) 4rem}
+a{color:var(--flash-ink)}
+
+/* 1 標頭條 */
+.op-head{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;flex-wrap:wrap;
+  padding-block:1.5rem;border-bottom:1px solid var(--line)}
+.op-head h1{margin:0;font-family:var(--display);font-weight:400;font-size:1.5rem;letter-spacing:-.008em;color:var(--ink)}
+.op-head .range{font-family:var(--mono);font-size:.75rem;letter-spacing:.04em;color:var(--rain)}
+.op-head .right{display:flex;align-items:baseline;gap:1rem;margin-left:auto}
+.op-head .right a{text-decoration:none;font-size:.8125rem}
+.op-head .right a:hover{text-decoration:underline}
+
+/* 2 摘要條 */
+.op-strip{padding-block:1.75rem 1.25rem}
+.op-strip .n{display:block;font-family:var(--display);font-weight:400;color:var(--ink);
+  font-size:clamp(2rem,4vw,3rem);line-height:1.1;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.op-strip .n small{font-family:var(--mono);font-size:.8125rem;color:var(--rain);letter-spacing:.04em;margin-left:.5rem}
+.op-strip .sub{margin-top:.35rem;font-family:var(--mono);font-size:.8125rem;letter-spacing:.02em;color:var(--rain)}
+.op-strip .sub b{color:var(--body);font-weight:400;font-variant-numeric:tabular-nums}
+
+/* 區塊標題 */
+h2{margin:2.25rem 0 .9rem;font-family:var(--display);font-weight:400;font-size:1rem;color:var(--ink)}
+h2 .hint{font-family:var(--mono);font-size:.6875rem;letter-spacing:.04em;color:var(--rain);margin-left:.6rem}
+
+/* 3 時間序列 */
+.op-chart{width:100%;height:110px;overflow:visible;display:block}
+.op-chart rect{fill:var(--flash)}
+.op-chart rect:hover{fill:var(--flash-ink)}
+.op-chart .axis-label{font-family:var(--mono);font-size:.625rem;fill:var(--rain)}
+
+/* 4／5 兩欄拆解＋雙色細條 */
+.op-cols{display:grid;grid-template-columns:1fr 1fr;gap:2.5rem}
+@media (max-width:760px){.op-cols{grid-template-columns:1fr;gap:1.5rem}}
+.op-bar-list{display:flex;flex-direction:column;gap:.6rem}
+.op-bar-row{display:grid;grid-template-columns:1fr auto;gap:.15rem .75rem;align-items:baseline}
+.op-bar-row .name{font-size:.875rem;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.op-bar-row .name em{font-style:normal;font-family:var(--mono);font-size:.75rem;color:var(--rain);margin-left:.4rem}
+.op-bar-row .count{font-family:var(--mono);font-size:.8125rem;color:var(--rain);
+  font-variant-numeric:tabular-nums;text-align:end}
+.op-bar-track{grid-column:1/-1;height:4px;border-radius:2px;background:var(--line);overflow:hidden;display:flex}
+.op-bar-track .fill-ok{background:var(--flash)}
+.op-bar-track .fill-err{background:var(--ember)}
+.op-bar-row .fail{grid-column:1/-1;font-family:var(--mono);font-size:.6875rem;color:var(--ember);letter-spacing:.02em}
+
+/* 6 近期呼叫表 */
+.op-recent{background:var(--ground-2);border-radius:var(--r);padding:1.25rem clamp(1rem,3vw,1.75rem)}
+.op-recent .scroll-wrap{overflow-x:auto}
+.op-recent table{width:100%;border-collapse:collapse;font-size:.8125rem}
+.op-recent thead th{font-family:var(--mono);font-size:.6875rem;letter-spacing:.06em;color:var(--rain);
+  text-align:left;font-weight:400;padding-bottom:.5rem;padding-right:1.25rem;
+  border-bottom:1px solid var(--line);white-space:nowrap}
+.op-recent td{padding-block:.55rem;padding-right:1.25rem;border-bottom:1px solid var(--line);
+  font-family:var(--mono);color:var(--body);white-space:nowrap}
+.op-recent th:last-child,.op-recent td:last-child{padding-right:0}
+/* 端點會出現 /api/muleai/status/<model>/<task id> 這種很長的路徑，不截斷的話整張表
+   被撐寬、狀態與耗時被擠出畫面（要橫向捲才看得到）。截斷並在 title 保留全文。 */
+.op-recent td.path{max-width:16rem;overflow:hidden;text-overflow:ellipsis}
+.op-recent td.model{max-width:9.5rem;overflow:hidden;text-overflow:ellipsis}
+.op-recent td.num{font-variant-numeric:tabular-nums;text-align:end}
+.op-recent td.empty::before{content:"–";color:var(--rain)}
+.op-recent td .who{color:var(--ink)}
+.op-recent .bad{color:var(--ember)}
+footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:.75rem;color:var(--rain);display:flex;gap:1.25rem;flex-wrap:wrap}
+.note{font-family:var(--mono);font-size:.6875rem;color:var(--rain);margin-top:.6rem}
 </style>
 </head>
 <body>
-<header>
-  <h1>Playground 使用紀錄</h1>
-  <span class="muted">模式：{{MODE}}</span>
-  <span class="who">{{USER}} · <a href="/admin/logout">登出</a></span>
-</header>
-<main>
-  <div class="range" id="range">
-    <span class="muted">區間</span>
-    <a href="/admin?days=1">1 天</a><a href="/admin?days=7">7 天</a><a href="/admin?days=30">30 天</a><a href="/admin?days=90">90 天</a>
-    <span class="note">資料每 60 秒重新讀取一次；時間顯示為台北時間。uid 是金鑰的雜湊，不可反推。</span>
+<div class="wrap">
+  <div class="op-head">
+    <h1>使用紀錄</h1>
+    <span class="range" id="rangeLabel">最近 {{DAYS}} 天</span>
+    <span class="right">
+      <a href="/admin?days=1">1 天</a><a href="/admin?days=7">7 天</a><a href="/admin?days=30">30 天</a><a href="/admin?days=90">90 天</a>
+      <span style="color:var(--rain);font-family:var(--mono);font-size:.75rem">{{USER}}</span>
+      <a href="/admin/logout">登出</a>
+    </span>
   </div>
-  <div class="cards" id="cards"><div class="card"><div class="k">讀取中…</div></div></div>
 
-  <h2>每日呼叫數</h2>
-  <table id="perDay"><thead><tr><th>日期</th><th>呼叫數</th><th></th></tr></thead><tbody></tbody></table>
+  <div class="op-strip">
+    <span class="n" id="total">–</span>
+    <div class="sub" id="summary">讀取中…</div>
+  </div>
 
-  <h2>各模型</h2>
-  <table id="perModel"><thead><tr><th>模型</th><th>呼叫數</th><th></th></tr></thead><tbody></tbody></table>
+  <h2>每日呼叫<span class="hint" id="chartHint"></span></h2>
+  <svg class="op-chart" id="chart" viewBox="0 0 700 110" preserveAspectRatio="none" role="img" aria-label="每日呼叫數"></svg>
 
-  <h2>各使用者（uid）</h2>
-  <table id="perUid"><thead><tr><th>uid</th><th>呼叫數</th><th></th></tr></thead><tbody></tbody></table>
+  <div class="op-cols">
+    <section>
+      <h2>各模型</h2>
+      <div class="op-bar-list" id="models"></div>
+    </section>
+    <section>
+      <h2>各使用者<span class="hint">key 對應</span></h2>
+      <div class="op-bar-list" id="users"></div>
+    </section>
+  </div>
 
-  <h2>最近呼叫（最新 200 筆）</h2>
-  <table id="recent"><thead><tr><th>時間</th><th>uid</th><th>端點</th><th>模型</th><th>狀態</th><th>耗時</th></tr></thead><tbody></tbody></table>
+  <h2>近期呼叫<span class="hint" id="recentHint"></span></h2>
+  <div class="op-recent">
+    <div class="scroll-wrap" role="region" aria-label="近期呼叫紀錄" tabindex="0">
+      <table>
+        <thead><tr><th>時間</th><th>使用者</th><th>來源 IP</th><th>端點</th><th>模型</th><th>狀態</th><th>耗時</th></tr></thead>
+        <tbody id="recent"><tr><td colspan="7">讀取中…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="note" id="ipNote"></div>
+  </div>
 
-  <h2>完整報表<span class="muted">（與 scripts/usage_stats.py 產生的本機報表相同，不含來源 IP）</span></h2>
-  <iframe id="report" src="/admin/report?days={{DAYS}}" sandbox="allow-same-origin allow-scripts"></iframe>
-</main>
+  <footer>
+    <span>時間為台北時間 · uid 是金鑰雜湊，不可反推</span>
+    <a href="/admin/report?days={{DAYS}}" target="_blank" rel="noopener">舊版報表 →</a>
+  </footer>
+</div>
+
 <script>
 (async () => {
   const days = {{DAYS}};
-  document.querySelectorAll('#range a').forEach(a => { if (a.getAttribute('href').endsWith('days=' + days)) a.classList.add('on'); });
+  const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const fill = (id, obj, nameOf) => {
-    const tb = document.querySelector('#' + id + ' tbody'); const max = Math.max(1, ...Object.values(obj));
-    tb.innerHTML = Object.entries(obj).map(([k, v]) => `<tr><td><code>${esc(nameOf ? nameOf(k) : k)}</code></td><td>${v}</td><td><span class="bar" style="width:${Math.round(v / max * 160)}px"></span></td></tr>`).join('') || '<tr><td colspan="3" class="muted">沒有資料</td></tr>';
+  const num = n => n.toLocaleString('en-US');
+  // 統計的 ts 是 UTC（容器沒設 TZ），顯示一律 +8
+  const tpe = ts => { const d = new Date(ts + 'Z'); return isNaN(d) ? ts
+    : new Date(d.getTime() + 8 * 3600e3).toISOString().replace('T', ' ').slice(5, 16); };
+
+  const barList = (items, hrefName) => items.map(it => {
+    const okPct = it.calls ? it.ok / it.calls * 100 : 0;
+    const errPct = 100 - okPct;
+    const fails = Object.entries(it.statuses || {});
+    return `<div class="op-bar-row">
+      <span class="name">${esc(hrefName(it))}</span>
+      <span class="count">${num(it.calls)}</span>
+      <span class="op-bar-track">
+        <span class="fill-ok" style="width:${okPct.toFixed(1)}%"></span>
+        <span class="fill-err" style="width:${errPct.toFixed(1)}%"></span>
+      </span>
+      ${fails.length ? `<span class="fail">${fails.map(([c, n]) => `${c}×${n}`).join(' · ')}</span>` : ''}
+    </div>`;
+  }).join('') || '<div class="note">沒有資料</div>';
+
+  // 每日直條圖：viewBox 700×110，底部 20 留給刻度，柱高最大 90
+  const drawChart = (perDay) => {
+    const days_ = Object.entries(perDay);
+    if (!days_.length) { $('chart').innerHTML = ''; $('chartHint').textContent = '沒有資料'; return; }
+    const max = Math.max(...days_.map(d => d[1]));
+    // 柱寬設上限：7 天檢視若把 700 平分成 7 根，每根近百單位寬、看起來像色塊。
+    // 超過上限時改用加大間距補滿寬度，時間軸仍然是滿版、間距仍然等距。
+    const n = days_.length;
+    const w = Math.min(28, Math.max(1, (700 - 3 * (n - 1)) / n));
+    const gap = n > 1 ? (700 - w * n) / (n - 1) : 0;
+    const bars = days_.map(([d, v], i) => {
+      const h = Math.max(v > 0 ? 1.5 : 0, v / max * 90);
+      return `<rect x="${(i * (w + gap)).toFixed(2)}" y="${(90 - h).toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}"><title>${esc(d.slice(5))}：${v} 次</title></rect>`;
+    }).join('');
+    const first = days_[0][0].slice(5), last = days_[days_.length - 1][0].slice(5);
+    $('chart').innerHTML = bars +
+      `<text class="axis-label" x="0" y="104">${esc(first)}</text>` +
+      `<text class="axis-label" x="700" y="104" text-anchor="end">${esc(last)}</text>`;
+    $('chartHint').textContent = `尖峰 ${max} 次／日`;
   };
+
   try {
-    const [stats, rowsRes] = await Promise.all([
+    const [s, rowsRes] = await Promise.all([
       fetch(`/admin/api/stats?days=${days}`, { credentials: 'same-origin' }).then(r => r.json()),
-      fetch(`/admin/api/rows?days=${days}&limit=200`, { credentials: 'same-origin' }).then(r => r.json()),
+      fetch(`/admin/api/rows?days=${days}&limit=50`, { credentials: 'same-origin' }).then(r => r.json()),
     ]);
-    const okPct = stats.total ? Math.round(stats.ok / stats.total * 100) : 0;
-    document.getElementById('cards').innerHTML = [
-      ['呼叫總數', stats.total], ['成功率', okPct + '%'], ['使用者數（uid）', Object.keys(stats.per_uid).length],
-      ['模型數', Object.keys(stats.per_model).length], ['區間', days + ' 天'],
-    ].map(([k, v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+    const okPct = s.total ? (s.ok / s.total * 100) : 0;
+    $('total').innerHTML = `${num(s.total)}<small>次呼叫</small>`;
+    $('summary').innerHTML = `<b>${s.users.length}</b> 位使用者 · <b>${s.models.length}</b> 個模型 · 成功率 <b>${okPct.toFixed(1)}%</b>`;
+    drawChart(s.per_day);
+    $('models').innerHTML = barList(s.models, it => it.name ? `${it.name}` : it.id);
+    $('users').innerHTML = barList(s.users, it => it.name || it.id);
+
     const names = rowsRes.model_names || {};
-    fill('perDay', stats.per_day);
-    fill('perModel', stats.per_model, k => names[k] ? `${names[k]}（${k}）` : k);
-    fill('perUid', stats.per_uid);
-    const tpe = ts => { const d = new Date(ts + 'Z'); return isNaN(d) ? ts : new Date(d.getTime() + 8 * 3600e3).toISOString().replace('T', ' ').slice(0, 19); };
-    document.querySelector('#recent tbody').innerHTML = (rowsRes.rows || []).map(r =>
-      `<tr><td><code>${esc(tpe(r.ts))}</code></td><td><code>${esc(r.uid)}</code></td><td><code>${esc(r.endpoint)}</code></td><td>${esc(r.model ? (names[r.model] || r.model) : '')}</td><td class="${r.ok ? 'ok' : 'err'}">${r.status}</td><td>${r.ms != null ? r.ms + ' ms' : ''}</td></tr>`
-    ).join('') || '<tr><td colspan="6" class="muted">沒有資料</td></tr>';
+    $('recent').innerHTML = (rowsRes.rows || []).map(r => `<tr>
+      <td>${esc(tpe(r.ts))}</td>
+      <td class="${r.user ? '' : 'empty'}">${r.user ? `<span class="who">${esc(r.user)}</span>` : ''}</td>
+      <td class="${r.ip ? '' : 'empty'}">${esc(r.ip || '')}</td>
+      <td class="path" title="${esc(r.endpoint)}">${esc(r.endpoint)}</td>
+      <td class="model ${r.model ? '' : 'empty'}" title="${esc(r.model || '')}">${r.model ? esc(names[r.model] || r.model) : ''}</td>
+      <td class="${r.ok ? '' : 'bad'}">${esc(r.status)}</td>
+      <td class="num ${r.ms == null ? 'empty' : ''}">${r.ms != null ? num(r.ms) + ' ms' : ''}</td>
+    </tr>`).join('') || '<tr><td colspan="7">沒有資料</td></tr>';
+    $('recentHint').textContent = `最新 ${(rowsRes.rows || []).length} 筆・完整清單見舊版報表`;
+    $('ipNote').textContent = s.ip_matched
+      ? `來源 IP 由 Cloud Logging 即時查詢，對上 ${s.ip_matched}/${s.total} 筆（統計檔本身不存 IP）`
+      : '來源 IP 查不到：執行身分沒有 Cloud Logging 讀取權限，或該期間的平台日誌已過保留期';
   } catch (e) {
-    document.getElementById('cards').innerHTML = `<div class="card"><div class="k err">讀取失敗</div><div class="muted">${esc(e.message)}</div></div>`;
+    $('summary').innerHTML = `<b style="color:var(--ember)">讀取失敗</b> ${esc(e.message)}`;
   }
 })();
 </script>
