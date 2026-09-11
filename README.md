@@ -160,7 +160,7 @@ NenAI（nen.com.tw）模型測試平台。只要一把 NenAI API Key，就能在
 | wan2.6-t2i | 萬相文生圖 | |
 | z-image-turbo | Z-Image | |
 | MAI-Image-2.6／2.6-Flash、2.5-Pro／2.5／2.5-Flash | MAI Image | 支援自訂寬高（即時驗證與對齊提示）；2.6 系可開「自動畫面比例」。2.6 兩顆 2026-09-09 正式站上線 |
-| gpt-image-2.5-sunburst／2.5-flare | GPT Image | 與 gpt-image-2 同一套參數，quality 多 `xhigh`／`max` 兩檔。2026-09-11 測試站實測通過（生成三檔、編輯、計費對帳）；正式站上線前不顯示 |
+| gpt-image-2.5-sunburst／2.5-flare | GPT Image | 與 gpt-image-2 同一套參數，quality 多 `xhigh`／`max` 兩檔。2026-09-11 測試站實測通過（生成三檔、編輯、計費對帳），同日正式站上線 |
 | gpt-image-2／1.5 | GPT Image | 支援 quality／background（透明背景）／output_format |
 | dola-seedream-5.0-pro／lite | ByteDance Seedream | 尺寸 `WIDTHxHEIGHT`，也接受 2k／3k／4k |
 | gemini-3-pro-image、gemini-3.1-flash-image、gemini-2.5-flash-image、gemini-3.1-flash-lite-image | Gemini Image | 以比例（10 種）＋像素等級（1K／2K／4K，依型號）控制輸出 |

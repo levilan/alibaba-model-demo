@@ -1567,9 +1567,9 @@ async def login(data: LoginRequest, request: Request):
 # 2026-09-09：這批（MAI-Image-2.6／2.6-Flash／gpt-audio-1.5／gpt-realtime-2／2.1／2.1-mini／
 # gpt-realtime-whisper）正式站三項核對全部通過（清單、倍率與測試站一致、渠道皆 Azure type 3），
 # 已全數移出。機制保留給下一批：只在正式站還沒配好時放名字進去，配好核對過再清空。
-# 2026-09-11：gpt-image-2.5-sunburst／flare 平台側只在功能分支，測試閘道與正式站都還沒跑到；
-# 先放進閘門，正式站 /v1/models 出現並做完免費核對再清空。
-_DEPLOY_GATED_MODELS: set = {"gpt-image-2.5-sunburst", "gpt-image-2.5-flare"}
+# 2026-09-11：gpt-image-2.5-sunburst／flare 正式站三項核對通過（清單、倍率與測試站一致、渠道 1197
+# Azure type 3 與測試站同型），已移出。機制保留給下一批。
+_DEPLOY_GATED_MODELS: set = set()
 _UPSTREAM_IDS_CACHE: Dict[str, Any] = {"ids": None, "ts": 0.0}
 
 async def _upstream_model_ids(api_key: str) -> Optional[set]:

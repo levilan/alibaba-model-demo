@@ -228,9 +228,8 @@ def test_gpt_realtime_and_audio_chat_entries():
         assert mid not in app._DEPLOY_GATED_MODELS, "2026-09-09 正式站核對通過後已移出閘門"
     ac = {m["id"]: m for m in app.MODELS["voice"]["audiochat"]}
     assert "gpt-audio-1.5" in ac and "gpt-audio-1.5" not in app._DEPLOY_GATED_MODELS   # 2026-09-09 正式站上線
-    # 2026-09-11 起閘門裡是下一批（gpt-image-2.5 兩顆）；這裡只鎖「上一批不再出現」
-    assert app._DEPLOY_GATED_MODELS == {"gpt-image-2.5-sunburst", "gpt-image-2.5-flare"}, \
-        "閘門只放還沒上正式站的那一批；上線核對過就清掉"
+    # 2026-09-11 gpt-image-2.5 兩顆也已上線核對通過；閘門只放還沒上正式站的那一批
+    assert app._DEPLOY_GATED_MODELS == set(), "上線核對過就清掉；下一批要用時再放名字進去"
     # messages 組法：純文字也要有 user content（模型靠 audio 輸出才不會被拒），附語音時 input_audio 在前
     msgs = app._audio_chat_messages("hi", "be brief", "QUJD", "mp3")
     assert msgs[0] == {"role": "system", "content": "be brief"}
