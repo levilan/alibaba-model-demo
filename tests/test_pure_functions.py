@@ -228,7 +228,9 @@ def test_gpt_realtime_and_audio_chat_entries():
         assert mid not in app._DEPLOY_GATED_MODELS, "2026-09-09 正式站核對通過後已移出閘門"
     ac = {m["id"]: m for m in app.MODELS["voice"]["audiochat"]}
     assert "gpt-audio-1.5" in ac and "gpt-audio-1.5" not in app._DEPLOY_GATED_MODELS   # 2026-09-09 正式站上線
-    assert app._DEPLOY_GATED_MODELS == set(), "這批已全數上線；下一批要用時再放名字進去"
+    # 2026-09-11 起閘門裡是下一批（gpt-image-2.5 兩顆）；這裡只鎖「上一批不再出現」
+    assert app._DEPLOY_GATED_MODELS == {"gpt-image-2.5-sunburst", "gpt-image-2.5-flare"}, \
+        "閘門只放還沒上正式站的那一批；上線核對過就清掉"
     # messages 組法：純文字也要有 user content（模型靠 audio 輸出才不會被拒），附語音時 input_audio 在前
     msgs = app._audio_chat_messages("hi", "be brief", "QUJD", "mp3")
     assert msgs[0] == {"role": "system", "content": "be brief"}
@@ -870,3 +872,28 @@ def test_greybox_to_blender_is_proper_rotation():
         for perm in itertools.permutations(range(3))
     )
     assert det == 1
+
+
+def test_gpt_image_models_and_quality_levels_derived_from_models():
+    """GPT Image 家族集合與 quality 合法值都從 MODELS 推導（2026-09-11 上 2.5 兩顆時改的），
+    新增型號只標 supports_gpt_params／quality_levels 即可，後端不用再改集合。"""
+    assert app._GPT_IMAGE_MODELS == {"gpt-image-2", "gpt-image-1.5",
+                                     "gpt-image-2.5-sunburst", "gpt-image-2.5-flare"}
+    # 2.5 兩顆多 xhigh／max（📖 OpenAI API 參考原文）；舊型號維持三檔，帶 xhigh 會被上游 400
+    for mid in ("gpt-image-2.5-sunburst", "gpt-image-2.5-flare"):
+        assert app._GPT_QUALITY_LEVELS[mid] == ("low", "medium", "high", "xhigh", "max")
+    for mid in ("gpt-image-2", "gpt-image-1.5"):
+        assert app._GPT_QUALITY_LEVELS[mid] == ("low", "medium", "high")
+    # t2i 與 i2i 兩筆的 quality_levels 必須一致（前端兩個頁籤各讀各的那筆）
+    for mid in app._GPT_IMAGE_MODELS:
+        levels = {tuple(m.get("quality_levels") or ()) for m in app.MODELS["image"] if m["id"] == mid}
+        assert len(levels) == 1, (mid, levels)
+
+
+def test_gpt_image_quality_rejected_for_wrong_model(monkeypatch):
+    """非 2.5 型號帶 xhigh／max 要在轉譯層就擋下（閘道原樣轉發、上游才 400，錯誤訊息不友善）。"""
+    from fastapi.testclient import TestClient
+    client = TestClient(app.app)
+    r = client.post("/api/image/generate", headers={"Authorization": "Bearer sk-test"},
+                    json={"model": "gpt-image-2", "prompt": "x", "quality": "max"})
+    assert r.status_code == 400 and "quality" in r.json()["detail"]

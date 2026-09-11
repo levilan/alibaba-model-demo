@@ -2120,8 +2120,11 @@
         if (modelInfo.supports_gpt_params) {
             const qSlot = container.querySelector('.cv-quality-slot');
             qSlot.innerHTML = '';
+            // quality 選項讀 MODELS 的 quality_levels（2.5 系多 xhigh／max），沒標＝通用三檔
+            const qLevels = modelInfo.quality_levels || ['low', 'medium', 'high'];
+            if (this.properties.quality && !qLevels.includes(this.properties.quality)) this.properties.quality = '';
             this.qualitySelect = buildLabeledSelect(
-                [['', 'auto（自動）'], ['low', 'low'], ['medium', 'medium'], ['high', 'high']],
+                [['', 'auto（自動）'], ...qLevels.map(v => [v, v])],
                 this.properties.quality, (v) => { this.properties.quality = v; });
             qSlot.appendChild(this.qualitySelect);
             const bgSlot = container.querySelector('.cv-bg-slot');
@@ -2882,7 +2885,7 @@
         this._syncModelExtras();
     }
     ImageEditNode.title = '圖像編輯 Editing';
-    // GPT Image（gpt-image-2/1.5）額外支援 quality/background/output_format 三個
+    // GPT Image（gpt-image-2/2.5/1.5）額外支援 quality/background/output_format 三個
     // OpenAI 標準參數，其他模型（萬相/千問）沒有，靠 supports_gpt_params 判斷顯示
     ImageEditNode.prototype._syncModelExtras = function () {
         const modelInfo = getModelsFor('image', 'i2i').find(m => m.id === this.properties.model) || {};
@@ -2892,8 +2895,11 @@
         if (modelInfo.supports_gpt_params) {
             const qSlot = container.querySelector('.cv-quality-slot');
             qSlot.innerHTML = '';
+            // quality 選項讀 MODELS 的 quality_levels（2.5 系多 xhigh／max），沒標＝通用三檔
+            const qLevels = modelInfo.quality_levels || ['low', 'medium', 'high'];
+            if (this.properties.quality && !qLevels.includes(this.properties.quality)) this.properties.quality = '';
             this.qualitySelect = buildLabeledSelect(
-                [['', 'auto（自動）'], ['low', 'low'], ['medium', 'medium'], ['high', 'high']],
+                [['', 'auto（自動）'], ...qLevels.map(v => [v, v])],
                 this.properties.quality, (v) => { this.properties.quality = v; });
             qSlot.appendChild(this.qualitySelect);
             const bgSlot = container.querySelector('.cv-bg-slot');

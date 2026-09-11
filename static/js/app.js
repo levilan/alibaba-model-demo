@@ -1396,6 +1396,20 @@ function onImgModelChange() {
     // GPT Image 專屬參數（quality/background/output_format），T2I/I2I 皆適用；
     // moderation 是 generations 專屬參數，edits 端點沒有——I2I 時單獨收起來
     document.getElementById('imgGptParamsSection').style.display = modelInfo.supports_gpt_params ? '' : 'none';
+    // quality 的選項讀 MODELS 的 quality_levels（2.5 系多 xhigh／max），沒標就是通用三檔；
+    // 換模型時保留還合法的選擇，不合法就退回 auto
+    if (modelInfo.supports_gpt_params) {
+        const qSel = document.getElementById('imgQuality');
+        const levels = modelInfo.quality_levels || ['low', 'medium', 'high'];
+        const prev = qSel.value;
+        qSel.innerHTML = '';
+        [['', 'auto（自動）'], ...levels.map(v => [v, v])].forEach(([v, label]) => {
+            const opt = document.createElement('option');
+            opt.value = v; opt.textContent = label;
+            qSel.appendChild(opt);
+        });
+        qSel.value = levels.includes(prev) ? prev : '';
+    }
     // MAI-Image-2.6 系：auto_aspect_ratio 只在文生圖驗過，I2I 收起
     document.getElementById('imgAutoAspectGroup').style.display = (modelInfo.auto_aspect_ratio && t === 't2i') ? '' : 'none';
     document.getElementById('imgModerationGroup').style.display = (t === 't2i') ? '' : 'none';

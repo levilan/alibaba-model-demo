@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-09-11
+
+- 新增／模型（2026-09-11）：**gpt-image-2.5-sunburst／gpt-image-2.5-flare 先上程式碼、待測試閘道部署後實測**（平台 session 通知：閘道分支 feat/carrothub-channel-support a7d67a8ee，未合併 main、測試閘道與正式站都還沒跑到）。與 gpt-image-2 同路徑同參數，只多 quality 的 `xhigh`／`max` 兩檔（📖 OpenAI API 參考原文，reference §2.3.29 增補）；牌價與 gpt-image-2 一字不差（輸入 $5、圖片輸入 $8、圖片輸出 $30／1M）。做法：①`MODELS` 加 t2i／i2i 各兩筆，新欄位 `quality_levels` 當 quality 下拉的資料來源，**主測試台與 Canvas 兩處原本寫死的 low／medium／high 改成讀這個欄位**（沒標的型號維持三檔）；②`_GPT_IMAGE_MODELS` 改從 `supports_gpt_params` 推導、不再寫死；③後端對 quality 做逐型號白名單——閘道對 xhigh／max 不擋、非 2.5 型號帶了會被上游 400，轉譯層先回 400 並列出合法值；④兩顆放進 `_DEPLOY_GATED_MODELS`；⑤日期版別名 `-2026-09-08` 是同一顆快照，不另列。測試補兩條（集合與 quality_levels 由 MODELS 推導、非 2.5 帶 max 回 400），104 全過。**待辦**：測試閘道部署後照平台 session 的四項請測跑（generations 帶 max 對帳三段計費、edits 不帶 quality 與帶 xhigh、記 low／high／max 的 output_tokens、cached_tokens 是否套 0.25），驗完通知文檔 session 與發系統公告。
+
 - 改動／admin（2026-09-09）：**使用紀錄整頁 review 與精簡**（Levi：「不需要 90 天最多 30 天／呼叫紀錄可以精簡減少 loading／主要的時間、使用者、模型、狀態／統計使用者使用率做一個圓餅圖使用者佔比」）。四件事：①天數上限由 90 收到 30（`_clamp_days`）；②呼叫紀錄只留時間／使用者／模型／狀態四欄，端點移到狀態欄的 tooltip、耗時移除；③**來源 IP 改成需要時才查**——那段要打 Cloud Logging 最多 10 頁，是整頁最慢的一環，現在預設不查，勾了「來源 IP」才補上一欄（`?ip=1`）；④使用者佔比改用圓環圖（前 8 名各一塊、其餘併成「其他」），圓環與圖例都能點來篩選下方紀錄；各模型收成前 10 名，其餘用一行帶過。條長也改成正比於呼叫量（原本每條都拉滿寬、只用顏色比例表示成功率，3 次與 15 次的條一樣長，讀起來像量相同）。
 - 修正／admin（2026-09-09）：**統計把輪詢與頁面載入算成了呼叫，使用者佔比嚴重失真**。統計檔對每個 HTTP 請求記一筆，所以裡面混著兩種完全不是模型呼叫的東西，而且量比呼叫本身大得多：非同步任務每隔幾秒問一次進度，**一支影片就產生 30 筆 `/status/`**；開一次頁就打 `/api/models` 與 `/api/pricing`。30 天實測 **338 筆裡只有 82 筆是真的呼叫**，而 9 位「使用者」裡有 7 位從頭到尾沒呼叫過任何模型、只是開著頁面。修法是加 `row_kind()` 分成 call／poll／meta，統計只算 call、呼叫紀錄預設只列 call，輪詢與頁面載入的筆數照樣顯示在摘要行（不隱藏資料），並在查詢條加「類型」下拉可切換。**分類刻意讓未知端點落在 call**，之後新增生成端點才不會被靜默漏掉。測試 `test_row_kind_excludes_polls_and_page_loads` 鎖住這件事（102 passed）。
 

@@ -433,7 +433,8 @@
             <div class="sidebar-section" id="imgGptParamsSection" style="display:none">
                 <div class="sidebar-section-title">GPT Image 參數</div>
                 <div class="form-group">
-                    <label class="form-label" data-tip="圖片生成品質，影響細節與耗時，high 品質更好但速度較慢">品質 (quality)</label>
+                    <label class="form-label" data-tip="圖片生成品質，影響細節與耗時，越高品質越好但速度較慢；選項依模型而定">品質 (quality)</label>
+                    <!-- 選項由 app.js 依 MODELS 的 quality_levels 重建，這裡只是初始值 -->
                     <select id="imgQuality" class="select-input">
                         <option value="">auto（自動）</option>
                         <option value="low">low</option>

@@ -895,10 +895,30 @@ MODELS = {
         # ── GPT Image（尺寸格式為 WIDTHxHEIGHT，與其他模型的 WIDTH*HEIGHT 不同；
         #    supports_gpt_params 標記這個家族額外支援 OpenAI 標準的 quality/
         #    background/output_format 三個參數，已實測確認皆有效）──
+        # 2.5 兩顆（sunburst／flare，2026-09-11 平台 session 通知；閘道分支
+        # feat/carrothub-channel-support a7d67a8ee）：與 gpt-image-2 同路徑同參數，
+        # 只多 quality 的 xhigh／max 兩檔（📖 OpenAI API 參考原文，見 reference
+        # §2.3.29 增補）。quality_levels 是前端下拉的資料來源；沒這個欄位的 GPT
+        # Image 型號維持 low／medium／high。日期版 -2026-09-08 是同一顆的快照別名，
+        # 不另列。放在 gpt-image-2 之後，避免改到消費端「第一個」的預設。
         {
             "id": "gpt-image-2", "name": "GPT Image 2", "group": "GPT Image",
             "desc": "OpenAI 旗艦圖像模型", "type": "t2i", "max_n": 4,
             "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
+            "no_negative_prompt": True, "no_prompt_extend": True, "no_seed": True, "no_watermark": True,
+        },
+        {
+            "id": "gpt-image-2.5-sunburst", "name": "GPT Image 2.5 Sunburst", "group": "GPT Image",
+            "desc": "OpenAI 新一代圖像模型，細節精度更高，品質可選到 max", "type": "t2i", "max_n": 4,
+            "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
+            "quality_levels": ["low", "medium", "high", "xhigh", "max"],
+            "no_negative_prompt": True, "no_prompt_extend": True, "no_seed": True, "no_watermark": True,
+        },
+        {
+            "id": "gpt-image-2.5-flare", "name": "GPT Image 2.5 Flare", "group": "GPT Image",
+            "desc": "OpenAI 新一代圖像模型，速度優先，品質可選到 max", "type": "t2i", "max_n": 4,
+            "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
+            "quality_levels": ["low", "medium", "high", "xhigh", "max"],
             "no_negative_prompt": True, "no_prompt_extend": True, "no_seed": True, "no_watermark": True,
         },
         {
@@ -951,6 +971,20 @@ MODELS = {
             "id": "gpt-image-2", "name": "GPT Image 2（編輯）", "group": "GPT Image",
             "desc": "OpenAI 旗艦圖像編輯", "type": "i2i", "max_n": 1, "no_ref_strength": True,
             "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
+            "no_negative_prompt": True, "no_prompt_extend": True, "no_seed": True, "no_watermark": True,
+        },
+        {
+            "id": "gpt-image-2.5-sunburst", "name": "GPT Image 2.5 Sunburst（編輯）", "group": "GPT Image",
+            "desc": "OpenAI 新一代圖像編輯，細節精度更高", "type": "i2i", "max_n": 1, "no_ref_strength": True,
+            "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
+            "quality_levels": ["low", "medium", "high", "xhigh", "max"],
+            "no_negative_prompt": True, "no_prompt_extend": True, "no_seed": True, "no_watermark": True,
+        },
+        {
+            "id": "gpt-image-2.5-flare", "name": "GPT Image 2.5 Flare（編輯）", "group": "GPT Image",
+            "desc": "OpenAI 新一代圖像編輯，速度優先", "type": "i2i", "max_n": 1, "no_ref_strength": True,
+            "sizes": ["1024x1024","1536x1024","1024x1536"], "supports_gpt_params": True,
+            "quality_levels": ["low", "medium", "high", "xhigh", "max"],
             "no_negative_prompt": True, "no_prompt_extend": True, "no_seed": True, "no_watermark": True,
         },
         {
@@ -1533,7 +1567,9 @@ async def login(data: LoginRequest, request: Request):
 # 2026-09-09：這批（MAI-Image-2.6／2.6-Flash／gpt-audio-1.5／gpt-realtime-2／2.1／2.1-mini／
 # gpt-realtime-whisper）正式站三項核對全部通過（清單、倍率與測試站一致、渠道皆 Azure type 3），
 # 已全數移出。機制保留給下一批：只在正式站還沒配好時放名字進去，配好核對過再清空。
-_DEPLOY_GATED_MODELS: set = set()
+# 2026-09-11：gpt-image-2.5-sunburst／flare 平台側只在功能分支，測試閘道與正式站都還沒跑到；
+# 先放進閘門，正式站 /v1/models 出現並做完免費核對再清空。
+_DEPLOY_GATED_MODELS: set = {"gpt-image-2.5-sunburst", "gpt-image-2.5-flare"}
 _UPSTREAM_IDS_CACHE: Dict[str, Any] = {"ids": None, "ts": 0.0}
 
 async def _upstream_model_ids(api_key: str) -> Optional[set]:
@@ -2723,8 +2759,15 @@ async def _generate_gemini_image(model: str, prompt: str, n: int, api_key: str,
 # 改以 prompt_extend 控制（3.0 系列的上游規格同樣是 n 1~6、I2I 最多 3 張，行為一致）
 _QWEN_FUSION_EDIT_MODELS = {"qwen-image-2.0-pro", "qwen-image-2.0",
                             "qwen-image-3.0-pro", "qwen-image-3.0"}
-# GPT Image 系列額外支援 OpenAI 標準的 quality/background/output_format 三個參數（已實測確認有效）
-_GPT_IMAGE_MODELS = {"gpt-image-2", "gpt-image-1.5"}
+# GPT Image 系列額外支援 OpenAI 標準的 quality/background/output_format 三個參數（已實測確認有效）。
+# 以 MODELS 的 supports_gpt_params 旗標推導，新增型號只要在 MODELS 標旗標即可，不必再改這裡
+# （2026-09-11 上 2.5 兩顆時改成推導；先前是寫死的 {"gpt-image-2", "gpt-image-1.5"}）
+_GPT_IMAGE_MODELS = {m["id"] for m in MODELS["image"] if m.get("supports_gpt_params")}
+# 各 GPT Image 型號的 quality 合法值（MODELS 的 quality_levels；沒標的沿用 OpenAI 通用三檔）。
+# 閘道對 xhigh／max 不做白名單、原樣轉發，非 2.5 型號帶這兩檔會被上游 400，所以這裡先擋。
+_GPT_QUALITY_DEFAULT = ("low", "medium", "high")
+_GPT_QUALITY_LEVELS = {m["id"]: tuple(m.get("quality_levels") or _GPT_QUALITY_DEFAULT)
+                       for m in MODELS["image"] if m.get("supports_gpt_params")}
 # 支援 auto_aspect_ratio 的圖片模型（MODELS 旗標；目前 MAI-Image-2.6 兩顆的 t2i）
 _IMAGE_AUTO_ASPECT_MODELS = {m["id"] for m in MODELS["image"] if m.get("auto_aspect_ratio")}
 
@@ -2785,7 +2828,7 @@ class ImageGenerateRequest(BaseModel):
     seed: Optional[int] = None
     aspect_ratio: Optional[str] = None       # 僅 Gemini 圖片模型使用
     auto_aspect_ratio: Optional[bool] = None # 僅 MAI-Image-2.6 系：模型依提示詞自選長寬比（實測會放大到 1536²）
-    quality: Optional[str] = None            # 僅 GPT Image 使用：auto/low/medium/high
+    quality: Optional[str] = None            # 僅 GPT Image 使用：auto/low/medium/high；2.5 系再加 xhigh/max
     background: Optional[str] = None         # 僅 GPT Image 使用：auto/opaque/transparent
     output_format: Optional[str] = None      # 僅 GPT Image 使用：png/jpeg/webp
     moderation: Optional[str] = None         # 僅 GPT Image 使用：auto/low（Levi 2026-08-25 裁示開放；
@@ -2845,6 +2888,9 @@ async def image_generate(request: Request, data: ImageGenerateRequest, api_key: 
             payload["seed"] = data.seed
     if data.model in _GPT_IMAGE_MODELS:
         if data.quality:
+            if data.quality != "auto" and data.quality not in _GPT_QUALITY_LEVELS[data.model]:
+                raise HTTPException(status_code=400, detail=(
+                    f"{data.model} 的 quality 只接受 auto／{'／'.join(_GPT_QUALITY_LEVELS[data.model])}"))
             payload["quality"] = data.quality
         if data.background:
             payload["background"] = data.background
@@ -2965,6 +3011,9 @@ async def image_edit(request: Request, api_key: str = Depends(get_api_key)):
                 form_data["seed"] = str(seed)
         if model in _GPT_IMAGE_MODELS:
             if quality:
+                if quality != "auto" and quality not in _GPT_QUALITY_LEVELS[model]:
+                    raise HTTPException(status_code=400, detail=(
+                        f"{model} 的 quality 只接受 auto／{'／'.join(_GPT_QUALITY_LEVELS[model])}"))
                 form_data["quality"] = quality
             if background:
                 form_data["background"] = background
