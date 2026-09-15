@@ -136,6 +136,7 @@ NenAI（nen.com.tw）模型測試平台。只要一把 NenAI API Key，就能在
 | qwen-plus-character | Qwen 角色 | — |
 | qwen3-vl-plus／flash | 視覺語言（支援圖片輸入） | — |
 | deepseek-v4-pro／v4-flash／v3.2 | DeepSeek | enable_thinking |
+| glm-5.3 | 智譜 GLM | 深度思考永遠開啟；reasoning_effort 三檔 low／high／max（預設 max）。2026-09-15 正式站上線 |
 | glm-5.2／5.1 | 智譜 GLM | enable_thinking ＋ reasoning_effort 分段 |
 | kimi/kimi-k3 | 月之暗面（支援圖片輸入） | 思考模型 |
 | dola-seed-sc／2.0-lite／2.0-pro | ByteDance Seed | — |

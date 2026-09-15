@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-09-15
+
+- 新增／模型（2026-09-15）：**glm-5.3 上架（正式站實測，Levi 指定網關）**。①**命名坑**：百煉文件只有 `ZHIPU/GLM-5.3`（智譜直供）、阿里部署家族頁最新只到 5.2，一度以為要加映射；Levi 貼控制台截圖證明模型 Code 就是無前綴 `glm-5.3`（美國區、全球模式，牌價 $1.131／$3.957／快取 $0.283）——**文件落後控制台，控制台才是 ID 的權威**。②**授權坑**：8 條阿里渠道對應 7 個阿里帳號，探測 16 次只有渠道 2084（AI RD）通、其餘全 403 access_denied（百煉錯誤碼頁：第一成因是模型未開通）。**其他帳號授權前，客戶打 glm-5.3 大約六次會失敗五次**；付費測試用「403 免費、重試到打中 2084」的方式完成。③實測（各 1 次，同一題）：`enable_thinking:false` → 400 "restricted to True"，所以 `thinking=False` 不給開關並以新旗標 `always_thinking` 推導 `_NO_ENABLE_THINKING_MODELS`（原本寫死 kimi-k3）；`reasoning_effort` 非法值回 400 列出 **low／high／max**，reasoning_tokens low 22、high 28、max 292、不帶 337（預設＝max；low 與 high 分不出）；`thinking_budget=50` 閘道轉發但仍思考 239 tokens（不生效，不列）；`clear_thinking` 官方清單只到 5.2（不列）；`repetition_penalty`／`top_k` 上游驗值（轉發確認）；串流 reasoning_content delta 正常、frt 0.8 秒。④計費對帳：倍率 0.7／3.14／快取 0.2 與 glm-5.2 相同，quota＝(59×0.7＋591×0.7×3.14)＝1341 逐筆吻合，思考 tokens 計入 completion；`prompt_tokens_details.cached_tokens` 有回報（本次 0）。共 9 次付費約 $0.02。
+
 ## 2026-09-11
 
 - 記錄／chore（2026-09-11）：**gpt-image-2.5-sunburst／flare 正式站上線核對**（照 CLAUDE.md 第 7 步，不重跑付費測試）。三項免費核對：①`/v1/models` 兩顆都在（日期版 `-2026-09-08` 兩邊網關都沒有，本來就不列）；②倍率與測試站逐欄一致（2.5／6／圖片輸入 1.6／快取 0.25）；③渠道 1197、Azure（type 3）、啟用中，與測試站同型，且建立於 2026-05-07、在去點規則日期之後。**第一次核對抓到 flare 倍率沒填**：`model_ratio` 兜底 37.5（圖片輸出會按 $450／1M 收、15 倍）、`image_ratio`／`cache_ratio` 空、也因此不在 `/v1/models`——與 2026-09-09 MAI-Image-2.6-Flash 同一種漏法，Levi 補完後第二次核對全過。兩顆移出 `_DEPLOY_GATED_MODELS`；文檔 session 已通知可合併 PR #75；系統公告 id=34（Levi 確認後寫入，備份在 outputs/announcement-backups/）。

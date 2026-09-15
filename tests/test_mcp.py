@@ -246,6 +246,7 @@ def test_models_fields_are_known_to_mcp():
         "auto_aspect_ratio",   # MAI-Image-2.6 系：UI 開關；MCP 圖片工具尚未開放此參數
         "sequential_max_size", "image_input", "audio_only", "turn_modes",
         "reasoning_effort",
+        "always_thinking",   # 思考關不掉、不送 enable_thinking（kimi-k3、glm-5.3）；MCP 無對話工具
         # 文字模型專屬的行為旗標。MCP **目前沒有任何對話／文字工具**（只有
         # list_models／圖片／影片／TTS／ASR），agent 拿不到也用不到這些參數，
         # 一律歸內部欄位。⚠️ 之後若新增 chat 類工具，這一組要重新分類。

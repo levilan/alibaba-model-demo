@@ -536,9 +536,21 @@ MODELS = {
         # 的優先權高於 reasoning_effort；但反向不成立——實測 enable_thinking:true 配
         # reasoning_effort:none 仍然不會思考，也就是「關」的那一方永遠贏。
         # 支援的枚舉各型號不同，送錯值會回 400 並列出正確清單，故以 reasoning_efforts 標明。
-        {"id": "glm-5.2",            "name": "GLM 5.2",          "group": "第三方", "desc": "智譜 GLM 最新版（1M context）", "thinking": True,
+        # glm-5.3（2026-09-15 正式站實測，渠道 2084 阿里 dashscope-us；百煉控制台模型 Code 就是
+        # 無前綴的 glm-5.3，文件只寫 ZHIPU/GLM-5.3、落後於控制台）：
+        # · 思考永遠開啟——送 enable_thinking:false 回 400 "The value of the enable_thinking
+        #   parameter is restricted to True"，所以 thinking=False（不給開關）＋ always_thinking
+        #   （完全不送 enable_thinking）；reasoning_content 照常回傳並顯示
+        # · reasoning_effort 只有 low/high/max（送非法值回 400 列出），預設＝max；各檔 1 次：
+        #   reasoning_tokens low 22、high 28、max 292、不帶 337——low/high 分不出，max 才深
+        # · thinking_budget 閘道會轉發（送 -5 上游不拒），但 budget=50 仍思考 239 tokens，
+        #   沒有生效，不列；clear_thinking 官方清單只到 5.2，不列
+        # · repetition_penalty / top_k 上游會驗值（-100 / -7 回 400），轉發確認
+        {"id": "glm-5.3",            "name": "GLM 5.3",          "group": "第三方", "desc": "智譜 GLM 最新旗艦，深度思考（1M context）", "thinking": False,
+         "always_thinking": True, "reasoning_effort": True, "reasoning_efforts": ["low", "high", "max"], "repetition_penalty": True},
+        {"id": "glm-5.2",            "name": "GLM 5.2",          "group": "第三方", "desc": "智譜 GLM 5.2（1M context）", "thinking": True,
          "reasoning_effort": True, "reasoning_efforts": ["none", "minimal", "low", "medium", "high", "xhigh", "max"], "thinking_budget": True, "clear_thinking": True, "repetition_penalty": True},
-        {"id": "glm-5.1",            "name": "GLM 5.1",          "group": "第三方", "desc": "智譜 GLM 前一版",        "thinking": True,
+        {"id": "glm-5.1",            "name": "GLM 5.1",          "group": "第三方", "desc": "智譜 GLM 5.1",           "thinking": True,
          "reasoning_effort": True, "reasoning_efforts": ["none", "minimal", "low", "medium", "high", "xhigh"], "thinking_budget": True, "clear_thinking": True, "repetition_penalty": True},
         # ── ByteDance Seed（字節跳動豆包大模型；seed-2.0 系列無條件會回思考過程
         #    reasoning_content，實測過 enable_thinking:false 對它們沒有效果
@@ -576,7 +588,7 @@ MODELS = {
         # 剛開通時的短暫狀態，被推導成協定層級的限制）。這是「單一次失敗 ≠ 不支援」
         # 的又一個實例，見 memory.md 4d。
         # 影片輸入只有公網 URL 被驗過，data URI 未驗，所以不宣稱支援影片。
-        {"id": "kimi/kimi-k3", "name": "Kimi K3", "group": "月之暗面", "desc": "深度推理，百萬字上下文，支援看圖", "thinking": False, "vision": True, "repetition_penalty": True},
+        {"id": "kimi/kimi-k3", "name": "Kimi K3", "group": "月之暗面", "desc": "深度推理，百萬字上下文，支援看圖", "thinking": False, "always_thinking": True, "vision": True, "repetition_penalty": True},
         # ── Claude（實測過 enable_thinking 與 Anthropic 原生 thinking 參數在這個
         #    網關上都不會回傳任何思考過程，thinking 一律維持 False；temperature/
         #    top_p 也不能送，Bedrock 後端會直接回 400 "temperature is deprecated"）──
@@ -1889,7 +1901,9 @@ _GEMINI_THINKING_OFF_BY_DEFAULT = {"gemini-2.5-flash-lite", "gemini-3.5-flash-li
 # ——錯誤訊息指向 temperature，但我們沒送 temperature（實測 temperature=0.7 正常），
 # 真正的原因是閘道關閉思考時會改送上游不接受的取樣參數。這個模型的 thinking 旗標是
 # False，前端因此會送 enable_thinking:false，不排除就會**每一次呼叫都失敗**。
-_NO_ENABLE_THINKING_MODELS = {"kimi/kimi-k3"}
+# 思考關不掉的模型：完全不送 enable_thinking（送 false 會 400）。以 MODELS 的 always_thinking
+# 旗標推導（2026-09-15 上 glm-5.3 時從寫死的 {"kimi/kimi-k3"} 改成推導）
+_NO_ENABLE_THINKING_MODELS = {m["id"] for m in MODELS["text"] if m.get("always_thinking")}
 # 連 0.0 都不收 presence_penalty／frequency_penalty 的模型（MODELS 的 no_penalties 旗標）
 _TEXT_NO_PENALTIES = {m["id"] for m in MODELS["text"] if m.get("no_penalties")}
 # 不收 temperature／top_p 的模型（MODELS 的 no_sampling 旗標）：Claude 全家（Bedrock 限制）

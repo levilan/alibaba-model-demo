@@ -182,6 +182,19 @@ def test_kimi_must_not_receive_enable_thinking():
     assert "kimi/kimi-k3" in app._NO_ENABLE_THINKING_MODELS
 
 
+def test_glm53_always_thinking_and_three_efforts():
+    """glm-5.3（2026-09-15 正式站實測）：enable_thinking:false 回 400 "restricted to True"，
+    所以不給開關且不送該欄位；reasoning_effort 只有 low/high/max；thinking_budget 送了
+    不生效（budget=50 仍思考 239 tokens）、clear_thinking 官方不支援，兩者都不能標。"""
+    m = {x["id"]: x for x in app.MODELS["text"]}["glm-5.3"]
+    assert m["thinking"] is False and m["always_thinking"] is True
+    assert "glm-5.3" in app._NO_ENABLE_THINKING_MODELS
+    assert m["reasoning_efforts"] == ["low", "high", "max"]
+    assert "glm-5.3" not in app._TEXT_THINKING_BUDGET
+    assert "glm-5.3" not in app._TEXT_CLEAR_THINKING
+    assert app._NO_ENABLE_THINKING_MODELS == {"kimi/kimi-k3", "glm-5.3"}
+
+
 def test_pricing_override_shows_list_price_for_discounted_gemini_flash():
     """gemini-3.6～3.8-flash 在閘道是半價優惠（到 2026 年底），體驗站顯示原價
     $1.5→$7.5／快取 $0.15（Levi 裁示 2026-09-04）。其他模型維持閘道倍率換算。"""
