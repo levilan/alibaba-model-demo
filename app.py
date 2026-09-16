@@ -685,9 +685,19 @@ MODELS = {
         #   seed、stop——**沒有 kimi-k3 那種「送了就 400」的陷阱**
         # · ⚠️ 非法 reasoning_effort 與超限 max_tokens 會 400，但訊息被閘道收斂成
         #   "openai_error"／bad_response_status_code，拿不到合法值域（原始 request id
-        #   已交平台定位；平台據此找到 RelayErrorHandler 的通用 bug 並修了，待部署後
-        #   重跑就能拿到真正的上游訊息與合法值域）。⚠️ 但**不是每個非法值都會 400**：
-        #   temperature=99 實測回 200。
+        #   已交平台定位；平台據此找到 RelayErrorHandler 的通用 bug 並修了）。修正部署後
+        #   訊息從無意義的 "openai_error" 變成 "bad response status code 400"——**仍然
+        #   沒有上游原文**，所以這條路的合法值域只能用「逐值送、看狀態碼」二分出來。
+        #   ⚠️ 不是每個非法值都會 400：temperature=99 實測回 200。
+        # · `reasoning_effort`（2026-09-16 逐值實測）：**low／medium／high 收**，
+        #   none／minimal／xhigh／max 一律 400。⚠️ 只證明「收得下」，gemma 不回
+        #   reasoning_content，**有沒有實際效果沒驗**，所以 MODELS 不標 reasoning_effort。
+        # · `max_tokens` **不是固定上限，而是受上下文窗約束**：二分出短提示詞可到
+        #   262122（262123 起 400）＝ 262144 − 提示詞 22 tokens；換成約 4000 tokens 的
+        #   長提示詞後，262122 失敗、258122 成功，**正好差 4000**。即約束是
+        #   `prompt_tokens + max_tokens ≤ 262144`（官方 context 長度）。官方標的最大輸出
+        #   是 128,000，但上游只驗上下文窗、不擋更大的 max_tokens；**真的產出超過
+        #   128,000 沒驗**（那會很貴）。
         #   我一度把這裡寫成「所有非法值都被收斂、探測手法整個失效」，那是錯的（重測推翻）。
         # · ⚠️ 實測會撞 429（10 次裡 2 次），重試即可
         # · **看得到圖**：64x64 純色 PNG 走 data URI，紅答 Red、藍答 Blue（兩色各 1 次、
