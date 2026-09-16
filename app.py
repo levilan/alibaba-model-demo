@@ -686,8 +686,10 @@ MODELS = {
         # · ⚠️ 非法 reasoning_effort 與超限 max_tokens 會 400，但訊息被閘道收斂成
         #   "openai_error"／bad_response_status_code，拿不到合法值域（原始 request id
         #   已交平台定位；平台據此找到 RelayErrorHandler 的通用 bug 並修了）。修正部署後
-        #   訊息從無意義的 "openai_error" 變成 "bad response status code 400"——**仍然
-        #   沒有上游原文**，所以這條路的合法值域只能用「逐值送、看狀態碼」二分出來。
+        #   訊息從無意義的 "openai_error" 變成 "bad response status code 400"。**客戶端
+        #   拿不到上游原文是刻意的**（平台對面向客戶的路徑一律不附上游 body，怕帶出
+        #   上游內部細節；只有管理端「測試通道」按鈕會附完整 body）——所以這條路的
+        #   合法值域只能用「逐值送、看狀態碼」二分，或請管理員按測試通道看原文。
         #   ⚠️ 不是每個非法值都會 400：temperature=99 實測回 200。
         # · `reasoning_effort`（2026-09-16 逐值實測）：**low／medium／high 收**，
         #   none／minimal／xhigh／max 一律 400。⚠️ 只證明「收得下」，gemma 不回
