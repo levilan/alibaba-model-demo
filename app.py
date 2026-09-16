@@ -683,8 +683,10 @@ MODELS = {
         # · playground 預設會送的參數全部照收：enable_thinking 兩種值、temperature／
         #   top_p、presence／frequency_penalty（0 與 0.5 都收，不必標 no_penalties）、
         #   seed、stop——**沒有 kimi-k3 那種「送了就 400」的陷阱**
-        # · ⚠️ 這條渠道的上游錯誤訊息被閘道收斂成 "openai_error"／bad_response_status_code，
-        #   拿不到合法值域；「送非法值看錯誤」這招在它身上失效，只能看狀態碼
+        # · ⚠️ 非法 reasoning_effort 與超限 max_tokens 會 400，但訊息被閘道收斂成
+        #   "openai_error"／bad_response_status_code，拿不到合法值域（原始 request id
+        #   已交平台定位）。⚠️ 但**不是每個非法值都會 400**：temperature=99 實測回 200。
+        #   我一度把這裡寫成「所有非法值都被收斂、探測手法整個失效」，那是錯的（重測推翻）。
         # · ⚠️ 實測會撞 429（10 次裡 2 次），重試即可
         # · **看得到圖**：64x64 純色 PNG 走 data URI，紅答 Red、藍答 Blue（兩色各 1 次、
         #   答案跟著圖變，不是猜的；prompt_tokens 284 表示圖有被 tokenize）
