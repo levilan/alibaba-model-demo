@@ -38,6 +38,14 @@
             ],
         },
         {
+            match: /^gemma/,
+            name: 'Gemma（Google）',
+            points: [
+                'Google 的開源模型家族',
+                '輕量高速，支援工具呼叫',
+            ],
+        },
+        {
             match: /^gemini-.*tts/,
             name: 'Gemini 語音合成',
             points: [

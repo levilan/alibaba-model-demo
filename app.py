@@ -676,6 +676,17 @@ MODELS = {
         {"id": "gemini-2.5-pro",              "name": "Gemini 2.5 Pro",              "group": "Gemini", "desc": "前代旗艦，深度推理", "thinking": False},
         {"id": "gemini-2.5-flash",            "name": "Gemini 2.5 Flash",            "group": "Gemini", "desc": "前代均衡模型",     "thinking": True},
         {"id": "gemini-2.5-flash-lite",       "name": "Gemini 2.5 Flash Lite",       "group": "Gemini", "desc": "前代輕量極速", "thinking": True},
+        # ── Gemma（Google 開源家族，走 Vertex Agent Platform 的 MaaS 託管；平台把上游
+        #    body 的 model 改寫成 google/gemma-4-26b-a4b-it-maas，回應的 model 欄位
+        #    看得到這個前綴。2026-09-16 測試網關實測，渠道 490）──
+        # · 不回 reasoning_content（thinking=False）；工具呼叫可用（回標準 tool_calls）
+        # · playground 預設會送的參數全部照收：enable_thinking 兩種值、temperature／
+        #   top_p、presence／frequency_penalty（0 與 0.5 都收，不必標 no_penalties）、
+        #   seed、stop——**沒有 kimi-k3 那種「送了就 400」的陷阱**
+        # · ⚠️ 這條渠道的上游錯誤訊息被閘道收斂成 "openai_error"／bad_response_status_code，
+        #   拿不到合法值域；「送非法值看錯誤」這招在它身上失效，只能看狀態碼
+        # · ⚠️ 實測會撞 429（10 次裡 2 次），重試即可
+        {"id": "gemma-4-26b-a4b-it-maas",     "name": "Gemma 4 26B",                 "group": "Gemma",  "desc": "Google 開源模型，輕量高速，支援工具呼叫", "thinking": False},
         # ── xAI Grok（reasoning / non-reasoning 是兩個獨立型號，不是同一模型的參數）──
         # 實測四個型號的行為（2026-08-11，正式環境）：
         #   -reasoning 版預設就思考，-non-reasoning 版完全不思考（reasoning_tokens 恆為 0）
@@ -1581,7 +1592,8 @@ async def login(data: LoginRequest, request: Request):
 # 已全數移出。機制保留給下一批：只在正式站還沒配好時放名字進去，配好核對過再清空。
 # 2026-09-11：gpt-image-2.5-sunburst／flare 正式站三項核對通過（清單、倍率與測試站一致、渠道 1197
 # Azure type 3 與測試站同型），已移出。機制保留給下一批。
-_DEPLOY_GATED_MODELS: set = set()
+# 2026-09-16：gemma-4-26b-a4b-it-maas 只在測試網關（正式站完全沒有 gemma），先放進閘門。
+_DEPLOY_GATED_MODELS: set = {"gemma-4-26b-a4b-it-maas"}
 _UPSTREAM_IDS_CACHE: Dict[str, Any] = {"ids": None, "ts": 0.0}
 
 async def _upstream_model_ids(api_key: str) -> Optional[set]:
@@ -1611,6 +1623,7 @@ async def get_models(api_key: str = Depends(get_api_key)):
     out["image"] = [m for m in MODELS["image"] if _keep(m)]
     out["voice"] = dict(MODELS["voice"])
     out["voice"]["realtime"] = [m for m in MODELS["voice"]["realtime"] if _keep(m)]
+    out["text"] = [m for m in MODELS["text"] if _keep(m)]
     out["voice"]["music"] = [m for m in MODELS["voice"]["music"] if _keep(m)]
     out["voice"]["audiochat"] = [m for m in MODELS["voice"]["audiochat"] if _keep(m)]
     out["voice"]["asr"] = [m for m in MODELS["voice"]["asr"] if _keep(m)]
