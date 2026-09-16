@@ -917,5 +917,6 @@ def test_gemma_entry_and_deploy_gate():
     正式站還沒有所以走部署閘門。"""
     m = {x["id"]: x for x in app.MODELS["text"]}["gemma-4-26b-a4b-it-maas"]
     assert m["thinking"] is False and m.get("always_thinking") is None
+    assert m["vision"] is True, "64x64 純色 PNG data URI，紅答 Red／藍答 Blue（答案跟著圖變）"
     assert "gemma-4-26b-a4b-it-maas" not in app._NO_ENABLE_THINKING_MODELS
     assert "gemma-4-26b-a4b-it-maas" in app._DEPLOY_GATED_MODELS

@@ -686,7 +686,11 @@ MODELS = {
         # · ⚠️ 這條渠道的上游錯誤訊息被閘道收斂成 "openai_error"／bad_response_status_code，
         #   拿不到合法值域；「送非法值看錯誤」這招在它身上失效，只能看狀態碼
         # · ⚠️ 實測會撞 429（10 次裡 2 次），重試即可
-        {"id": "gemma-4-26b-a4b-it-maas",     "name": "Gemma 4 26B",                 "group": "Gemma",  "desc": "Google 開源模型，輕量高速，支援工具呼叫", "thinking": False},
+        # · **看得到圖**：64x64 純色 PNG 走 data URI，紅答 Red、藍答 Blue（兩色各 1 次、
+        #   答案跟著圖變，不是猜的；prompt_tokens 284 表示圖有被 tokenize）
+        # · 原生 /v1beta/…:generateContent 回 400——**這是預期行為不是缺陷**：官方 MaaS
+        #   開放模型只提供 OpenAI 相容端點（reference §2.3.41c），沒有 generateContent
+        {"id": "gemma-4-26b-a4b-it-maas",     "name": "Gemma 4 26B",                 "group": "Gemma",  "desc": "Google 開源模型，輕量高速，支援看圖與工具呼叫", "thinking": False, "vision": True},
         # ── xAI Grok（reasoning / non-reasoning 是兩個獨立型號，不是同一模型的參數）──
         # 實測四個型號的行為（2026-08-11，正式環境）：
         #   -reasoning 版預設就思考，-non-reasoning 版完全不思考（reasoning_tokens 恆為 0）
