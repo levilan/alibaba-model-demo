@@ -685,7 +685,9 @@ MODELS = {
         #   seed、stop——**沒有 kimi-k3 那種「送了就 400」的陷阱**
         # · ⚠️ 非法 reasoning_effort 與超限 max_tokens 會 400，但訊息被閘道收斂成
         #   "openai_error"／bad_response_status_code，拿不到合法值域（原始 request id
-        #   已交平台定位）。⚠️ 但**不是每個非法值都會 400**：temperature=99 實測回 200。
+        #   已交平台定位；平台據此找到 RelayErrorHandler 的通用 bug 並修了，待部署後
+        #   重跑就能拿到真正的上游訊息與合法值域）。⚠️ 但**不是每個非法值都會 400**：
+        #   temperature=99 實測回 200。
         #   我一度把這裡寫成「所有非法值都被收斂、探測手法整個失效」，那是錯的（重測推翻）。
         # · ⚠️ 實測會撞 429（10 次裡 2 次），重試即可
         # · **看得到圖**：64x64 純色 PNG 走 data URI，紅答 Red、藍答 Blue（兩色各 1 次、
