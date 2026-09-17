@@ -8,6 +8,8 @@
 
 ## 2026-09-18
 
+- 改動／Spicy（2026-09-18）：**提示優化開關移到提示詞旁邊並標示優化用的模型**（Levi：「希望它更顯眼，可以移到提示詞輸入框旁邊 並顯示使用什麼模型優化」）。原本放在側欄「進階參數」要捲動才看得到，現在移到 Prompt 標籤同一列的右側，標示成「提示優化（Grok 4.6）」。**型號不寫死在前端**：`/api/models` 多回一個 `prompt_optimizer: {id, name}`（名稱取自 MODELS），前端讀它填入——之後換優化模型只改 `_PROMPT_OPTIMIZER_MODEL` 一處。瀏覽器驗過：標示正確、開關與 Prompt 同列、搬動後功能未壞（面板照常出現、按鈕狀態復原）。
+
 - 文案／模型（2026-09-18）：**Spicy 分頁的 w3.0 四顆改名為 Wan 命名**（Levi：「Spicy 影片 3.0 這一系列模型名稱要寫出來 wan 3.0 spicy」）。`Spicy 影片 3.0`／`3.0 Pro`／`3.0 Prime`／`3.0 Prime Pro` → `Wan 3.0 Spicy`／`Wan 3.0 Pro Spicy`／`Wan 3.0 Prime Spicy`／`Wan 3.0 Prime Pro Spicy`，與同分頁既有的 `Wan 2.7 I2V Spicy` 命名一致。只動 `name`（顯示名稱），`id`、`desc` 與其餘欄位不變；grep 過沒有任何地方寫死舊的顯示名稱。
 
 ## 2026-09-17

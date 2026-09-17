@@ -892,11 +892,6 @@
                     <label>Prompt Extend</label>
                     <label class="toggle"><input type="checkbox" id="muleaiVidPromptExtend" checked><span class="toggle-slider"></span></label>
                 </div>
-                <div class="toggle-row" id="muleaiOptimizeGroup" style="margin-top:8px"
-                     data-tip="開啟後按生成會先把提示詞改寫得更完整，改寫結果會顯示出來讓你過目與修改，確認後才開始生成">
-                    <label>提示優化</label>
-                    <label class="toggle"><input type="checkbox" id="muleaiPromptOptimize"><span class="toggle-slider"></span></label>
-                </div>
                 <div class="form-group" style="margin-top:10px;">
                     <label class="form-label">Seed <span class="param-hint">（留空 = 隨機）</span></label>
                     <input type="number" id="muleaiVidSeed" class="number-input" min="0" max="2147483647" placeholder="留空隨機">
@@ -910,7 +905,14 @@
                     <div class="prompt-col">
                         <div id="muleaiPromptSection">
                             <div class="form-group" style="margin-bottom:8px">
-                                <label class="form-label">Prompt</label>
+                                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px">
+                                    <label class="form-label" style="margin:0">Prompt</label>
+                                    <div class="toggle-row" id="muleaiOptimizeGroup" style="margin:0;gap:8px;width:auto"
+                                         data-tip="開啟後按生成會先把提示詞改寫得更完整，改寫結果會顯示出來讓你過目與修改，確認後才開始生成">
+                                        <label style="white-space:nowrap">提示優化 <span class="param-hint" id="muleaiOptimizeModelName"></span></label>
+                                        <label class="toggle"><input type="checkbox" id="muleaiPromptOptimize"><span class="toggle-slider"></span></label>
+                                    </div>
+                                </div>
                                 <textarea id="muleaiVidPrompt" class="textarea-input" rows="2" placeholder="描述影片動作與細節..." onkeydown="if((event.ctrlKey || event.metaKey) && event.key==='Enter'){event.preventDefault();sendMuleAIVideo();}"></textarea>
                             </div>
                             <div class="form-group" style="margin-bottom:0">

@@ -408,6 +408,8 @@ function showApp() {
     app.style.display = 'flex';
     const masked = apiKey.slice(0, 6) + '****' + apiKey.slice(-4);
     document.getElementById('apiKeyLabel').textContent = masked;
+    const optName = document.getElementById('muleaiOptimizeModelName');
+    if (optName && models.prompt_optimizer) optName.textContent = `（${models.prompt_optimizer.name}）`;
     try { populateSelectors(); TaskHistory.load(); resumePendingTasks(); } catch(e) { toast('UI 載入發生錯誤，請聯絡開發者', 'error'); }
     loadPricing();
 }

@@ -1647,6 +1647,11 @@ async def get_models(api_key: str = Depends(get_api_key)):
     out["voice"]["music"] = [m for m in MODELS["voice"]["music"] if _keep(m)]
     out["voice"]["audiochat"] = [m for m in MODELS["voice"]["audiochat"] if _keep(m)]
     out["voice"]["asr"] = [m for m in MODELS["voice"]["asr"] if _keep(m)]
+    # 提示優化用的模型：前端要顯示「用哪顆優化」，這裡一併給出顯示名稱，
+    # 前端就不必寫死型號（換模型只改 _PROMPT_OPTIMIZER_MODEL 一處）
+    _opt = next((m for m in MODELS["text"] if m["id"] == _PROMPT_OPTIMIZER_MODEL), None)
+    out["prompt_optimizer"] = {"id": _PROMPT_OPTIMIZER_MODEL,
+                               "name": (_opt or {}).get("name") or _PROMPT_OPTIMIZER_MODEL}
     return out
 
 
