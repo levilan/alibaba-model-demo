@@ -2872,9 +2872,12 @@ _IMAGE_TIMEOUT = 300.0
 # 使用者把提示詞丟給一顆文字模型改寫成更完整的生成提示，改寫結果**會先顯示給使用者
 # 過目、可編輯**，確認後才送去生成模型——不是自動套用。理由：改寫是會花錢的一步，
 # 而生成更貴，讓使用者先看過才不會「花了兩次錢卻生成到不想要的東西」。
-_PROMPT_OPTIMIZER_MODEL = "grok-4.6"
-# 上游對 grok-4.6 接受 minimal/low/medium/high/xhigh（none 被拒，見 MODELS 註解）。
-# 改寫是輕任務，用 minimal 省時間與費用。
+_PROMPT_OPTIMIZER_MODEL = "grok-4.3"
+# ⚠️ **換模型時必須連 reasoning_effort 一起確認**——Grok 家族的值域彼此不同、不能互推：
+# grok-4.3 收 none/minimal/low/medium/high（xhigh 與 max 回 422）；
+# grok-4.6 收 minimal/low/medium/high/xhigh（none 被拒）。兩顆剛好相反，見 MODELS 註解。
+# 改寫是輕任務，用 minimal 省時間與費用（4.3 另外還可以用 none，實測 reasoning_tokens=0）。
+# 這條配對由 tests/test_pure_functions.py 的 test_prompt_optimizer_config 守住。
 _PROMPT_OPTIMIZER_EFFORT = "minimal"
 _PROMPT_OPTIMIZER_TIMEOUT = 120.0
 
