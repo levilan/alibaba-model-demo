@@ -167,6 +167,16 @@ NenAI（nen.com.tw）模型測試平台。只要一把 NenAI API Key，就能在
 | dola-seedream-5.0-pro／lite | ByteDance Seedream | 尺寸 `WIDTHxHEIGHT`，也接受 2k／3k／4k |
 | gemini-3-pro-image、gemini-3.1-flash-image、gemini-2.5-flash-image、gemini-3.1-flash-lite-image | Gemini Image | 以比例（10 種）＋像素等級（1K／2K／4K，依型號）控制輸出 |
 
+**NenAI Spicy 的提示優化**
+
+Spicy 分頁的「進階參數」有一個 **提示優化** 開關。開啟後按生成，會先把提示詞交給
+`grok-4.6` 改寫成結構完整的生成提示（影片著重運鏡、圖片著重構圖，並維持原本的語言），
+**改寫結果顯示在提示詞下方、可直接編輯**，按「用這個生成」才真的送去生成。
+
+這一步是刻意設計成兩段式而不是自動套用：改寫本身會花錢，生成更貴，先讓使用者過目才不會
+連續花兩次錢卻拿到不想要的東西。改寫失敗（上游錯誤、逾時、回空字串）不會擋住生成——
+會提示一聲並保留原本的提示詞，使用者可以直接再送一次。換臉模型沒有提示詞，會跳過這一步。
+
 **圖像編輯（I2I）**
 
 上表中千問全系、萬相 2.6／2.7、MAI 全系、GPT Image 全系、Seedream 兩型、Gemini Image 全系皆同時支援圖像編輯；參考圖張數上限依模型不同（1～9 張），UI 依模型自動限制。

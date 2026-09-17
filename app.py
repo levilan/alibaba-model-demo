@@ -2863,6 +2863,75 @@ _EDIT_MAX_REF = {m["id"]: m["max_ref"] for m in MODELS["image"]
 # 原本的 120 秒不夠用
 _IMAGE_TIMEOUT = 300.0
 
+# ─── API: Prompt Optimize（NenAI Spicy 分頁的「提示優化」）────────────
+# 使用者把提示詞丟給一顆文字模型改寫成更完整的生成提示，改寫結果**會先顯示給使用者
+# 過目、可編輯**，確認後才送去生成模型——不是自動套用。理由：改寫是會花錢的一步，
+# 而生成更貴，讓使用者先看過才不會「花了兩次錢卻生成到不想要的東西」。
+_PROMPT_OPTIMIZER_MODEL = "grok-4.6"
+# 上游對 grok-4.6 接受 minimal/low/medium/high/xhigh（none 被拒，見 MODELS 註解）。
+# 改寫是輕任務，用 minimal 省時間與費用。
+_PROMPT_OPTIMIZER_EFFORT = "minimal"
+_PROMPT_OPTIMIZER_TIMEOUT = 120.0
+
+_PROMPT_OPTIMIZE_SYSTEM = {
+    "video": (
+        "You rewrite a user's short idea into a single, well-structured prompt for an "
+        "AI video generation model. Describe the subject, what it does, the setting, "
+        "camera movement, lighting and overall style, in that order, as flowing prose. "
+        "Keep every element the user asked for and do not introduce a different subject "
+        "or a different action. Write in the same language as the user's input. "
+        "Reply with the rewritten prompt only - no preamble, no explanation, no quotes, "
+        "no bullet points, no markdown."
+    ),
+    "image": (
+        "You rewrite a user's short idea into a single, well-structured prompt for an "
+        "AI image generation model. Describe the subject, composition and framing, "
+        "setting, lighting and overall style, in that order, as flowing prose. "
+        "Keep every element the user asked for and do not introduce a different subject. "
+        "Write in the same language as the user's input. "
+        "Reply with the rewritten prompt only - no preamble, no explanation, no quotes, "
+        "no bullet points, no markdown."
+    ),
+}
+
+
+class PromptOptimizeRequest(BaseModel):
+    prompt: str = ""
+    kind: str = "video"          # video / image，決定改寫的著重點（運鏡 vs 構圖）
+
+
+@app.post("/api/prompt/optimize")
+async def prompt_optimize(request: Request, data: PromptOptimizeRequest,
+                          api_key: str = Depends(get_api_key)):
+    prompt = (data.prompt or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+    # 統計中介層看的是 request.state.model：記成優化用的那顆，才不會把這筆算到生成模型頭上
+    request.state.model = _PROMPT_OPTIMIZER_MODEL
+    system = _PROMPT_OPTIMIZE_SYSTEM.get(data.kind, _PROMPT_OPTIMIZE_SYSTEM["video"])
+    try:
+        client = AsyncOpenAI(api_key=api_key, base_url=BASE_URL_COMPATIBLE,
+                             timeout=_PROMPT_OPTIMIZER_TIMEOUT)
+        resp = await client.chat.completions.create(
+            model=_PROMPT_OPTIMIZER_MODEL,
+            messages=[{"role": "system", "content": system},
+                      {"role": "user", "content": prompt}],
+            reasoning_effort=_PROMPT_OPTIMIZER_EFFORT,
+        )
+    except Exception as e:
+        # 優化失敗不能擋住生成——前端會保留原本的提示詞讓使用者照樣送出
+        raise HTTPException(status_code=502, detail=f"提示優化失敗：{e}")
+    message = resp.choices[0].message if resp.choices else None
+    optimized = ((message.content if message else "") or "").strip()
+    if not optimized:
+        raise HTTPException(status_code=502, detail="提示優化沒有回傳內容，請直接使用原本的提示詞")
+    out: Dict[str, Any] = {"optimized": optimized, "original": prompt,
+                           "model": _PROMPT_OPTIMIZER_MODEL}
+    if resp.usage:
+        out["usage"] = _openai_usage(resp.usage)
+    return out
+
+
 # ─── API: Image Generate (T2I) ────────────────────────────────────
 class ImageGenerateRequest(BaseModel):
     model: str = "z-image-turbo"

@@ -4005,7 +4005,64 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbo
 
 // ── MuleAI Generation ───────────────────────────────────────────
 
-async function sendMuleAIVideo() {
+// 「提示優化」：按下生成後先把提示詞交給文字模型改寫，**改寫結果顯示出來讓使用者
+// 過目與修改，按「用這個生成」才真的開始生成**（不是自動套用）。理由見 app.py 的
+// /api/prompt/optimize 註解。優化失敗不擋生成——提示一聲，使用者可以直接再按一次送出。
+// skipOptimize=true 是「使用者已經確認過這段提示詞」的那一次呼叫，避免無限遞迴。
+async function optimizeMuleaiPrompt() {
+    const prompt = document.getElementById('muleaiVidPrompt').value.trim();
+    if (!prompt) { toast('請先輸入 Prompt', 'error'); return false; }
+    const model = document.getElementById('muleaiModel').value || '';
+    const kind  = _isMuleaiImageModel(model) ? 'image' : 'video';
+    const btn = document.getElementById('muleaiVidSendBtn');
+    const label = btn.innerHTML;
+    btn.disabled = true; btn.textContent = '優化中…';
+    try {
+        const r = await fetch('/api/prompt/optimize', {
+            method: 'POST',
+            headers: authHeader(),
+            body: JSON.stringify({ prompt, kind }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || '優化失敗');
+        document.getElementById('muleaiOptimizedPrompt').value = d.optimized;
+        document.getElementById('muleaiOptimizeHint').textContent =
+            d.usage ? `${d.model}，本次 ${(d.usage.prompt_tokens || 0) + (d.usage.completion_tokens || 0)} tokens` : (d.model || '');
+        document.getElementById('muleaiOptimizePanel').style.display = '';
+        document.getElementById('muleaiOptimizedPrompt').focus();
+        return true;
+    } catch (e) {
+        toast(`提示優化失敗：${e.message}。可直接用原本的提示詞再送一次`, 'error');
+        return false;
+    } finally {
+        btn.disabled = false; btn.innerHTML = label;
+    }
+}
+
+function useOptimizedMuleaiPrompt() {
+    const edited = document.getElementById('muleaiOptimizedPrompt').value.trim();
+    if (!edited) { toast('優化後的提示詞是空的', 'error'); return; }
+    document.getElementById('muleaiVidPrompt').value = edited;
+    document.getElementById('muleaiOptimizePanel').style.display = 'none';
+    sendMuleAIVideo(true);
+}
+
+function cancelOptimizedMuleaiPrompt() {
+    document.getElementById('muleaiOptimizePanel').style.display = 'none';
+}
+
+// 圖片類的 Spicy 模型（改寫著重構圖而不是運鏡）。**優先讀 MODELS 的 type**，
+// 之後新增的模型只要標了 type 就自動分對邊；但目前 MODELS["muleai"] 只有 w3.0 那批
+// 有 type（其餘是 None），所以沒有 type 時退回這個分頁既有的 id 判斷方式
+// （sendMuleAIVideo 裡的 isZImage／isImgEdit 也是這樣分的，保持一致）。
+// 分錯的後果只是改寫時著重點不對（拿到運鏡描述），不會讓生成失敗。
+function _isMuleaiImageModel(modelId) {
+    const t = _muleaiMeta(modelId).type || '';
+    if (t) return t === 't2i' || t === 'i2i' || t === 'image';
+    return modelId.includes('z-image') || modelId === 'qwen-image-edit-spicy';
+}
+
+async function sendMuleAIVideo(skipOptimize = false) {
     const model      = document.getElementById('muleaiModel').value || 'wan2.7-i2v-spicy';
     const isZImage   = model.includes('z-image');
     const isImgEdit  = model === 'qwen-image-edit-spicy';
@@ -4014,6 +4071,12 @@ async function sendMuleAIVideo() {
 
     const prompt    = document.getElementById('muleaiVidPrompt').value.trim();
     if (!prompt && !isFaceSwap) { toast('請輸入 Prompt', 'error'); return; }
+
+    // 換臉沒有提示詞可優化，直接跳過
+    if (!skipOptimize && !isFaceSwap && document.getElementById('muleaiPromptOptimize')?.checked) {
+        await optimizeMuleaiPrompt();
+        return;
+    }
 
     const negPrompt  = document.getElementById('muleaiVidNegPrompt').value.trim();
     const resolution = document.getElementById('muleaiVidResolution').value;

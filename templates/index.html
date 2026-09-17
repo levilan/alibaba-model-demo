@@ -892,6 +892,11 @@
                     <label>Prompt Extend</label>
                     <label class="toggle"><input type="checkbox" id="muleaiVidPromptExtend" checked><span class="toggle-slider"></span></label>
                 </div>
+                <div class="toggle-row" id="muleaiOptimizeGroup" style="margin-top:8px"
+                     data-tip="開啟後按生成會先把提示詞改寫得更完整，改寫結果會顯示出來讓你過目與修改，確認後才開始生成">
+                    <label>提示優化</label>
+                    <label class="toggle"><input type="checkbox" id="muleaiPromptOptimize"><span class="toggle-slider"></span></label>
+                </div>
                 <div class="form-group" style="margin-top:10px;">
                     <label class="form-label">Seed <span class="param-hint">（留空 = 隨機）</span></label>
                     <input type="number" id="muleaiVidSeed" class="number-input" min="0" max="2147483647" placeholder="留空隨機">
@@ -919,6 +924,17 @@
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
                             生成影片
                         </button>
+                    </div>
+                </div>
+                <div id="muleaiOptimizePanel" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                        <label class="form-label" style="margin:0">優化後的提示詞（可修改）</label>
+                        <span class="param-hint" id="muleaiOptimizeHint"></span>
+                    </div>
+                    <textarea id="muleaiOptimizedPrompt" class="textarea-input" rows="4"></textarea>
+                    <div style="display:flex;gap:8px;margin-top:8px">
+                        <button class="btn btn-primary btn-sm" onclick="useOptimizedMuleaiPrompt()">用這個生成</button>
+                        <button class="btn btn-ghost btn-sm" onclick="cancelOptimizedMuleaiPrompt()">取消</button>
                     </div>
                 </div>
                 <div class="chat-actions-row" style="padding-top:8px;">

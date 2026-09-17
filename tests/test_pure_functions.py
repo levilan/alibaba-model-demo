@@ -920,3 +920,12 @@ def test_gemma_entry_and_deploy_gate():
     assert m["vision"] is True, "64x64 純色 PNG data URI，紅答 Red／藍答 Blue（答案跟著圖變）"
     assert "gemma-4-26b-a4b-it-maas" not in app._NO_ENABLE_THINKING_MODELS
     assert "gemma-4-26b-a4b-it-maas" in app._DEPLOY_GATED_MODELS
+
+
+def test_prompt_optimizer_config():
+    """提示優化（NenAI Spicy 分頁）：改寫用的模型與強度要是 MODELS 裡真的存在且合法的值，
+    否則上游會 400 而使用者只看得到一句通用錯誤。grok-4.6 的 reasoning_effort 不收 none
+    （實測 2026-09-02，見 MODELS 註解），所以這條同時擋住「照抄別顆的值域」。"""
+    m = {x["id"]: x for x in app.MODELS["text"]}[app._PROMPT_OPTIMIZER_MODEL]
+    assert app._PROMPT_OPTIMIZER_EFFORT in m["reasoning_efforts"]
+    assert set(app._PROMPT_OPTIMIZE_SYSTEM) == {"video", "image"}
