@@ -1353,19 +1353,19 @@ MODELS = {
         #   參考圖    最多 10 張
         # ⚠️ smart_duration（-1）閘道只預扣 1 秒押金、事後拿不到成片秒數，
         #    所以 UI 不顯示這個選項的預估金額。
-        {"id": "w3.0-video-spicy",            "name": "Spicy 影片 3.0",           "group": "影片生成",
+        {"id": "w3.0-video-spicy",            "name": "Wan 3.0 Spicy",           "group": "影片生成",
          "desc": "文字或首幀圖生影片，最長 30 秒", "type": "video",
          "resolutions": ["480p", "720p", "1080p"], "ratios": ["adaptive", "16:9", "4:3", "1:1", "3:4", "9:16"],
          "min_dur": 2, "max_dur": 30, "smart_duration": True, "audio": True, "image_optional": True},
-        {"id": "w3.0-video-pro-spicy",        "name": "Spicy 影片 3.0 Pro",       "group": "影片生成",
+        {"id": "w3.0-video-pro-spicy",        "name": "Wan 3.0 Pro Spicy",       "group": "影片生成",
          "desc": "高解析度檔次，最長 30 秒", "type": "video",
          "resolutions": ["1080p", "2k", "4k"], "ratios": ["adaptive", "16:9", "4:3", "1:1", "3:4", "9:16"],
          "min_dur": 2, "max_dur": 30, "smart_duration": True, "audio": True, "image_optional": True},
-        {"id": "w3.0-video-prime-spicy",      "name": "Spicy 影片 3.0 Prime",     "group": "影片生成",
+        {"id": "w3.0-video-prime-spicy",      "name": "Wan 3.0 Prime Spicy",     "group": "影片生成",
          "desc": "高速版，最長 30 秒", "type": "video",
          "resolutions": ["480p", "720p", "1080p"], "ratios": ["adaptive", "16:9", "4:3", "1:1", "3:4", "9:16"],
          "min_dur": 2, "max_dur": 30, "smart_duration": True, "audio": True, "image_optional": True},
-        {"id": "w3.0-video-prime-pro-spicy",  "name": "Spicy 影片 3.0 Prime Pro", "group": "影片生成",
+        {"id": "w3.0-video-prime-pro-spicy",  "name": "Wan 3.0 Prime Pro Spicy", "group": "影片生成",
          "desc": "高速版高解析度檔次，最長 30 秒", "type": "video",
          "resolutions": ["1080p", "2k", "4k"], "ratios": ["adaptive", "16:9", "4:3", "1:1", "3:4", "9:16"],
          "min_dur": 2, "max_dur": 30, "smart_duration": True, "audio": True, "image_optional": True},
