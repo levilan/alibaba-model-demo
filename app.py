@@ -1651,7 +1651,8 @@ async def get_models(api_key: str = Depends(get_api_key)):
     # 前端就不必寫死型號（換模型只改 _PROMPT_OPTIMIZER_MODEL 一處）
     _opt = next((m for m in MODELS["text"] if m["id"] == _PROMPT_OPTIMIZER_MODEL), None)
     out["prompt_optimizer"] = {"id": _PROMPT_OPTIMIZER_MODEL,
-                               "name": (_opt or {}).get("name") or _PROMPT_OPTIMIZER_MODEL}
+                               "name": (_opt or {}).get("name") or _PROMPT_OPTIMIZER_MODEL,
+                               "vision": _PROMPT_OPTIMIZER_VISION}
     return out
 
 
@@ -2880,6 +2881,11 @@ _PROMPT_OPTIMIZER_MODEL = "grok-4.3"
 # 這條配對由 tests/test_pure_functions.py 的 test_prompt_optimizer_config 守住。
 _PROMPT_OPTIMIZER_EFFORT = "minimal"
 _PROMPT_OPTIMIZER_TIMEOUT = 120.0
+# 改寫模型看不看得到圖（由 MODELS 推導）。看得到就把使用者上傳的首幀／尾幀一起送進去，
+# i2v 與首尾幀的「維持與來源一致」才能寫成真正對得上那張圖的細節。
+# 換成不支援看圖的模型時這裡會自動變 False，圖就不送、規則自動退回「你看不到來源圖」。
+_PROMPT_OPTIMIZER_VISION = next(
+    (bool(m.get("vision")) for m in MODELS["text"] if m["id"] == _PROMPT_OPTIMIZER_MODEL), False)
 
 _PROMPT_OPTIMIZE_SYSTEM = {
     "video": (
@@ -2981,7 +2987,8 @@ _SPICY_IMAGE_MODELS = {"z-image-spicy", "qwen-image-edit-spicy", "face-swap"}
 _SPICY_VIDEO_MODELS = {m["id"] for m in MODELS["muleai"] if m["id"] not in _SPICY_IMAGE_MODELS}
 
 
-def _spicy_template_system(mode: str, duration: Optional[int], aspect_ratio: Optional[str]) -> str:
+def _spicy_template_system(mode: str, duration: Optional[int], aspect_ratio: Optional[str],
+                           has_images: bool = False) -> str:
     """把模板包成 system prompt。規則刻意寫得具體，因為模板一旦沒填滿（留下 [xxx]）
     送進生成模型就是一堆雜訊。"""
     rules = [
@@ -3008,14 +3015,30 @@ def _spicy_template_system(mode: str, duration: Optional[int], aspect_ratio: Opt
                      "\"[DURATION] seconds,\" words from the opening line and keep the rest "
                      "of that line exactly as written.")
     if mode in ("i2v", "keyframe"):
-        # 改寫模型看不到使用者上傳的圖，keyframe 的 Persistent anchors 又要求列出身分／
-        # 服裝／背景——不擋的話它會自己編一套，跟實際來源圖矛盾（實測 2026-09-18）。
-        rules.append("- You cannot see the reference image(s). Describe anchors and continuity "
-                     "in terms that must simply stay consistent with whatever the source shows "
-                     "(for example \"the subject's hairstyle, clothing and the room behind her "
-                     "stay exactly as in the source\"). Never invent specific identity, "
-                     "wardrobe, prop or background details, because they would contradict the "
-                     "actual source frame.")
+        if has_images:
+            # 看得到圖：anchors 就該寫成那張圖真的有的東西，這是整個模板最吃來源資訊的一段
+            # 實測（2026-09-18，兩張特徵明確的測試圖）：這段就足以讓它把來源細節寫進
+            # anchors 與 continuity lock（背景色、地面、衣服、旁邊的物件、光線方向都點名）。
+            # ⚠️ 我一度以為要再加一句「不准寫通用句」，那是誤判——當時本機服務沒綁到 port、
+            # 測到的是還沒有送圖功能的舊版（見 update.md 的教訓）。加強版與這版效果相同，
+            # 所以維持這個較短的版本。
+            rules.append("- The reference frame(s) are attached as images. Read them and write "
+                         "the anchors and continuity lock from what you can actually see - "
+                         "hair, face, wardrobe, jewellery, props, surfaces, background and "
+                         "light direction - so the wording matches the real source instead of "
+                         "a generic description. Do not describe anything the images do not show.")
+            if mode == "keyframe":
+                rules.append("- The first attached image is the starting frame and the second "
+                             "is the ending frame; the motion must run from the first to the second.")
+        else:
+            # 看不到圖，keyframe 的 Persistent anchors 又要求列出身分／服裝／背景——
+            # 不擋的話它會自己編一套，跟實際來源圖矛盾（實測 2026-09-18）。
+            rules.append("- You cannot see the reference image(s). Describe anchors and continuity "
+                         "in terms that must simply stay consistent with whatever the source shows "
+                         "(for example \"the subject's hairstyle, clothing and the room behind her "
+                         "stay exactly as in the source\"). Never invent specific identity, "
+                         "wardrobe, prop or background details, because they would contradict the "
+                         "actual source frame.")
     if aspect_ratio and aspect_ratio != "adaptive":
         rules.append(f"- The aspect ratio is {aspect_ratio}; use that for [ASPECT RATIO].")
     elif aspect_ratio == "adaptive":
@@ -3030,6 +3053,7 @@ class PromptOptimizeRequest(BaseModel):
     mode: str = ""               # t2v / i2v / keyframe / reference / image（由前端依實際素材判斷）
     duration: Optional[int] = None       # 秒；智能時長時為 None
     aspect_ratio: Optional[str] = None   # 例如 16:9；adaptive 代表自動
+    images: List[str] = []               # 首幀／尾幀的 data URI（前端已縮到長邊 2048）
 
 
 @app.post("/api/prompt/optimize")
@@ -3040,18 +3064,26 @@ async def prompt_optimize(request: Request, data: PromptOptimizeRequest,
         raise HTTPException(status_code=400, detail="Prompt is required")
     # 統計中介層看的是 request.state.model：記成優化用的那顆，才不會把這筆算到生成模型頭上
     request.state.model = _PROMPT_OPTIMIZER_MODEL
+    # 只有改寫模型看得到圖時才送圖；不支援就當作沒有，規則會自動退回「你看不到來源圖」
+    images = data.images if (_PROMPT_OPTIMIZER_VISION and data.images) else []
     # Spicy 影片模型走模板；其餘（圖片、換臉、參考素材模式）沿用通用改寫
     if data.model in _SPICY_VIDEO_MODELS and data.mode in _SPICY_VIDEO_TEMPLATES:
-        system = _spicy_template_system(data.mode, data.duration, data.aspect_ratio)
+        system = _spicy_template_system(data.mode, data.duration, data.aspect_ratio, bool(images))
     else:
         system = _PROMPT_OPTIMIZE_SYSTEM.get(data.kind, _PROMPT_OPTIMIZE_SYSTEM["video"])
+        images = []   # 通用改寫路徑沒有「看來源圖」的語意，不送圖免得多花錢
+
+    user_content: Any = prompt
+    if images:
+        user_content = [{"type": "image_url", "image_url": {"url": u}} for u in images]
+        user_content.append({"type": "text", "text": prompt})
     try:
         client = AsyncOpenAI(api_key=api_key, base_url=BASE_URL_COMPATIBLE,
                              timeout=_PROMPT_OPTIMIZER_TIMEOUT)
         resp = await client.chat.completions.create(
             model=_PROMPT_OPTIMIZER_MODEL,
             messages=[{"role": "system", "content": system},
-                      {"role": "user", "content": prompt}],
+                      {"role": "user", "content": user_content}],
             reasoning_effort=_PROMPT_OPTIMIZER_EFFORT,
         )
     except Exception as e:

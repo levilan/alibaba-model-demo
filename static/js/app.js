@@ -4046,12 +4046,27 @@ async function optimizeMuleaiPrompt() {
     const ctx   = _muleaiOptimizeContext(model);
     const btn = document.getElementById('muleaiVidSendBtn');
     const label = btn.innerHTML;
+    // 先鎖按鈕再讀圖——縮圖是非同步的，不先鎖的話使用者可以在讀圖期間再按一次
     btn.disabled = true; btn.textContent = '優化中…';
     try {
+        // 改寫模型看得到圖時，把首幀（首尾幀模式再加尾幀）一起送進去，anchors 才寫得出
+        // 真正對得上來源圖的細節。沿用文字分頁那支縮圖函式（長邊 2048，理由見它的註解）。
+        const images = [];
+        if (models.prompt_optimizer?.vision && (ctx.mode === 'i2v' || ctx.mode === 'keyframe')) {
+            const files = [document.getElementById('muleaiFirstFrameInput')?.files[0]];
+            if (ctx.mode === 'keyframe') files.push(document.getElementById('muleaiLastFrameInput')?.files[0]);
+            for (const f of files.filter(Boolean)) {
+                const r = await _downscaleImage(f);
+                // 太小的圖上游會回 400（實測 8x8 必敗），優化整個失敗；生成那條路徑本來就
+                // 會把小於 240 的圖放大，所以這裡直接不送圖、讓改寫退回「看不到來源圖」的
+                // 寫法，而不是讓使用者拿到一句失敗訊息
+                if (r && (!r.w || Math.min(r.w, r.h) >= 240)) images.push(r.url);
+            }
+        }
         const r = await fetch('/api/prompt/optimize', {
             method: 'POST',
             headers: authHeader(),
-            body: JSON.stringify({ prompt, kind, model, ...ctx }),
+            body: JSON.stringify({ prompt, kind, model, ...ctx, images }),
         });
         const d = await r.json();
         if (!r.ok) throw new Error(d.detail || '優化失敗');

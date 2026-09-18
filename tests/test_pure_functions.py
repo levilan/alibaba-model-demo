@@ -957,3 +957,18 @@ def test_spicy_template_system_fills_duration_and_ratio():
     for mode in ("i2v", "keyframe"):
         assert "cannot see the reference image" in app._spicy_template_system(mode, 5, None)
     assert "cannot see the reference image" not in app._spicy_template_system("t2v", 5, None)
+
+
+def test_spicy_template_vision_rules():
+    """改寫模型看得到圖時（grok-4.3 有 vision），i2v／首尾幀要改成「照你看到的寫」；
+    看不到圖才用「別編造、寫成與來源一致」。換成不支援看圖的模型時 _PROMPT_OPTIMIZER_VISION
+    會變 False，前後端都會自動停止送圖。"""
+    assert app._PROMPT_OPTIMIZER_VISION is True, "grok-4.3 支援看圖；換模型時這條會提醒重新確認"
+    seen = app._spicy_template_system("keyframe", 8, None, has_images=True)
+    assert "attached as images" in seen and "cannot see the reference image" not in seen
+    assert "first attached image is the starting frame" in seen, "首尾幀要講清楚哪張是哪張"
+    blind = app._spicy_template_system("keyframe", 8, None, has_images=False)
+    assert "cannot see the reference image" in blind
+    # t2v 沒有來源圖可言，兩種規則都不該出現
+    t2v = app._spicy_template_system("t2v", 8, "16:9", has_images=True)
+    assert "attached as images" not in t2v and "cannot see" not in t2v
