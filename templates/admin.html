@@ -127,6 +127,20 @@ h2 .hint{font-family:var(--mono);font-size:.6875rem;letter-spacing:.04em;color:v
   background:var(--ground);border:1px solid var(--line);border-radius:8px;padding:.42rem .9rem}
 .op-more button:hover{border-color:var(--flash);color:var(--flash-ink)}
 .op-more button[disabled]{opacity:.4;cursor:default}
+.tpl-box{display:grid;gap:1.25rem}
+.tpl{border:1px solid var(--line);border-radius:var(--r);padding:.9rem 1rem}
+.tpl-head{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;margin-bottom:.5rem}
+.tpl-head b{font-weight:400;color:var(--ink)}
+.tpl-head .tag{font-family:var(--mono);font-size:.7rem;color:var(--rain)}
+.tpl-head .tag.on{color:var(--flash)}
+.tpl textarea{width:100%;box-sizing:border-box;min-height:11rem;resize:vertical;
+  font-family:var(--mono);font-size:.75rem;line-height:1.5;color:var(--body);
+  background:var(--ground-2);border:1px solid var(--line);border-radius:var(--r);padding:.6rem .7rem}
+.tpl-acts{display:flex;gap:.6rem;align-items:center;margin-top:.5rem;flex-wrap:wrap}
+.tpl-acts button{font-family:var(--mono);font-size:.75rem;padding:.3rem .8rem;
+  border:1px solid var(--line);border-radius:var(--r);background:none;color:var(--body);cursor:pointer}
+.tpl-acts button:hover{background:var(--ground-2)}
+.tpl-acts .msg{font-family:var(--mono);font-size:.72rem;color:var(--rain)}
 footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
   font-family:var(--mono);font-size:.75rem;color:var(--rain)}
 </style>
@@ -187,6 +201,9 @@ footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
       <button type="button" id="more" disabled>顯示更多</button>
     </div>
   </div>
+
+  <h2>提示優化模板<span class="hint">NenAI Spicy 分頁 · 存檔後約一分鐘內全面生效</span></h2>
+  <div id="tplBox" class="tpl-box">讀取中…</div>
 
   <footer>時間一律台北時間 · uid 是金鑰雜湊，不可反推 · 勾「來源 IP」才會去查平台日誌，統計檔本身不存</footer>
 </div>
@@ -370,6 +387,72 @@ footer{margin-top:2.5rem;padding-top:1rem;border-top:1px solid var(--line);
   } catch (e) {
     $('summary').innerHTML = `<b style="color:var(--ember)">讀取失敗</b> ${esc(e.message)}`;
   }
+})();
+</script>
+
+<script>
+// 提示優化模板編輯。與上面的統計邏輯完全獨立：載入失敗只影響這一區。
+(async () => {
+  const box = document.getElementById('tplBox');
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  let data;
+  try {
+    const r = await fetch('/admin/api/templates');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    data = await r.json();
+  } catch (e) {
+    box.textContent = `讀取模板失敗：${e.message}`;
+    return;
+  }
+  box.innerHTML = data.modes.map(m => `
+    <div class="tpl" data-mode="${m}">
+      <div class="tpl-head">
+        <b>${esc(data.labels[m] || m)}</b>
+        <span class="tag">${m}</span>
+        <span class="tag ${data.modified[m] ? 'on' : ''}" data-role="state">${data.modified[m] ? '已改過' : '預設值'}</span>
+      </div>
+      <textarea spellcheck="false">${esc(data.current[m])}</textarea>
+      <div class="tpl-acts">
+        <button type="button" data-act="save">儲存</button>
+        <button type="button" data-act="reset">還原預設</button>
+        <span class="msg"></span>
+      </div>
+    </div>`).join('');
+
+  box.addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('button[data-act]');
+    if (!btn) return;
+    const card = btn.closest('.tpl');
+    const mode = card.dataset.mode;
+    const ta   = card.querySelector('textarea');
+    const msg  = card.querySelector('.msg');
+    const state = card.querySelector('[data-role="state"]');
+
+    if (btn.dataset.act === 'reset') {
+      // 只把編輯框填回預設內容，還沒存——按了儲存才真的生效，避免誤觸就清掉改動
+      ta.value = data.defaults[mode];
+      msg.textContent = '已填回預設內容，按儲存才會生效';
+      return;
+    }
+    btn.disabled = true; msg.textContent = '儲存中…';
+    try {
+      const r = await fetch('/admin/api/templates', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templates: { [mode]: ta.value } }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+      const isDefault = ta.value.trim() === data.defaults[mode].trim();
+      state.textContent = isDefault ? '預設值' : '已改過';
+      state.classList.toggle('on', !isDefault);
+      msg.textContent = `已儲存（${d.storage === 'gcs' ? '雲端' : '本機檔'}）`;
+    } catch (e) {
+      msg.textContent = `儲存失敗：${e.message}`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
 })();
 </script>
 </body>

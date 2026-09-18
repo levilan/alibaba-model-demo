@@ -501,6 +501,65 @@ async def admin_home(request: Request, days: int = 7):
 # 把舊的移除」。同一份資料現在只有一種呈現；本機腳本 scripts/usage_stats.py 仍可自己產 HTML。
 
 
+# ── 提示優化模板：後台可編輯 ──────────────────────────────────────
+# 模板本身與儲存層都在 app.py（提示優化端點要用同一份），這裡只做「讀出來／存回去」
+# 與權限把關。app 模組沿用 _model_names 那套取法，不重新 import。
+_TEMPLATE_MODES = ("t2v", "i2v", "keyframe")
+_TEMPLATE_MAX = 8000
+
+
+def _app_mod():
+    import sys
+    return sys.modules.get("app") or sys.modules.get("__main__")
+
+
+@router.get("/api/templates")
+async def admin_api_templates(request: Request):
+    _require(request)
+    app_mod = _app_mod()
+    current = await asyncio.to_thread(app_mod.spicy_templates, True)
+    defaults = app_mod._SPICY_TEMPLATES_DEFAULT
+    return {
+        "modes": list(_TEMPLATE_MODES),
+        "labels": {"t2v": "文字生影片（沒放首幀圖）",
+                   "i2v": "圖生影片（放了首幀圖）",
+                   "keyframe": "首尾幀（首尾都放）"},
+        "current": {m: current.get(m, "") for m in _TEMPLATE_MODES},
+        "defaults": {m: defaults.get(m, "") for m in _TEMPLATE_MODES},
+        "modified": {m: current.get(m) != defaults.get(m) for m in _TEMPLATE_MODES},
+        "max_len": _TEMPLATE_MAX,
+    }
+
+
+@router.put("/api/templates")
+async def admin_api_templates_save(request: Request):
+    _require(request)
+    body = await request.json()
+    incoming = (body or {}).get("templates") or {}
+    if not isinstance(incoming, dict):
+        raise HTTPException(status_code=400, detail="templates 必須是物件")
+    app_mod = _app_mod()
+    defaults = app_mod._SPICY_TEMPLATES_DEFAULT
+    overrides: dict[str, str] = {}
+    for mode in _TEMPLATE_MODES:
+        if mode not in incoming:
+            continue
+        text = incoming[mode]
+        if not isinstance(text, str):
+            raise HTTPException(status_code=400, detail=f"{mode} 必須是字串")
+        text = text.strip()
+        if not text:
+            raise HTTPException(status_code=400, detail=f"{mode} 不能是空的；要還原請送預設內容")
+        if len(text) > _TEMPLATE_MAX:
+            raise HTTPException(status_code=400,
+                                detail=f"{mode} 超過 {_TEMPLATE_MAX} 字（目前 {len(text)}）")
+        # 與預設值相同就不必存覆寫，讓它自然跟著之後的預設值更新
+        if text != defaults.get(mode):
+            overrides[mode] = text
+    where = await asyncio.to_thread(app_mod.save_spicy_overrides, overrides)
+    return {"ok": True, "stored": sorted(overrides), "storage": where}
+
+
 @router.get("/api/stats")
 async def admin_api_stats(request: Request, days: int = 7, ip: str = ""):
     """給程式用的彙總：總筆數、成功率、每日、每模型、每使用者（uid）。"""

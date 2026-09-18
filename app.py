@@ -94,7 +94,8 @@ def _s3_put(data: bytes, key: str) -> Optional[str]:
 
 _gcs_client_cache = None
 
-def _gcs_put(data: bytes, key: str) -> Optional[str]:
+def _gcs_client():
+    """建好的 GCS client（沒設定憑證就回 None）。輸出檔上傳與設定檔讀寫共用同一個。"""
     global _gcs_client_cache
     bucket_name = os.environ.get("GCS_BUCKET_NAME", "")
     creds_json  = os.environ.get("GCS_CREDENTIALS_JSON", "")
@@ -102,20 +103,30 @@ def _gcs_put(data: bytes, key: str) -> Optional[str]:
     use_adc     = str(os.environ.get("GCS_USE_ADC", "false")).lower() in ("true", "1", "yes")
     if not bucket_name or not (creds_json or creds_path or use_adc):
         return None
+    from google.cloud import storage as gcs_storage
+    if _gcs_client_cache is None:
+        if creds_json:
+            from google.oauth2 import service_account
+            info = json.loads(creds_json)
+            credentials = service_account.Credentials.from_service_account_info(info)
+            _gcs_client_cache = gcs_storage.Client(credentials=credentials, project=info.get("project_id"))
+        else:
+            # creds_path（GOOGLE_APPLICATION_CREDENTIALS 金鑰檔）或 use_adc（純附加
+            # 服務帳戶）都讓 google-cloud-storage 自己走 google.auth.default() 解析身分
+            _gcs_client_cache = gcs_storage.Client()
+    return _gcs_client_cache
+
+
+def _gcs_put(data: bytes, key: str) -> Optional[str]:
+    bucket_name = os.environ.get("GCS_BUCKET_NAME", "")
+    creds_json  = os.environ.get("GCS_CREDENTIALS_JSON", "")
+    creds_path  = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
     try:
         from datetime import timedelta
-        from google.cloud import storage as gcs_storage
-        if _gcs_client_cache is None:
-            if creds_json:
-                from google.oauth2 import service_account
-                info = json.loads(creds_json)
-                credentials = service_account.Credentials.from_service_account_info(info)
-                _gcs_client_cache = gcs_storage.Client(credentials=credentials, project=info.get("project_id"))
-            else:
-                # creds_path（GOOGLE_APPLICATION_CREDENTIALS 金鑰檔）或 use_adc（純附加
-                # 服務帳戶）都讓 google-cloud-storage 自己走 google.auth.default() 解析身分
-                _gcs_client_cache = gcs_storage.Client()
-        blob = _gcs_client_cache.bucket(bucket_name).blob(key)
+        client = _gcs_client()
+        if client is None:
+            return None
+        blob = client.bucket(bucket_name).blob(key)
         blob.upload_from_string(data)
         if creds_json or creds_path:
             # 本地就有私鑰（服務帳戶金鑰內容／檔案），可以直接簽章
@@ -2916,7 +2927,7 @@ _PROMPT_OPTIMIZE_SYSTEM = {
 #   keyframe  首幀＋尾幀：要描述從第一張過渡到最後一張的路徑
 # reference（參考素材模式）沒有指定模板，沿用通用的影片寫法。
 # 模板照抄不動；花括號裡的 [佔位符] 由改寫模型填滿，實際的秒數與比例由前端送上來。
-_SPICY_VIDEO_TEMPLATES = {
+_SPICY_TEMPLATES_DEFAULT = {
     "t2v": """[DURATION] seconds, [ASPECT RATIO], [single continuous POV or third-person shot].
 
 Setting: [place, important foreground/background objects, surfaces, and light sources].
@@ -2981,6 +2992,73 @@ Audio:
 Continuity lock: identity, anatomy, wardrobe, background, lighting, and all visible attached body parts remain coherent from the first reference through the last.""",
 }
 
+# ── 模板的後台覆寫層 ─────────────────────────────────────────────
+# 模板要能在 /admin 改，所以真正生效的值＝「存起來的覆寫」蓋在上面那份預設值之上。
+# 存哪裡：優先 GCS（Cloud Run 是無狀態的，寫本機檔重啟就沒了），沒設定 GCS 才退回
+# 本機 outputs/ 下的檔案（開發用）。做法與 admin.py 的 uid 對照表同一套。
+# ⚠️ 快取是每個實例各自的，某個實例存檔只會清掉自己那份；多實例時其他實例最多
+# _SPICY_TEMPLATES_TTL 秒後才跟上。改模板不是高頻操作，這個延遲可以接受。
+_SPICY_TEMPLATES_KEY = os.environ.get("SPICY_TEMPLATES_KEY", "prompt-templates/spicy.json")
+_SPICY_TEMPLATES_FILE = Path(__file__).parent / "outputs" / "spicy-templates.json"
+_SPICY_TEMPLATES_TTL = 60.0
+_spicy_templates_cache: tuple[float, Optional[dict]] = (0.0, None)
+
+
+def _spicy_overrides_load() -> dict:
+    """讀出後台存的覆寫（沒有就回空 dict）。任何讀取失敗都當作「沒有覆寫」——
+    模板讀不到要退回預設值繼續服務，不能讓提示優化整個掛掉。"""
+    bucket_name = os.environ.get("GCS_BUCKET_NAME", "")
+    if bucket_name:
+        try:
+            client = _gcs_client()
+            if client is not None:
+                blob = client.bucket(bucket_name).blob(_SPICY_TEMPLATES_KEY)
+                if blob.exists():
+                    return json.loads(blob.download_as_text()) or {}
+        except Exception as e:
+            print(f"[templates] 讀取 GCS 覆寫失敗（{type(e).__name__}: {e}），改用預設模板")
+    if _SPICY_TEMPLATES_FILE.exists():
+        try:
+            return json.loads(_SPICY_TEMPLATES_FILE.read_text(encoding="utf-8")) or {}
+        except Exception as e:
+            print(f"[templates] 讀取本機覆寫失敗（{type(e).__name__}: {e}），改用預設模板")
+    return {}
+
+
+def spicy_templates(force: bool = False) -> Dict[str, str]:
+    """目前生效的三份模板。只有被覆寫的那幾個模式會被蓋掉，其餘維持預設。"""
+    global _spicy_templates_cache
+    now = time.time()
+    ts, cached = _spicy_templates_cache
+    if not force and cached is not None and now - ts < _SPICY_TEMPLATES_TTL:
+        return cached
+    out = dict(_SPICY_TEMPLATES_DEFAULT)
+    for mode, text in (_spicy_overrides_load() or {}).items():
+        if mode in out and isinstance(text, str) and text.strip():
+            out[mode] = text
+    _spicy_templates_cache = (now, out)
+    return out
+
+
+def save_spicy_overrides(overrides: Dict[str, str]) -> str:
+    """把覆寫寫回儲存層，回傳實際寫到哪裡（gcs／local）。寫完清掉本實例的快取。"""
+    global _spicy_templates_cache
+    payload = json.dumps(overrides, ensure_ascii=False, indent=1).encode("utf-8")
+    where = "local"
+    bucket_name = os.environ.get("GCS_BUCKET_NAME", "")
+    if bucket_name:
+        client = _gcs_client()
+        if client is not None:
+            client.bucket(bucket_name).blob(_SPICY_TEMPLATES_KEY).upload_from_string(
+                payload, content_type="application/json")
+            where = "gcs"
+    if where == "local":
+        _SPICY_TEMPLATES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _SPICY_TEMPLATES_FILE.write_bytes(payload)
+    _spicy_templates_cache = (0.0, None)
+    return where
+
+
 # 走模板的模型＝Spicy 分頁裡的影片模型。以 MODELS 推導（扣掉圖片與換臉那三顆），
 # 之後新增 Spicy 影片模型會自動納入，不必回來改這裡。
 _SPICY_IMAGE_MODELS = {"z-image-spicy", "qwen-image-edit-spicy", "face-swap"}
@@ -3043,7 +3121,7 @@ def _spicy_template_system(mode: str, duration: Optional[int], aspect_ratio: Opt
         rules.append(f"- The aspect ratio is {aspect_ratio}; use that for [ASPECT RATIO].")
     elif aspect_ratio == "adaptive":
         rules.append('- The aspect ratio is adaptive; write "adaptive aspect ratio" for [ASPECT RATIO].')
-    return "\n".join(rules) + "\n\nTemplate:\n" + _SPICY_VIDEO_TEMPLATES[mode]
+    return "\n".join(rules) + "\n\nTemplate:\n" + spicy_templates()[mode]
 
 
 class PromptOptimizeRequest(BaseModel):
@@ -3067,7 +3145,7 @@ async def prompt_optimize(request: Request, data: PromptOptimizeRequest,
     # 只有改寫模型看得到圖時才送圖；不支援就當作沒有，規則會自動退回「你看不到來源圖」
     images = data.images if (_PROMPT_OPTIMIZER_VISION and data.images) else []
     # Spicy 影片模型走模板；其餘（圖片、換臉、參考素材模式）沿用通用改寫
-    if data.model in _SPICY_VIDEO_MODELS and data.mode in _SPICY_VIDEO_TEMPLATES:
+    if data.model in _SPICY_VIDEO_MODELS and data.mode in _SPICY_TEMPLATES_DEFAULT:
         system = _spicy_template_system(data.mode, data.duration, data.aspect_ratio, bool(images))
     else:
         system = _PROMPT_OPTIMIZE_SYSTEM.get(data.kind, _PROMPT_OPTIMIZE_SYSTEM["video"])

@@ -65,8 +65,45 @@ def test_session_roundtrip_and_tamper(env):
 
 def test_routes_404_when_off(env):
     c = TestClient(app.app)
-    for path in ("/admin", "/admin/", "/admin/login", "/admin/api/rows", "/admin/api/stats", "/admin/callback?code=x&state=y"):
+    for path in ("/admin", "/admin/", "/admin/login", "/admin/api/rows", "/admin/api/stats",
+                 "/admin/api/templates", "/admin/callback?code=x&state=y"):
         assert c.get(path, follow_redirects=False).status_code == 404, path
+
+
+def test_templates_editing_requires_admin_and_validates(env, tmp_path, monkeypatch):
+    """提示優化模板可在後台編輯：沒登入一律擋掉；存空字串／超長要回 400；
+    與預設相同就不留覆寫（之後預設值更新才跟得上）。"""
+    monkeypatch.setattr(app, "_SPICY_TEMPLATES_FILE", tmp_path / "spicy.json")
+    monkeypatch.setattr(app, "_spicy_templates_cache", (0.0, None))
+    monkeypatch.delenv("GCS_BUCKET_NAME", raising=False)
+    env.setenv("ADMIN_USER", "ops"); env.setenv("ADMIN_PASS", "pw")
+    c = TestClient(app.app)
+    h = {"Authorization": "Basic " + base64.b64encode(b"ops:pw").decode()}
+
+    # 沒帶憑證一律擋下，不能因為是「只是設定」就放行
+    assert c.get("/admin/api/templates", follow_redirects=False).status_code == 401
+    assert c.put("/admin/api/templates", json={"templates": {"t2v": "x"}},
+                 follow_redirects=False).status_code == 401
+
+    r = c.get("/admin/api/templates", headers=h)
+    assert r.status_code == 200
+    d = r.json()
+    assert set(d["current"]) == {"t2v", "i2v", "keyframe"}
+    assert d["modified"] == {"t2v": False, "i2v": False, "keyframe": False}
+
+    assert c.put("/admin/api/templates", headers=h, json={"templates": {"t2v": "   "}}).status_code == 400
+    assert c.put("/admin/api/templates", headers=h,
+                 json={"templates": {"t2v": "x" * 9000}}).status_code == 400
+
+    r = c.put("/admin/api/templates", headers=h, json={"templates": {"i2v": "CUSTOM"}})
+    assert r.status_code == 200 and r.json()["stored"] == ["i2v"]
+    assert app.spicy_templates(force=True)["i2v"] == "CUSTOM"
+
+    # 存回與預設相同的內容＝取消覆寫
+    same = app._SPICY_TEMPLATES_DEFAULT["i2v"]
+    r = c.put("/admin/api/templates", headers=h, json={"templates": {"i2v": same}})
+    assert r.status_code == 200 and r.json()["stored"] == []
+    assert app.spicy_templates(force=True) == app._SPICY_TEMPLATES_DEFAULT
 
 
 def test_basic_mode_challenges_then_serves(env):

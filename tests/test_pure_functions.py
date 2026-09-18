@@ -934,7 +934,7 @@ def test_prompt_optimizer_config():
 def test_spicy_prompt_templates():
     """Spicy 影片模型的提示優化走模板（Levi 2026-09-18 提供）。三個模式各一份，
     走模板的模型集合由 MODELS 推導（扣掉圖片與換臉那三顆），新增 Spicy 影片模型會自動納入。"""
-    assert set(app._SPICY_VIDEO_TEMPLATES) == {"t2v", "i2v", "keyframe"}
+    assert set(app._SPICY_TEMPLATES_DEFAULT) == {"t2v", "i2v", "keyframe"}
     assert "w3.0-video-spicy" in app._SPICY_VIDEO_MODELS
     assert "wan2.7-i2v-spicy" in app._SPICY_VIDEO_MODELS
     for bad in ("z-image-spicy", "qwen-image-edit-spicy", "face-swap"):
@@ -950,7 +950,7 @@ def test_spicy_template_system_fills_duration_and_ratio():
     只說 drop the duration clause，模型會把整行連同「single continuous shot...」一起刪除。"""
     s = app._spicy_template_system("t2v", 8, "16:9")
     assert "8 seconds" in s and "16:9" in s
-    assert app._SPICY_VIDEO_TEMPLATES["t2v"] in s
+    assert app.spicy_templates()["t2v"] in s
     smart = app._spicy_template_system("t2v", None, "adaptive")
     assert "keep the rest" in smart and "adaptive aspect ratio" in smart
     # 看不到來源圖的兩個模式要擋掉「自己編造身分／服裝／背景」
@@ -972,3 +972,29 @@ def test_spicy_template_vision_rules():
     # t2v 沒有來源圖可言，兩種規則都不該出現
     t2v = app._spicy_template_system("t2v", 8, "16:9", has_images=True)
     assert "attached as images" not in t2v and "cannot see" not in t2v
+
+
+def test_spicy_templates_override_layer(tmp_path, monkeypatch):
+    """模板可以在後台改：覆寫只蓋掉被改的那個模式，其餘維持預設；沒有覆寫時等於預設。
+    讀不到覆寫（檔案壞掉、GCS 掛掉）必須退回預設繼續服務，不能讓提示優化整個失敗。"""
+    monkeypatch.setattr(app, "_SPICY_TEMPLATES_FILE", tmp_path / "spicy.json")
+    monkeypatch.setattr(app, "_spicy_templates_cache", (0.0, None))
+    monkeypatch.delenv("GCS_BUCKET_NAME", raising=False)
+
+    assert app.spicy_templates(force=True) == app._SPICY_TEMPLATES_DEFAULT
+
+    where = app.save_spicy_overrides({"i2v": "MY OWN I2V TEMPLATE"})
+    assert where == "local"
+    eff = app.spicy_templates(force=True)
+    assert eff["i2v"] == "MY OWN I2V TEMPLATE"
+    assert eff["t2v"] == app._SPICY_TEMPLATES_DEFAULT["t2v"], "沒改的模式要維持預設"
+    # 生效的模板要真的被用進 system prompt
+    assert "MY OWN I2V TEMPLATE" in app._spicy_template_system("i2v", 5, None)
+
+    # 壞掉的覆寫檔 → 退回預設，不拋例外
+    (tmp_path / "spicy.json").write_text("{ not json", encoding="utf-8")
+    assert app.spicy_templates(force=True) == app._SPICY_TEMPLATES_DEFAULT
+
+    # 空字串與不認識的模式都不該蓋掉預設
+    (tmp_path / "spicy.json").write_text('{"t2v": "   ", "bogus": "x"}', encoding="utf-8")
+    assert app.spicy_templates(force=True) == app._SPICY_TEMPLATES_DEFAULT

@@ -13,6 +13,8 @@ outputs/audio/
 # 系統公告的寫入前備份（scripts/update_announcements.py 產生，不進版控）
 outputs/announcement-backups/
 outputs/stats/
+outputs/screenshots/
+outputs/spicy-templates.json   # 後台改過的提示優化模板（本機開發用；部署環境存在 GCS）
 static/uploads/
 
 # OS
