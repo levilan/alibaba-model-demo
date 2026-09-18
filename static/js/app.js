@@ -4070,6 +4070,11 @@ async function optimizeMuleaiPrompt() {
         });
         const d = await r.json();
         if (!r.ok) throw new Error(d.detail || '優化失敗');
+        // 改寫模型有可能原封不動把輸入吐回來（例如它不願意改寫那段內容）。
+        // 不講的話畫面看起來跟成功一模一樣，使用者會以為模板沒生效是程式壞了。
+        if ((d.optimized || '').trim() === (d.original || '').trim()) {
+            toast('優化模型沒有變更你的提示詞，以下與原文相同', 'error');
+        }
         document.getElementById('muleaiOptimizedPrompt').value = d.optimized;
         document.getElementById('muleaiOptimizeHint').textContent =
             d.usage ? `${d.model}，本次 ${(d.usage.prompt_tokens || 0) + (d.usage.completion_tokens || 0)} tokens` : (d.model || '');
