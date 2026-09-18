@@ -929,3 +929,31 @@ def test_prompt_optimizer_config():
     m = {x["id"]: x for x in app.MODELS["text"]}[app._PROMPT_OPTIMIZER_MODEL]
     assert app._PROMPT_OPTIMIZER_EFFORT in m["reasoning_efforts"]
     assert set(app._PROMPT_OPTIMIZE_SYSTEM) == {"video", "image"}
+
+
+def test_spicy_prompt_templates():
+    """Spicy 影片模型的提示優化走模板（Levi 2026-09-18 提供）。三個模式各一份，
+    走模板的模型集合由 MODELS 推導（扣掉圖片與換臉那三顆），新增 Spicy 影片模型會自動納入。"""
+    assert set(app._SPICY_VIDEO_TEMPLATES) == {"t2v", "i2v", "keyframe"}
+    assert "w3.0-video-spicy" in app._SPICY_VIDEO_MODELS
+    assert "wan2.7-i2v-spicy" in app._SPICY_VIDEO_MODELS
+    for bad in ("z-image-spicy", "qwen-image-edit-spicy", "face-swap"):
+        assert bad not in app._SPICY_VIDEO_MODELS
+    # 每一顆 muleai 模型都要落在「影片」或「圖片」其中一邊，新增模型漏標會在這裡被抓到
+    ids = {m["id"] for m in app.MODELS["muleai"]}
+    assert ids == app._SPICY_VIDEO_MODELS | app._SPICY_IMAGE_MODELS
+
+
+def test_spicy_template_system_fills_duration_and_ratio():
+    """秒數與比例由前端送上來、寫進指示，模板裡的 [DURATION]／[ASPECT RATIO] 才填得成真實值。
+    智能時長（duration=None）時**只能刪掉秒數那幾個字、不能整行刪掉**——實測 2026-09-18
+    只說 drop the duration clause，模型會把整行連同「single continuous shot...」一起刪除。"""
+    s = app._spicy_template_system("t2v", 8, "16:9")
+    assert "8 seconds" in s and "16:9" in s
+    assert app._SPICY_VIDEO_TEMPLATES["t2v"] in s
+    smart = app._spicy_template_system("t2v", None, "adaptive")
+    assert "keep the rest" in smart and "adaptive aspect ratio" in smart
+    # 看不到來源圖的兩個模式要擋掉「自己編造身分／服裝／背景」
+    for mode in ("i2v", "keyframe"):
+        assert "cannot see the reference image" in app._spicy_template_system(mode, 5, None)
+    assert "cannot see the reference image" not in app._spicy_template_system("t2v", 5, None)

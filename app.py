@@ -2903,9 +2903,133 @@ _PROMPT_OPTIMIZE_SYSTEM = {
 }
 
 
+# Spicy 影片模型的提示詞模板（Levi 2026-09-18 提供）。這幾顆模型的優化**不是自由改寫，
+# 而是「讀懂使用者那句話之後填進對應模板」**——同一顆模型在不同素材模式下要用不同模板：
+#   t2v       沒有首幀圖：從零描述場景、主體、起始構圖與運動時間軸
+#   i2v       有首幀圖：畫面要從那張圖動起來，構圖與身分由來源圖決定、不重新描述
+#   keyframe  首幀＋尾幀：要描述從第一張過渡到最後一張的路徑
+# reference（參考素材模式）沒有指定模板，沿用通用的影片寫法。
+# 模板照抄不動；花括號裡的 [佔位符] 由改寫模型填滿，實際的秒數與比例由前端送上來。
+_SPICY_VIDEO_TEMPLATES = {
+    "t2v": """[DURATION] seconds, [ASPECT RATIO], [single continuous POV or third-person shot].
+
+Setting: [place, important foreground/background objects, surfaces, and light sources].
+
+Subjects: [fictional adult age, stable identity details, body position, clothing or nudity, jewelry or tattoos]. [Describe a second subject at the same practical level.]
+
+Starting composition at 0 seconds: [where each visible person and body part is in frame, orientation, and first contact or action].
+
+Motion timeline:
+- Opening: [the action begins clearly].
+- Main action: [rhythm, direction, range, and synchronized response].
+- Final beat: [one readable ending action or ongoing pose].
+
+Camera: [shot size, angle, position, and one movement or fixed-camera instruction].
+
+Lighting and style: [light direction and color, continuity, realism/style, depth of field, texture, and grade].
+
+Audio:
+- Voice: [dialogue, breath, moans, or no dialogue].
+- Sound effects: [sounds synchronized to visible motion].
+- Ambience/music: [room tone, environmental sound, music, or none].
+
+Continuity lock: [repeat only essential identity, anatomy, attachment, wardrobe, prop, background, and lighting details in positive language].""",
+    "i2v": """[DURATION] seconds, match the source aspect ratio, single continuous shot from the source camera position.
+
+The source frame comes alive naturally and motion begins.
+
+Motion timeline:
+- Opening: [motion emerges directly from the starting pose].
+- Main action: [rhythm, speed, amplitude, and synchronized physical response].
+- Final beat: [motion settles into a plausible ongoing moment rather than an unrelated pose].
+
+Camera: [usually fixed or one restrained move compatible with the source image].
+
+Audio:
+- Voice: [voice, breath, dialogue, or no dialogue].
+- Sound effects: [sounds synchronized to motion].
+- Ambience/music: [source-compatible room tone or music].
+
+Continuity lock: preserve the source frame's identity, anatomy, wardrobe, composition, environment, and lighting; visible body parts and contact points remain connected and coherent.""",
+    "keyframe": """[DURATION] seconds, match the reference aspect ratio, one coherent transition from the first frame to the last frame.
+
+Persistent anchors: [background, lighting, camera position, foreground body parts, identity, wardrobe, jewelry, props, and contact points that stay stable].
+
+Motion timeline:
+- Opening: [the first frame comes alive without an abrupt composition change].
+- Build: [the physically plausible path toward the ending pose].
+- Peak around [TIME]: [the main action or expression change, if requested].
+- Final beat: [motion decelerates and resolves into the last reference].
+
+The final second settles into the ending reference's composition and pose.
+
+Camera: [fixed or one restrained movement compatible with both references].
+
+Lighting continuity: match both references and keep light direction and color stable.
+
+Audio:
+- Voice: [voice, breath, dialogue, or no dialogue].
+- Sound effects: [sounds synchronized to each phase].
+- Ambience/music: [consistent room tone or music].
+
+Continuity lock: identity, anatomy, wardrobe, background, lighting, and all visible attached body parts remain coherent from the first reference through the last.""",
+}
+
+# 走模板的模型＝Spicy 分頁裡的影片模型。以 MODELS 推導（扣掉圖片與換臉那三顆），
+# 之後新增 Spicy 影片模型會自動納入，不必回來改這裡。
+_SPICY_IMAGE_MODELS = {"z-image-spicy", "qwen-image-edit-spicy", "face-swap"}
+_SPICY_VIDEO_MODELS = {m["id"] for m in MODELS["muleai"] if m["id"] not in _SPICY_IMAGE_MODELS}
+
+
+def _spicy_template_system(mode: str, duration: Optional[int], aspect_ratio: Optional[str]) -> str:
+    """把模板包成 system prompt。規則刻意寫得具體，因為模板一旦沒填滿（留下 [xxx]）
+    送進生成模型就是一堆雜訊。"""
+    rules = [
+        "You expand a user's short idea into a production-ready prompt for an AI video "
+        "model by filling in the template below.",
+        "Rules:",
+        "- Keep the template's structure, section labels, line breaks and ordering exactly as written.",
+        "- Replace every [bracketed placeholder] with concrete, specific wording. "
+        "Never leave a bracket, and never leave a placeholder unanswered.",
+        "- Everything you write must follow from the user's idea. Do not change the subject, "
+        "the action, or the setting they asked for, and do not add a second subject unless "
+        "the user's idea implies one - if it does not, drop that sentence.",
+        "- Write the filled content in English, because the template is written in English.",
+        "- Every person described must be an adult. Never describe a minor, and never use "
+        "age-ambiguous youth markers.",
+        "- Reply with the filled template only - no preamble, no explanation, no code fences.",
+    ]
+    if duration:
+        rules.append(f"- The clip is {duration} seconds long; use that number for [DURATION].")
+    else:
+        # ⚠️ 實測（2026-09-18）：只說「drop the duration clause」，模型會把**整個開頭那行**
+        # 刪掉，連「match the source aspect ratio, single continuous shot...」一起不見。
+        rules.append("- The duration is decided by the model, so delete only the "
+                     "\"[DURATION] seconds,\" words from the opening line and keep the rest "
+                     "of that line exactly as written.")
+    if mode in ("i2v", "keyframe"):
+        # 改寫模型看不到使用者上傳的圖，keyframe 的 Persistent anchors 又要求列出身分／
+        # 服裝／背景——不擋的話它會自己編一套，跟實際來源圖矛盾（實測 2026-09-18）。
+        rules.append("- You cannot see the reference image(s). Describe anchors and continuity "
+                     "in terms that must simply stay consistent with whatever the source shows "
+                     "(for example \"the subject's hairstyle, clothing and the room behind her "
+                     "stay exactly as in the source\"). Never invent specific identity, "
+                     "wardrobe, prop or background details, because they would contradict the "
+                     "actual source frame.")
+    if aspect_ratio and aspect_ratio != "adaptive":
+        rules.append(f"- The aspect ratio is {aspect_ratio}; use that for [ASPECT RATIO].")
+    elif aspect_ratio == "adaptive":
+        rules.append('- The aspect ratio is adaptive; write "adaptive aspect ratio" for [ASPECT RATIO].')
+    return "\n".join(rules) + "\n\nTemplate:\n" + _SPICY_VIDEO_TEMPLATES[mode]
+
+
 class PromptOptimizeRequest(BaseModel):
     prompt: str = ""
     kind: str = "video"          # video / image，決定改寫的著重點（運鏡 vs 構圖）
+    model: str = ""              # 目標生成模型；決定要不要走模板
+    mode: str = ""               # t2v / i2v / keyframe / reference / image（由前端依實際素材判斷）
+    duration: Optional[int] = None       # 秒；智能時長時為 None
+    aspect_ratio: Optional[str] = None   # 例如 16:9；adaptive 代表自動
 
 
 @app.post("/api/prompt/optimize")
@@ -2916,7 +3040,11 @@ async def prompt_optimize(request: Request, data: PromptOptimizeRequest,
         raise HTTPException(status_code=400, detail="Prompt is required")
     # 統計中介層看的是 request.state.model：記成優化用的那顆，才不會把這筆算到生成模型頭上
     request.state.model = _PROMPT_OPTIMIZER_MODEL
-    system = _PROMPT_OPTIMIZE_SYSTEM.get(data.kind, _PROMPT_OPTIMIZE_SYSTEM["video"])
+    # Spicy 影片模型走模板；其餘（圖片、換臉、參考素材模式）沿用通用改寫
+    if data.model in _SPICY_VIDEO_MODELS and data.mode in _SPICY_VIDEO_TEMPLATES:
+        system = _spicy_template_system(data.mode, data.duration, data.aspect_ratio)
+    else:
+        system = _PROMPT_OPTIMIZE_SYSTEM.get(data.kind, _PROMPT_OPTIMIZE_SYSTEM["video"])
     try:
         client = AsyncOpenAI(api_key=api_key, base_url=BASE_URL_COMPATIBLE,
                              timeout=_PROMPT_OPTIMIZER_TIMEOUT)

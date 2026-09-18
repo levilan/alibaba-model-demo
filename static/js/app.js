@@ -4007,6 +4007,33 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbo
 
 // ── MuleAI Generation ───────────────────────────────────────────
 
+// 優化要用哪一份模板，取決於**使用者實際放了什麼素材**，不是模型本身——同一顆
+// w3.0 可以是文生影片（沒放圖）、圖生影片（放了首幀）或首尾幀（首尾都放）。
+// 模板清單與各模式的差別見 app.py 的 _SPICY_VIDEO_TEMPLATES。
+// 秒數與比例一起送上去，讓改寫模型把模板裡的 [DURATION]／[ASPECT RATIO] 填成真實值。
+function _muleaiOptimizeContext(model) {
+    if (_isMuleaiImageModel(model) || model === 'face-swap') return { mode: 'image' };
+
+    const isW3 = isW3SpicyVideo(model);
+    // 參考素材模式沒有指定模板，走通用影片改寫
+    if (isW3 && document.getElementById('muleaiW3Mode')?.value === 'reference') {
+        return { mode: 'reference' };
+    }
+    const first = document.getElementById('muleaiFirstFrameInput')?.files[0];
+    const last  = isW3 ? document.getElementById('muleaiLastFrameInput')?.files[0] : null;
+    let mode = 't2v';
+    if (first && last) mode = 'keyframe';
+    else if (first) mode = 'i2v';
+
+    const smart = document.getElementById('muleaiSmartDur')?.checked;
+    const duration = smart ? null : parseInt(document.getElementById('muleaiVidDuration').value);
+    // 比例下拉只有 w3.0 會顯示；其他模型不送，模板那句就由模型依來源決定
+    const ratioEl = document.getElementById('muleaiVidRatio');
+    const ratioShown = document.getElementById('muleaiVidRatioGroup')?.style.display !== 'none';
+    const aspect_ratio = (ratioShown && ratioEl && ratioEl.value) ? ratioEl.value : null;
+    return { mode, duration, aspect_ratio };
+}
+
 // 「提示優化」：按下生成後先把提示詞交給文字模型改寫，**改寫結果顯示出來讓使用者
 // 過目與修改，按「用這個生成」才真的開始生成**（不是自動套用）。理由見 app.py 的
 // /api/prompt/optimize 註解。優化失敗不擋生成——提示一聲，使用者可以直接再按一次送出。
@@ -4016,6 +4043,7 @@ async function optimizeMuleaiPrompt() {
     if (!prompt) { toast('請先輸入 Prompt', 'error'); return false; }
     const model = document.getElementById('muleaiModel').value || '';
     const kind  = _isMuleaiImageModel(model) ? 'image' : 'video';
+    const ctx   = _muleaiOptimizeContext(model);
     const btn = document.getElementById('muleaiVidSendBtn');
     const label = btn.innerHTML;
     btn.disabled = true; btn.textContent = '優化中…';
@@ -4023,7 +4051,7 @@ async function optimizeMuleaiPrompt() {
         const r = await fetch('/api/prompt/optimize', {
             method: 'POST',
             headers: authHeader(),
-            body: JSON.stringify({ prompt, kind }),
+            body: JSON.stringify({ prompt, kind, model, ...ctx }),
         });
         const d = await r.json();
         if (!r.ok) throw new Error(d.detail || '優化失敗');
