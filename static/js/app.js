@@ -2748,7 +2748,10 @@ async function pollVideo(taskId, startTime, model, costInfo) {
                 addVideoCost(model, costInfo);
                 clearPendingTask(taskId);
             } else if (isFailed) {
-                const errMsg = data.error_message || 'Unknown';
+                // 後端已把物件壓成字串，這裡再防一層：真的收到物件時也要看得出內容，
+                // 不能顯示成「[object Object]」（2026-09-19 實際發生過）
+                const raw = data.error_message;
+                const errMsg = (raw && typeof raw === 'object') ? JSON.stringify(raw) : (raw || 'Unknown');
                 const isSchedulerErr = errMsg.toLowerCase().includes('scheduler');
                 if (stEl) { stEl.textContent = 'FAILED'; stEl.className = 'vtc-status failed'; }
                 if (pbEl) { pbEl.style.width = '100%'; pbEl.style.background = 'var(--red)'; }

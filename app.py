@@ -2360,11 +2360,10 @@ async def muleai_generate(
 
     # 這裡原本把網址寫死成正式站，導致 NENAI_BASE 對 Spicy 這條路徑完全無效——
     # 新模型要先對測試網關驗證時會直接打到正式站（那裡還沒有該模型）。
-    MULEAI_URL = (
-        f"{NENAI_V1}/image/generations"
-        if is_image_model
-        else f"{NENAI_V1}/video/generations"
-    )
+    # 相對路徑另外留一份給除錯面板：_debug_req 會自己補 base_url，
+    # 傳完整 URL 進去畫面上就會變成接了兩次的 https://…https://…
+    MULEAI_PATH = "/v1/image/generations" if is_image_model else "/v1/video/generations"
+    MULEAI_URL = f"{NENAI_BASE}{MULEAI_PATH}"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
     async def _to_data_uri(f: UploadFile) -> str:
@@ -2519,7 +2518,7 @@ async def muleai_generate(
                 if not task_id:
                     return JSONResponse(status_code=500, content={"success": False, "error": f"No task_id in response: {data}"})
                 return {"success": True, "task_id": task_id, "status": "pending", "model": model,
-                        "request": _debug_req(MULEAI_URL, payload)}
+                        "request": _debug_req(MULEAI_PATH, payload)}
             else:
                 return JSONResponse(status_code=resp.status_code, content={"success": False, "error": resp.text})
     except Exception as e:
@@ -2560,6 +2559,16 @@ async def muleai_task_status(model: str, task_id: str, api_key: str = Depends(ge
                     elif not _is_img and not videos:
                         videos = [outer.get("result_url")]
                 err = inner.get("task_info", {}).get("error") or outer.get("fail_reason")
+                # 上游這個欄位有時是字串、有時是物件（{code, message, …}）。物件直接回給
+                # 前端會顯示成「[object Object]」，使用者與我們都看不到真正的原因，
+                # 所以在這裡就壓成人看得懂的字串（保留 code 與 message）。
+                if isinstance(err, dict):
+                    code = err.get("code") or err.get("error_code") or ""
+                    msg = err.get("message") or err.get("msg") or err.get("detail") or ""
+                    err = " ".join(x for x in (str(code).strip(), str(msg).strip()) if x) \
+                        or json.dumps(err, ensure_ascii=False)
+                elif err is not None and not isinstance(err, str):
+                    err = json.dumps(err, ensure_ascii=False)
 
                 if status.upper() in ("COMPLETED", "SUCCEEDED", "SUCCESS"):
                     if _is_img:
