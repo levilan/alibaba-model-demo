@@ -137,7 +137,8 @@ NenAI（nen.com.tw）模型測試平台。只要一把 NenAI API Key，就能在
 | qwen3-vl-plus／flash | 視覺語言（支援圖片輸入） | — |
 | deepseek-v4-pro／v4-flash／v3.2 | DeepSeek | enable_thinking |
 | gemma-4-26b-a4b-it-maas | Gemma | Google 開源模型，看圖與工具呼叫可用；2026-09-16 測試網關實測，正式站上線前不顯示 |
-| gpt-6-luna／gpt-6-sol | GPT | 特化模型，支援看圖；推理強度五檔。2026-09-24 測試網關實測 |
+| claude-opus-5-5 | Claude | 最新旗艦，支援看圖。2026-09-24 正式站實測 |
+| gpt-6-luna／gpt-6-sol | GPT | 特化模型，支援看圖；推理強度五檔。2026-09-24 兩站各驗一輪 |
 | glm-5.3 | 智譜 GLM | 深度思考永遠開啟；reasoning_effort 三檔 low／high／max（預設 max）。2026-09-15 正式站上線 |
 | glm-5.2／5.1 | 智譜 GLM | enable_thinking ＋ reasoning_effort 分段 |
 | kimi/kimi-k3 | 月之暗面（支援圖片輸入） | 思考模型 |

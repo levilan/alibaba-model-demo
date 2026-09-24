@@ -613,7 +613,16 @@ MODELS = {
         #   **看得到圖**（1x1 PNG 實測答得出顏色）——Claude 家族目前只有這顆標了 vision，
         #   但那是既有缺漏不是差異：claude-sonnet-5 同樣實測看得到圖卻沒標。詳見 update.md。
         {"id": "claude-fable-5-1",            "name": "Claude Fable 5.1",  "group": "Claude", "desc": "創意寫作模型，支援看圖", "thinking": False, "no_sampling": True, "vision": True},
-        {"id": "claude-opus-5",               "name": "Claude Opus 5",     "group": "Claude", "desc": "最新旗艦",         "thinking": False, "no_sampling": True, "vision": True},
+        # claude-opus-5-5（2026-09-24 正式站實測，Levi 指定網關）：與家族其他顆一致——
+        # temperature／top_p 被上游拒（Bedrock 400）→ no_sampling；presence_penalty／stop／
+        # seed／enable_thinking 送了不報錯但沒有效果；reasoning_effort 被拒（Claude 這條路
+        # 不吃這個參數）；不回 reasoning_content、reasoning_tokens=0；**看得到圖**（白底數字讀對）。
+        # ⚠️ 測試站當時打不通：Bedrock 回「model ID …claude-opus-5-5 with on-demand throughput
+        # isn't supported，要用 inference profile」——正式站的渠道有 model_mapping 把它對到
+        # `global.anthropic.claude-opus-5-5`，測試站那條漏了這行。這是渠道設定差異不是模型問題。
+        # 六個後綴變體（-max／-xhigh／-high／-medium／-low／-thinking）兩站都沒有渠道，故不列。
+        {"id": "claude-opus-5-5",             "name": "Claude Opus 5.5",   "group": "Claude", "desc": "最新旗艦，支援看圖", "thinking": False, "no_sampling": True, "vision": True},
+        {"id": "claude-opus-5",               "name": "Claude Opus 5",     "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True, "vision": True},
         {"id": "claude-opus-4-8",             "name": "Claude Opus 4.8",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True, "vision": True},
         {"id": "claude-opus-4-7",             "name": "Claude Opus 4.7",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True, "vision": True},
         {"id": "claude-opus-4-6",             "name": "Claude Opus 4.6",   "group": "Claude", "desc": "前代旗艦",         "thinking": False, "no_sampling": True, "vision": True},
@@ -638,21 +647,24 @@ MODELS = {
         # 拒收 max_tokens／stop 的，故新增 max_completion_tokens／no_stop 兩個旗標，其他 GPT 不動。
         {"id": "gpt-6-astra",   "name": "GPT 6 Astra",   "group": "GPT", "desc": "最新旗艦，支援看圖", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"],
          "vision": True, "no_sampling": True, "no_penalties": True, "no_stop": True, "max_completion_tokens": True},
-        # gpt-6-luna／gpt-6-sol（2026-09-24 測試網關實測）：參數限制與 astra 幾乎一樣——
+        # gpt-6-luna／gpt-6-sol（2026-09-24 測試網關＋正式站各驗一輪）：參數限制與 astra 相同——
         # temperature 只收預設 1、top_p／presence_penalty／frequency_penalty／stop 一律
         # 400 "not supported with this model"、enable_thinking 回 "Unknown parameter"；
         # reasoning_effort 五檔 none/low/medium/high/xhigh（送別的值上游會把合法值列出來）。
-        # **與 astra 的差別：這兩顆收 max_tokens**（astra 送 max_tokens 會 400 要你改用
-        # max_completion_tokens），所以不標 max_completion_tokens。兩顆都看得到圖
-        # （320x200 白底寫 417，兩顆都讀對）。
+        # 兩顆都看得到圖（320x200 白底數字，兩站都讀對）。
+        # ⚠️ **max_tokens 兩個網關行為不同，所以必須標 max_completion_tokens**：測試站兩種
+        # 欄位都收，**正式站送 max_tokens 直接 400「Use 'max_completion_tokens' instead」**。
+        # 我第一版只在測試站驗，寫成「這兩顆收 max_tokens、不必標旗標」——那對正式站是錯的，
+        # 照那樣上線客戶每一次呼叫都會失敗。測試站也接受 max_completion_tokens，標了兩邊都能跑。
+        # **教訓：欄位名的相容性會因渠道而異，只驗一站不夠。**
         # reasoning_effort 確實有效，但**要用夠難的題目才看得出來**：先用「說出三原色」測，
         # sol 四檔的 reasoning_tokens 全是 0，差點寫成「sol 不推理」；換成多步題目後
         # sol 是 none 0／low 29／high 87／xhigh 153（單調上升），luna 是 none 0／low 66／
         # high 56／xhigh 62（各 1 次、不單調，所以只寫值域不寫強弱關係）。
         {"id": "gpt-6-luna",    "name": "GPT 6 Luna",    "group": "GPT", "desc": "特化模型，支援看圖", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"],
-         "vision": True, "no_sampling": True, "no_penalties": True, "no_stop": True},
+         "vision": True, "no_sampling": True, "no_penalties": True, "no_stop": True, "max_completion_tokens": True},
         {"id": "gpt-6-sol",     "name": "GPT 6 Sol",     "group": "GPT", "desc": "特化模型，支援看圖", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"],
-         "vision": True, "no_sampling": True, "no_penalties": True, "no_stop": True},
+         "vision": True, "no_sampling": True, "no_penalties": True, "no_stop": True, "max_completion_tokens": True},
         {"id": "gpt-5.6-terra", "name": "GPT 5.6 Terra", "group": "GPT", "desc": "特化模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
         {"id": "gpt-5.6-sol",   "name": "GPT 5.6 Sol",   "group": "GPT", "desc": "特化模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
         {"id": "gpt-5.6-luna",  "name": "GPT 5.6 Luna",  "group": "GPT", "desc": "特化模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
