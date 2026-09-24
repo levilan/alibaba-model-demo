@@ -638,6 +638,21 @@ MODELS = {
         # 拒收 max_tokens／stop 的，故新增 max_completion_tokens／no_stop 兩個旗標，其他 GPT 不動。
         {"id": "gpt-6-astra",   "name": "GPT 6 Astra",   "group": "GPT", "desc": "最新旗艦，支援看圖", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"],
          "vision": True, "no_sampling": True, "no_penalties": True, "no_stop": True, "max_completion_tokens": True},
+        # gpt-6-luna／gpt-6-sol（2026-09-24 測試網關實測）：參數限制與 astra 幾乎一樣——
+        # temperature 只收預設 1、top_p／presence_penalty／frequency_penalty／stop 一律
+        # 400 "not supported with this model"、enable_thinking 回 "Unknown parameter"；
+        # reasoning_effort 五檔 none/low/medium/high/xhigh（送別的值上游會把合法值列出來）。
+        # **與 astra 的差別：這兩顆收 max_tokens**（astra 送 max_tokens 會 400 要你改用
+        # max_completion_tokens），所以不標 max_completion_tokens。兩顆都看得到圖
+        # （320x200 白底寫 417，兩顆都讀對）。
+        # reasoning_effort 確實有效，但**要用夠難的題目才看得出來**：先用「說出三原色」測，
+        # sol 四檔的 reasoning_tokens 全是 0，差點寫成「sol 不推理」；換成多步題目後
+        # sol 是 none 0／low 29／high 87／xhigh 153（單調上升），luna 是 none 0／low 66／
+        # high 56／xhigh 62（各 1 次、不單調，所以只寫值域不寫強弱關係）。
+        {"id": "gpt-6-luna",    "name": "GPT 6 Luna",    "group": "GPT", "desc": "特化模型，支援看圖", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"],
+         "vision": True, "no_sampling": True, "no_penalties": True, "no_stop": True},
+        {"id": "gpt-6-sol",     "name": "GPT 6 Sol",     "group": "GPT", "desc": "特化模型，支援看圖", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"],
+         "vision": True, "no_sampling": True, "no_penalties": True, "no_stop": True},
         {"id": "gpt-5.6-terra", "name": "GPT 5.6 Terra", "group": "GPT", "desc": "特化模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
         {"id": "gpt-5.6-sol",   "name": "GPT 5.6 Sol",   "group": "GPT", "desc": "特化模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
         {"id": "gpt-5.6-luna",  "name": "GPT 5.6 Luna",  "group": "GPT", "desc": "特化模型", "thinking": False, "reasoning_effort": True, "reasoning_efforts": ["none", "low", "medium", "high", "xhigh"]},
